@@ -20,6 +20,11 @@ title: Configuration
 | `IDENTITY_JWKS_URL` | Fetch URL for dev |
 | `REDIS_URL` | Shared cache for MCP gateway |
 | `POSTGRES_DATABASE_URL` | Optional; SQLite when empty |
+| `AI_SERVICE_SIGNING_KEY` | RSA PEM for RS256 delegation JWTs to identity (or `AI_SERVICE_SIGNING_KEY_FILE`) |
+| `AI_SERVICE_SIGNING_KID` | JWKS `kid` (`python manage.py generate_signing_key`) |
+| `AI_SERVICE_ISSUER` | JWT `iss` on those requests; defaults to the first `https://` entry in `CSRF_TRUSTED_ORIGINS` |
+
+Identity verifies delegation requests with `AI_SERVICE_JWKS` / `AI_SERVICE_JWKS_URL` (default `{AI_SERVICE_URL}/.well-known/jwks.json`). This service publishes its public key at `GET /.well-known/jwks.json`.
 
 ## MCP gateway
 

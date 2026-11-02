@@ -67,8 +67,18 @@ docker run -d --name ai-service -p 8003:8000 \
   -e IDENTITY_ISSUER='https://id.shellui.com' \
   -e IDENTITY_AUDIENCE='shellui' \
   -e IDENTITY_SERVICE_URL='https://id.shellui.com' \
+  -e AI_SERVICE_SIGNING_KEY='…' \
+  -e AI_SERVICE_SIGNING_KID='…' \
+  -e AI_SERVICE_ISSUER='https://ai.shellui.com' \
+  -e CSRF_TRUSTED_ORIGINS='https://ai.shellui.com' \
   -e STORAGE_SERVICE_URL='https://storage.shellui.com' \
   shellui/ai-service:0.1.0
+```
+
+Generate signing material before deploy:
+
+```bash
+uv run python manage.py generate_signing_key
 ```
 
 See [docs/configuration.md](docs/configuration.md) and `.env.example`.

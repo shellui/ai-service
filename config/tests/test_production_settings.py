@@ -15,6 +15,22 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 MANAGE_PY = PROJECT_ROOT / 'manage.py'
 LONG_SECRET_KEY = 'test-secret-key-for-settings-check-only-0123456789abcd'
 
+
+def _production_identity_env() -> dict[str, str]:
+    from apps.authapi.ai_service_jwks import compute_rsa_kid, generate_rsa_key_pair
+
+    private_pem, public_pem = generate_rsa_key_pair(key_size=2048)
+    kid = compute_rsa_kid(public_pem)
+    return {
+        'IDENTITY_ISSUER': 'https://id.shellui.com',
+        'IDENTITY_AUDIENCE': 'shellui',
+        'IDENTITY_JWKS': '{"keys":[{"kty":"RSA","kid":"test","n":"x","e":"AQAB"}]}',
+        'AI_SERVICE_SIGNING_KEY': private_pem,
+        'AI_SERVICE_SIGNING_KID': kid,
+        'AI_SERVICE_ISSUER': 'https://ai.shellui.com',
+        'CSRF_TRUSTED_ORIGINS': 'https://ai.shellui.com',
+    }
+
 _COOKIE_SETTINGS_SCRIPT = """
 import os
 import django
@@ -144,7 +160,7 @@ class ProductionSettingsValidationTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, msg=result.stderr)
 
-    def test_production_starts_with_matching_iss_aud(self):
+    def test_production_requires_ai_service_signing(self):
         result = _settings_check(
             {
                 'DEBUG': 'false',
@@ -152,6 +168,19 @@ class ProductionSettingsValidationTests(unittest.TestCase):
                 'IDENTITY_ISSUER': 'https://id.shellui.com',
                 'IDENTITY_AUDIENCE': 'shellui',
                 'IDENTITY_JWKS': '{"keys":[{"kty":"RSA","kid":"test","n":"x","e":"AQAB"}]}',
+                'AI_SERVICE_ISSUER': 'https://ai.shellui.com',
+            }
+        )
+        self.assertNotEqual(result.returncode, 0)
+        output = _output(result)
+        self.assertIn('AI_SERVICE_SIGNING_KEY', output)
+
+    def test_production_starts_with_matching_iss_aud(self):
+        result = _settings_check(
+            {
+                'DEBUG': 'false',
+                'SECRET_KEY': LONG_SECRET_KEY,
+                **_production_identity_env(),
             }
         )
         self.assertEqual(result.returncode, 0, msg=result.stderr)
@@ -220,8 +249,8 @@ class ProductionSettingsValidationTests(unittest.TestCase):
         values = _cookie_settings(
             {
                 'DEBUG': 'false',
-                'IDENTITY_ISSUER': 'https://id.shellui.com',
-                'IDENTITY_AUDIENCE': 'shellui',
+                'SECRET_KEY': LONG_SECRET_KEY,
+                **_production_identity_env(),
             }
         )
         self.assertEqual(values['session_name'], '__Host-sessionid')

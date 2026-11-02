@@ -30,6 +30,16 @@ REQUIRED = (
     Required('IDENTITY_AUDIENCE', 'Must match identity-service JWT_AUDIENCE.'),
     Required('REDIS_URL', 'Shared cache for MCP gateway tool catalogs and rate limits.'),
     Required('POSTGRES_DATABASE_URL', 'PostgreSQL DSN. Leave empty to use SQLite.'),
+    Required(
+        'AI_SERVICE_SIGNING_KEY',
+        'RSA PEM for RS256 downstream delegation (or set AI_SERVICE_SIGNING_KEY_FILE). '
+        'Run: python manage.py generate_signing_key',
+    ),
+    Required('AI_SERVICE_SIGNING_KID', 'JWKS kid from generate_signing_key.'),
+    Required(
+        'AI_SERVICE_ISSUER',
+        'JWT iss on delegation requests to identity (this service public https origin).',
+    ),
 )
 
 OPTIONAL = (
@@ -48,6 +58,7 @@ OPTIONAL = (
     Var('JWT_ALGORITHMS', 'RS256'),
     Var('JWT_HS256_FALLBACK_SECRET', ''),
     Var('ALLOW_JWT_HS256_FALLBACK', 'false'),
+    Var('AI_SERVICE_SIGNING_KEY_FILE', '', 'RS256 delegation to identity'),
     Var('STORAGE_SERVICE_URL', '', 'Downstream MCP origins'),
     Var('HOSTING_SERVICE_URL', ''),
     Var('EMAIL_SERVICE_URL', 'https://email.shellui.com'),
