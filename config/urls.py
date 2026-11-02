@@ -10,6 +10,7 @@ from drf_spectacular.views import (
     SpectacularSwaggerView,
 )
 
+from apps.authapi.ai_jwks_views import AiServiceJwksView
 from apps.connector.mcp_oauth import OAuthProtectedResourceMetadataView
 from apps.connector.mcp_views import mcp_endpoint
 
@@ -18,6 +19,7 @@ from . import views
 urlpatterns = [
     path('', views.root, name='root'),
     path('health/live', views.health_live, name='health-live'),
+    path('.well-known/jwks.json', AiServiceJwksView.as_view(), name='jwks'),
     path(
         '.well-known/oauth-protected-resource',
         OAuthProtectedResourceMetadataView.as_view(),

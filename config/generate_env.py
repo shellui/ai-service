@@ -15,9 +15,18 @@ from config import env_registry as reg
 SECRET_KEY_BYTES = 64  # token_urlsafe(64) is about 86 characters
 
 
+def _ai_service_signing_values() -> tuple[str, str]:
+    from apps.authapi.ai_service_jwks import compute_rsa_kid, generate_rsa_key_pair
+
+    private_pem, public_pem = generate_rsa_key_pair()
+    kid = compute_rsa_kid(public_pem)
+    return private_pem.replace('\n', '\\n'), kid
+
+
 def _values(host: str) -> dict[str, str]:
     origin = f'https://{host}'
     ph = reg.PLACEHOLDER
+    signing_key, signing_kid = _ai_service_signing_values()
     return {
         'SECRET_KEY': secrets.token_urlsafe(SECRET_KEY_BYTES),
         'DEBUG': 'false',
@@ -28,6 +37,9 @@ def _values(host: str) -> dict[str, str]:
         'IDENTITY_AUDIENCE': 'shellui',
         'REDIS_URL': 'redis://redis:6379/0',
         'POSTGRES_DATABASE_URL': f'postgres://{ph}:{ph}@postgres:5432/ai',
+        'AI_SERVICE_SIGNING_KEY': signing_key,
+        'AI_SERVICE_SIGNING_KID': signing_kid,
+        'AI_SERVICE_ISSUER': origin,
     }
 
 

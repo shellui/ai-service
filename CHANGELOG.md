@@ -26,8 +26,10 @@ See for sample https://raw.githubusercontent.com/favoloso/conventional-changelog
 ### ✨ Feature
 
 - Bootstrap ai-service on Django 6 and Python 3.14 with sibling CI, Docker, and docs layout.
-- Aggregated MCP gateway at `POST /mcp` using `shellui-django[mcp]==0.2.0` (`AggregatingMcpServer`).
+- Aggregated MCP gateway at `POST /mcp` using `shellui-django[mcp]==0.3.0` (`AggregatingMcpServer`).
 - OAuth protected-resource metadata pointing authorization to identity-service.
 - Agent JWT verification via identity JWKS, revocation polling, and MCP call log forwarding.
 - Downstream service discovery from `IDENTITY`, `STORAGE`, `HOSTING`, `EMAIL`, and `SAAS` service URL settings.
 - Reserved `apps.keys` package for future model API key storage.
+- RS256 delegation JWTs for identity downstream MCP access-token minting (`AI_SERVICE_SIGNING_KEY`, `AI_SERVICE_SIGNING_KID`, `AI_SERVICE_ISSUER`).
+- Public JWKS at `GET /.well-known/jwks.json` and `python manage.py generate_signing_key` for operators.

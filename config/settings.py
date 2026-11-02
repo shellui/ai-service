@@ -414,6 +414,39 @@ STORAGE_SERVICE_URL = os.getenv('STORAGE_SERVICE_URL', '').strip().rstrip('/') o
 HOSTING_SERVICE_URL = os.getenv('HOSTING_SERVICE_URL', '').strip().rstrip('/') or None
 SAAS_SERVICE_URL = os.getenv('SAAS_SERVICE_URL', '').strip().rstrip('/') or None
 
+# RS256 delegation JWTs for identity downstream MCP access-token minting.
+from apps.authapi.ai_service_jwks import load_ai_service_signing_key  # noqa: E402
+
+
+def _load_ai_service_signing_pem() -> str:
+    file_path = os.getenv('AI_SERVICE_SIGNING_KEY_FILE', '').strip()
+    if file_path:
+        path = Path(file_path)
+        if not path.is_absolute():
+            path = BASE_DIR / path
+        if not path.is_file():
+            raise ImproperlyConfigured(f'AI_SERVICE_SIGNING_KEY_FILE not found: {path}')
+        return path.read_text(encoding='utf-8')
+    return os.getenv('AI_SERVICE_SIGNING_KEY', '').strip()
+
+
+def _default_ai_service_issuer() -> str:
+    for origin in CSRF_TRUSTED_ORIGINS:
+        origin_str = str(origin).strip().rstrip('/')
+        if origin_str.startswith('https://'):
+            return origin_str
+    return ''
+
+
+_ai_signing_pem = _load_ai_service_signing_pem()
+AI_SERVICE_SIGNING_KID = os.getenv('AI_SERVICE_SIGNING_KID', '').strip()
+AI_SERVICE_ISSUER = os.getenv('AI_SERVICE_ISSUER', '').strip().rstrip('/') or _default_ai_service_issuer()
+AI_SERVICE_SIGNING_KEY = (
+    load_ai_service_signing_key(private_pem=_ai_signing_pem, kid=AI_SERVICE_SIGNING_KID)
+    if _ai_signing_pem
+    else None
+)
+
 # API auth is Bearer JWT (not cookies). Multi-tenant shells call APIs from
 # unknown browser origins, so permissive CORS is intentional when credentials are off
 # (Supabase-style). Token delivery stays strict via identity OAuth redirect allowlist.
@@ -525,6 +558,19 @@ if not DEBUG:
         _production_config_errors.append(
             'IDENTITY_JWKS, IDENTITY_JWKS_FILE, or IDENTITY_JWKS_URL is required when DEBUG=false. '
             'Pin identity JWKS in production (no runtime fetch-only startup).'
+        )
+    if not _ai_signing_pem:
+        _production_config_errors.append(
+            'AI_SERVICE_SIGNING_KEY or AI_SERVICE_SIGNING_KEY_FILE is required when DEBUG=false. '
+            'Run: python manage.py generate_signing_key'
+        )
+    if not AI_SERVICE_SIGNING_KID:
+        _production_config_errors.append(
+            'AI_SERVICE_SIGNING_KID is required when DEBUG=false (set to the kid from generate_signing_key).'
+        )
+    if not AI_SERVICE_ISSUER:
+        _production_config_errors.append(
+            'AI_SERVICE_ISSUER is required when DEBUG=false (this service public https origin).'
         )
     # Length and variety only: the value itself is never printed.
     if (

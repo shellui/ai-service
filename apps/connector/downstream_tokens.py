@@ -3,22 +3,20 @@
 from __future__ import annotations
 
 import logging
-import time
-import uuid
 
-import jwt
 import requests
 from django.conf import settings
-from rest_framework_simplejwt.settings import api_settings
+from shellui_django.mcp.delegation import (
+    DOWNSTREAM_TOKEN_REQUEST_MAX_LIFETIME_SECONDS,
+    sign_downstream_token_request,
+)
 
 from apps.connector.agent_record import AgentRecord
 
 logger = logging.getLogger(__name__)
 
-# Proposed identity internal API; constants belong in shellui_django.mcp.internal (not yet shipped).
-DOWNSTREAM_TOKEN_AUDIENCE = 'shellui-mcp-downstream-token'
-DOWNSTREAM_TOKEN_SCOPE = 'mcp.downstream_token.mint'
 DOWNSTREAM_TOKEN_PATH = '/api/v1/mcp/internal/mcp-downstream-access-token'
+_DEFAULT_REQUEST_TTL_SECONDS = 60
 
 
 class DownstreamTokenError(Exception):
@@ -29,43 +27,34 @@ def _identity_origin() -> str:
     return (getattr(settings, 'IDENTITY_SERVICE_URL', '') or settings.IDENTITY_ISSUER or '').rstrip('/')
 
 
-def build_downstream_token_assertion(*, audience_url: str, lifetime_seconds: int = 60) -> str:
-    now = int(time.time())
-    claims = {
-        'iss': api_settings.ISSUER or '',
-        'aud': DOWNSTREAM_TOKEN_AUDIENCE,
-        'sub': 'service',
-        'scope': DOWNSTREAM_TOKEN_SCOPE,
-        'target': audience_url,
-        'iat': now,
-        'exp': now + lifetime_seconds,
-        'jti': uuid.uuid4().hex,
-    }
-    headers = {}
-    kid = getattr(settings, 'JWT_ACTIVE_KEY_ID', '')
-    if kid:
-        headers['kid'] = kid
-    token = jwt.encode(claims, api_settings.SIGNING_KEY, algorithm=api_settings.ALGORITHM, headers=headers or None)
-    return token.decode('utf-8') if isinstance(token, bytes) else token
-
-
 def mint_downstream_access_token(agent: AgentRecord, *, resource: str) -> str:
     """Ask identity to sign an agent access token for ``resource`` (downstream ``/mcp`` URL)."""
+    signing = getattr(settings, 'AI_SERVICE_SIGNING_KEY', None)
+    issuer = (getattr(settings, 'AI_SERVICE_ISSUER', '') or '').strip().rstrip('/')
+    if signing is None or not issuer:
+        raise DownstreamTokenError('AI service delegation signing is not configured.')
     origin = _identity_origin()
     if not origin:
         raise DownstreamTokenError('IDENTITY_SERVICE_URL is not configured.')
+    ttl = min(_DEFAULT_REQUEST_TTL_SECONDS, DOWNSTREAM_TOKEN_REQUEST_MAX_LIFETIME_SECONDS)
+    try:
+        assertion = sign_downstream_token_request(
+            signing.private_pem,
+            signing.kid,
+            issuer,
+            agent.agent_id,
+            agent.company_id,
+            resource,
+            ttl,
+        )
+    except Exception as exc:
+        logger.warning('Downstream token request signing failed err=%s', type(exc).__name__)
+        raise DownstreamTokenError('Could not sign downstream token request.') from exc
     url = f'{origin}{DOWNSTREAM_TOKEN_PATH}'
-    assertion = build_downstream_token_assertion(audience_url=origin)
-    body = {
-        'agent_id': agent.agent_id,
-        'company_id': agent.company_id,
-        'resource': resource,
-    }
     timeout = float(getattr(settings, 'MCP_GATEWAY_DOWNSTREAM_TIMEOUT_SECONDS', 5))
     try:
         response = requests.post(
             url,
-            json=body,
             headers={'Authorization': f'Bearer {assertion}', 'Content-Type': 'application/json'},
             timeout=timeout,
         )
