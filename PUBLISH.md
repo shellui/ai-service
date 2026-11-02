@@ -1,6 +1,6 @@
 # Publish and deploy
 
-How to build, publish, and run the `shellui/ai-service` Docker image on [Docker Hub](https://hub.docker.com/r/shellui/ai-service).
+How to build, publish, and run the `shellui/ai-service` Docker image on Docker Hub (`hub.docker.com/r/shellui/ai-service`).
 
 Publishing is automatic: publishing a GitHub release builds and pushes the image.
 
