@@ -252,7 +252,6 @@ dump_logs() {
 
 SMOKE_SIGNING_KEY_FILE=""
 SMOKE_SIGNING_KID=""
-CONTAINER_SIGNING_KEY_PATH='/run/pre-release/ai-signing.pem'
 
 cleanup() {
   docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
@@ -275,15 +274,17 @@ if [[ -z "${AI_SERVICE_SIGNING_KEY_FILE:-}" && -z "${AI_SERVICE_SIGNING_KEY:-}" 
   mapfile -t _smoke_signing < <(make_smoke_signing_key)
   SMOKE_SIGNING_KEY_FILE="${_smoke_signing[0]}"
   SMOKE_SIGNING_KID="${_smoke_signing[1]}"
-  export AI_SERVICE_SIGNING_KEY_FILE="${CONTAINER_SIGNING_KEY_PATH}"
+  # Pass via env (not a bind mount): the image runs as appuser and cannot read root-owned keys under /run.
+  export AI_SERVICE_SIGNING_KEY="$(<"${SMOKE_SIGNING_KEY_FILE}")"
   export AI_SERVICE_SIGNING_KID="${SMOKE_SIGNING_KID}"
 elif [[ -n "${AI_SERVICE_SIGNING_KEY_FILE:-}" ]]; then
-  SMOKE_SIGNING_KEY_FILE="${AI_SERVICE_SIGNING_KEY_FILE}"
+  export AI_SERVICE_SIGNING_KEY="$(<"${AI_SERVICE_SIGNING_KEY_FILE}")"
   export AI_SERVICE_SIGNING_KID="${AI_SERVICE_SIGNING_KID:?AI_SERVICE_SIGNING_KID is required with AI_SERVICE_SIGNING_KEY_FILE}"
 elif [[ -n "${AI_SERVICE_SIGNING_KEY:-}" ]]; then
   export AI_SERVICE_SIGNING_KID="${AI_SERVICE_SIGNING_KID:?AI_SERVICE_SIGNING_KID is required with AI_SERVICE_SIGNING_KEY}"
 fi
-[[ -n "${AI_SERVICE_SIGNING_KID:-}" ]] || fail 'AI_SERVICE_SIGNING_KID is required for smoke test'
+[[ -n "${AI_SERVICE_SIGNING_KID:-}" && -n "${AI_SERVICE_SIGNING_KEY:-}" ]] \
+  || fail 'AI_SERVICE_SIGNING_KEY and AI_SERVICE_SIGNING_KID are required for smoke test'
 
 # DEBUG is false in the image. The entrypoint exits before migrations without REDIS_URL.
 log 'Starting throwaway Redis'
@@ -315,20 +316,13 @@ docker_run_args=(
   -e IDENTITY_ISSUER
   -e IDENTITY_AUDIENCE
   -e AI_SERVICE_ISSUER
+  -e AI_SERVICE_SIGNING_KEY
   -e AI_SERVICE_SIGNING_KID
   -e SECURE_SSL_REDIRECT=false
   -e POSTGRES_SSL_REQUIRE=false
   -e STORAGE_BACKEND=filesystem
   -e ALLOWED_HOSTS=localhost,127.0.0.1
 )
-if [[ -n "${SMOKE_SIGNING_KEY_FILE}" ]]; then
-  docker_run_args+=(
-    -v "${SMOKE_SIGNING_KEY_FILE}:${CONTAINER_SIGNING_KEY_PATH}:ro"
-    -e "AI_SERVICE_SIGNING_KEY_FILE=${CONTAINER_SIGNING_KEY_PATH}"
-  )
-else
-  docker_run_args+=(-e AI_SERVICE_SIGNING_KEY)
-fi
 docker run "${docker_run_args[@]}" "${IMAGE_TAG}" >/dev/null
 
 log 'Waiting for Gunicorn…'
