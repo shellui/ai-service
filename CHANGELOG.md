@@ -33,3 +33,4 @@ See for sample https://raw.githubusercontent.com/favoloso/conventional-changelog
 - Reserved `apps.keys` package for future model API key storage.
 - RS256 delegation JWTs for identity downstream MCP access-token minting (`AI_SERVICE_SIGNING_KEY`, `AI_SERVICE_SIGNING_KID`, `AI_SERVICE_ISSUER`).
 - Public JWKS at `GET /.well-known/jwks.json` and `python manage.py generate_signing_key` for operators.
+- Pre-release Docker smoke generates ephemeral RS256 signing material (same pattern as smoke JWKS).

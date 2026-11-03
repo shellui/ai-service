@@ -46,6 +46,57 @@ s.close()
 PY
 }
 
+make_smoke_signing_key() {
+  # Ephemeral RS256 delegation key for DEBUG=false smoke runs (never logged).
+  local keyfile kid
+  keyfile="$(mktemp)"
+  chmod 600 "${keyfile}"
+  kid="$(
+    SMOKE_SIGNING_KEY_PATH="${keyfile}" uv run python - <<'PY'
+import base64
+import hashlib
+import json
+import os
+from pathlib import Path
+
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+
+keyfile = Path(os.environ['SMOKE_SIGNING_KEY_PATH'])
+key = rsa.generate_private_key(public_exponent=65537, key_size=2048, backend=default_backend())
+private_pem = key.private_bytes(
+    encoding=serialization.Encoding.PEM,
+    format=serialization.PrivateFormat.PKCS8,
+    encryption_algorithm=serialization.NoEncryption(),
+).decode()
+public_pem = key.public_key().public_bytes(
+    encoding=serialization.Encoding.PEM,
+    format=serialization.PublicFormat.SubjectPublicKeyInfo,
+).decode()
+keyfile.write_text(private_pem, encoding='utf-8')
+keyfile.chmod(0o600)
+
+pub = key.public_key()
+numbers = pub.public_numbers()
+
+def int_b64u(value: int) -> str:
+    length = (value.bit_length() + 7) // 8
+    return base64.urlsafe_b64encode(value.to_bytes(length, 'big')).rstrip(b'=').decode('ascii')
+
+canonical = json.dumps(
+    {'e': int_b64u(numbers.e), 'kty': 'RSA', 'n': int_b64u(numbers.n)},
+    separators=(',', ':'),
+    sort_keys=True,
+)
+digest = hashlib.sha256(canonical.encode()).digest()
+print(base64.urlsafe_b64encode(digest).rstrip(b'=').decode('ascii'))
+PY
+  )"
+  [[ -n "${kid}" && -s "${keyfile}" ]] || fail 'failed to build smoke AI_SERVICE signing key'
+  printf '%s\n' "${keyfile}" "${kid}"
+}
+
 make_smoke_jwks() {
   # Static JWKS for DEBUG=false containers (no live identity dependency).
   uv run python - <<'PY'
@@ -199,10 +250,16 @@ dump_logs() {
   printf '%s\n' '--- end docker logs ---' >&2
 }
 
+SMOKE_SIGNING_KEY_FILE=""
+SMOKE_SIGNING_KID=""
+
 cleanup() {
   docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
   docker rm -f "${REDIS_CONTAINER_NAME}" >/dev/null 2>&1 || true
   docker network rm "${NETWORK_NAME}" >/dev/null 2>&1 || true
+  if [[ -n "${SMOKE_SIGNING_KEY_FILE}" ]]; then
+    rm -f "${SMOKE_SIGNING_KEY_FILE}"
+  fi
 }
 trap cleanup EXIT
 
@@ -211,6 +268,23 @@ export IDENTITY_JWKS="${IDENTITY_JWKS:-$(make_smoke_jwks)}"
 [[ -n "${IDENTITY_JWKS}" ]] || fail 'failed to build smoke IDENTITY_JWKS'
 export IDENTITY_ISSUER="${IDENTITY_ISSUER:-https://pre-release.test}"
 export IDENTITY_AUDIENCE="${IDENTITY_AUDIENCE:-shellui}"
+export AI_SERVICE_ISSUER="${AI_SERVICE_ISSUER:-https://pre-release.test}"
+
+if [[ -z "${AI_SERVICE_SIGNING_KEY_FILE:-}" && -z "${AI_SERVICE_SIGNING_KEY:-}" ]]; then
+  mapfile -t _smoke_signing < <(make_smoke_signing_key)
+  SMOKE_SIGNING_KEY_FILE="${_smoke_signing[0]}"
+  SMOKE_SIGNING_KID="${_smoke_signing[1]}"
+  # Pass via env (not a bind mount): the image runs as appuser and cannot read root-owned keys under /run.
+  export AI_SERVICE_SIGNING_KEY="$(<"${SMOKE_SIGNING_KEY_FILE}")"
+  export AI_SERVICE_SIGNING_KID="${SMOKE_SIGNING_KID}"
+elif [[ -n "${AI_SERVICE_SIGNING_KEY_FILE:-}" ]]; then
+  export AI_SERVICE_SIGNING_KEY="$(<"${AI_SERVICE_SIGNING_KEY_FILE}")"
+  export AI_SERVICE_SIGNING_KID="${AI_SERVICE_SIGNING_KID:?AI_SERVICE_SIGNING_KID is required with AI_SERVICE_SIGNING_KEY_FILE}"
+elif [[ -n "${AI_SERVICE_SIGNING_KEY:-}" ]]; then
+  export AI_SERVICE_SIGNING_KID="${AI_SERVICE_SIGNING_KID:?AI_SERVICE_SIGNING_KID is required with AI_SERVICE_SIGNING_KEY}"
+fi
+[[ -n "${AI_SERVICE_SIGNING_KID:-}" && -n "${AI_SERVICE_SIGNING_KEY:-}" ]] \
+  || fail 'AI_SERVICE_SIGNING_KEY and AI_SERVICE_SIGNING_KID are required for smoke test'
 
 # DEBUG is false in the image. The entrypoint exits before migrations without REDIS_URL.
 log 'Starting throwaway Redis'
@@ -234,17 +308,22 @@ fi
 export REDIS_URL="redis://${REDIS_CONTAINER_NAME}:6379/0"
 
 # No --rm: if the app exits, docker logs still works until the trap removes it.
-docker run -d --name "${CONTAINER_NAME}" --network "${NETWORK_NAME}" -p "${HOST_PORT}:8000" \
-  -e SECRET_KEY \
-  -e REDIS_URL \
-  -e IDENTITY_JWKS \
-  -e IDENTITY_ISSUER \
-  -e IDENTITY_AUDIENCE \
-  -e SECURE_SSL_REDIRECT=false \
-  -e POSTGRES_SSL_REQUIRE=false \
-  -e STORAGE_BACKEND=filesystem \
-  -e ALLOWED_HOSTS=localhost,127.0.0.1 \
-  "${IMAGE_TAG}" >/dev/null
+docker_run_args=(
+  -d --name "${CONTAINER_NAME}" --network "${NETWORK_NAME}" -p "${HOST_PORT}:8000"
+  -e SECRET_KEY
+  -e REDIS_URL
+  -e IDENTITY_JWKS
+  -e IDENTITY_ISSUER
+  -e IDENTITY_AUDIENCE
+  -e AI_SERVICE_ISSUER
+  -e AI_SERVICE_SIGNING_KEY
+  -e AI_SERVICE_SIGNING_KID
+  -e SECURE_SSL_REDIRECT=false
+  -e POSTGRES_SSL_REQUIRE=false
+  -e STORAGE_BACKEND=filesystem
+  -e ALLOWED_HOSTS=localhost,127.0.0.1
+)
+docker run "${docker_run_args[@]}" "${IMAGE_TAG}" >/dev/null
 
 log 'Waiting for Gunicorn…'
 ready=0
