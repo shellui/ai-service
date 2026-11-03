@@ -25,7 +25,7 @@ Publishing is automatic: publishing a GitHub release builds and pushes the image
 | Build secrets | No `.env` in image or git |
 | Image smoke test | Redis + `GET /ai/v1/health` returns `status=ok` |
 
-GitHub Actions: [`.github/workflows/pre-release.yml`](.github/workflows/pre-release.yml) on pull requests to `main`.
+GitHub Actions: [`.github/workflows/pre-release.yml`](.github/workflows/pre-release.yml) on pull requests to `develop` and `main`.
 
 ## Publish to Docker Hub
 
