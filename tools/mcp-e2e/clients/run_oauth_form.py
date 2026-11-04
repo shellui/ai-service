@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 HEADLESS = ROOT / 'headless_identity_oauth.py'
 
 MCP_URL = os.environ.get('MCP_URL', 'http://localhost:8006/c/1/mcp')
-IDENTITY_ORIGIN = os.environ.get('IDENTITY_ORIGIN', 'http://127.0.0.1:8001').rstrip('/')
+IDENTITY_ORIGIN = os.environ.get('IDENTITY_ORIGIN', 'http://localhost:8001').rstrip('/')
 COMPOSE_FILE = os.environ['MCP_E2E_COMPOSE_FILE']
 REDIRECT = os.environ.get('MCP_E2E_CALLBACK_URL', 'http://127.0.0.1:8767/callback')
 
@@ -60,8 +60,14 @@ def main() -> int:
         ],
         capture_output=True,
         text=True,
-        check=True,
+        check=False,
     )
+    if proc.returncode != 0:
+        if proc.stderr:
+            print(proc.stderr, file=sys.stderr, end='')
+        if proc.stdout:
+            print(proc.stdout, file=sys.stderr, end='')
+        raise RuntimeError(f'headless OAuth failed (exit {proc.returncode})')
     code = proc.stdout.strip().splitlines()[0]
     token = requests.post(
         f'{IDENTITY_ORIGIN}/oauth/mcp/token',

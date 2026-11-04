@@ -14,7 +14,8 @@ export E2E_IDENTITY_SECRET_KEY="${E2E_IDENTITY_SECRET_KEY:-e2e-identity-secret-n
 export E2E_AI_SECRET_KEY="${E2E_AI_SECRET_KEY:-e2e-ai-secret-not-for-production-0123456789abcdef0123456789abcdef}"
 export MCP_E2E_COMPOSE_FILE="${COMPOSE_FILE}"
 export MCP_URL="${MCP_URL:-http://localhost:8006/c/1/mcp}"
-export IDENTITY_ORIGIN="${IDENTITY_ORIGIN:-http://127.0.0.1:8001}"
+# Must match identity JWT_ISSUER (localhost) so session cookies survive MCP magic-link sign-in.
+export IDENTITY_ORIGIN="${IDENTITY_ORIGIN:-http://localhost:8001}"
 export E2E_IDENTITY_SECRET_KEY
 export MCP_E2E_TOKEN_FILE="${SECRETS_DIR}/access.token"
 
@@ -62,13 +63,13 @@ docker compose -f "${COMPOSE_FILE}" up -d postgres redis identity ai
 
 log 'Waiting for health checks'
 for _ in $(seq 1 60); do
-  if curl -sf "${IDENTITY_ORIGIN}/health/live" >/dev/null && curl -sf "http://127.0.0.1:8006/ai/v1/health" >/dev/null; then
+  if curl -sf "${IDENTITY_ORIGIN}/health/live" >/dev/null && curl -sf "http://localhost:8006/ai/v1/health" >/dev/null; then
     break
   fi
   sleep 2
 done
 curl -sf "${IDENTITY_ORIGIN}/health/live" >/dev/null
-curl -sf "http://127.0.0.1:8006/ai/v1/health" >/dev/null
+curl -sf "http://localhost:8006/ai/v1/health" >/dev/null
 
 log 'Ensuring company 2 exists (tenant isolation)'
 docker compose -f "${COMPOSE_FILE}" exec -T identity python manage.py shell <<'PY'

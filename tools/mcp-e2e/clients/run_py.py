@@ -22,7 +22,7 @@ HEADLESS = ROOT / 'headless_identity_oauth.py'
 MCP_URL = os.environ.get('MCP_URL', 'http://localhost:8006/c/1/mcp')
 CALLBACK_URL = os.environ.get('MCP_E2E_CALLBACK_URL', 'http://127.0.0.1:8766/callback')
 COMPOSE_FILE = os.environ.get('MCP_E2E_COMPOSE_FILE', '')
-IDENTITY_ORIGIN = os.environ.get('IDENTITY_ORIGIN', 'http://127.0.0.1:8001')
+IDENTITY_ORIGIN = os.environ.get('IDENTITY_ORIGIN', 'http://localhost:8001')
 
 
 class _MemoryStorage:
