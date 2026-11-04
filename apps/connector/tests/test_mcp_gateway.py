@@ -197,6 +197,21 @@ class McpGatewayTests(TestCase):
         self.assertNotIn('mcp-test-token-leak-check', joined)
         self.assertNotIn('Bearer', joined)
 
+    def test_legacy_downstream_name_is_canonicalized_on_export(self, _rev_ok):
+        from apps.connector.mcp_views import prefixed_tool_catalog
+
+        routes: dict[str, tuple[str, str]] = {}
+
+        def remember(export_name: str, sid: str, downstream: str) -> None:
+            routes[export_name] = (sid, downstream)
+
+        remote = {
+            'identity': [{'name': 'api_v1_users_list', 'description': 'List users'}],
+        }
+        names = [t['name'] for t in prefixed_tool_catalog([], remote, remember_route=remember)]
+        self.assertEqual(names, ['identity_list_users'])
+        self.assertEqual(routes['identity_list_users'], ('identity', 'api_v1_users_list'))
+
     def test_every_downstream_tool_gets_service_prefix(self, _rev_ok):
         from apps.connector.mcp_views import prefixed_tool_catalog
 

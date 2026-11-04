@@ -8,7 +8,7 @@ from django.views.decorators.csrf import csrf_exempt
 from drf_spectacular.generators import SchemaGenerator
 from rest_framework.request import Request
 from shellui_django.mcp.gateway import AggregatingMcpServer, McpGatewayConfig, public_mcp_tools, scope_service_ids
-from apps.connector.mcp_tool_naming import gateway_export_name
+from apps.connector.mcp_tool_naming import canonical_downstream_tool_name, gateway_export_name
 from apps.connector.mcp_openapi_tools import tools_from_schema
 from apps.connector.mcp_tool_schema import normalize_mcp_tool
 
@@ -50,7 +50,8 @@ def prefixed_tool_catalog(
             downstream_name = str(tool.get('name') or '')
             if not downstream_name:
                 continue
-            export_name = gateway_export_name(service_id, downstream_name, taken=taken)
+            canonical = canonical_downstream_tool_name(downstream_name, service_id=service_id)
+            export_name = gateway_export_name(service_id, canonical, taken=taken)
             if remember_route is not None:
                 remember_route(export_name, service_id, downstream_name)
             merged.append({**tool, 'name': export_name})
@@ -65,6 +66,9 @@ class PrefixingMcpServer(AggregatingMcpServer):
     """
 
     def _lookup_route(self, tool_name: str) -> dict[str, str] | None:
+        cached = super()._lookup_route(tool_name)
+        if cached is not None:
+            return cached
         raw = str(tool_name or '')
         service_id, sep, downstream_name = raw.partition('_')
         if not sep or not service_id or not downstream_name:
@@ -145,7 +149,12 @@ class PrefixingMcpServer(AggregatingMcpServer):
             tools = self._fetch_remote_tools_list(mcp_url=mcp_url, bearer_token=token)
             if tools is not None:
                 remote[service_id] = tools
-        tools = prefixed_tool_catalog(local, remote, local_service_id=local_id)
+        tools = prefixed_tool_catalog(
+            local,
+            remote,
+            local_service_id=local_id,
+            remember_route=self._remember_route,
+        )
         tools = [normalize_mcp_tool(tool) for tool in tools]
         page = paginate_tools(tools, params or {})
         return JsonResponse(self._result(req_id, page))

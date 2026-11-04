@@ -153,6 +153,21 @@ def ensure_unique_tool_names(proposed: list[str]) -> list[str]:
     return out
 
 
+def canonical_downstream_tool_name(name: str, *, service_id: str | None = None) -> str:
+    """Map legacy ``api_v1_*`` downstream names to ``verb_noun`` before gateway export."""
+    tokens = _sanitize_token(name).split('_')
+    if service_id:
+        sid = _sanitize_token(service_id)
+        if tokens and tokens[0] == sid:
+            tokens = tokens[1:]
+    joined = '_'.join(tokens)
+    if 'api_v' in joined or joined.startswith('api_'):
+        stripped_tokens = _strip_version_and_service_prefix(tokens)
+        stripped = '_'.join(stripped_tokens)
+        return clamp_tool_name(_base_name_from_stripped(stripped, method='get'))
+    return clamp_tool_name(joined or name)
+
+
 def gateway_export_name(service_id: str, downstream_name: str, *, taken: set[str] | None = None) -> str:
     service_id = _sanitize_token(service_id)
     downstream_name = clamp_tool_name(downstream_name)

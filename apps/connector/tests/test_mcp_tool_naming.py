@@ -1,6 +1,7 @@
 from django.test import SimpleTestCase
 
 from apps.connector.mcp_tool_naming import (
+    canonical_downstream_tool_name,
     gateway_export_name,
     legacy_slug_tool_name,
     resolve_mcp_tool_name,
@@ -27,6 +28,16 @@ class McpToolNamingTests(SimpleTestCase):
 
     def test_gateway_prefix(self):
         self.assertEqual(gateway_export_name('email', 'send_message'), 'email_send_message')
+
+    def test_canonical_legacy_downstream_name(self):
+        self.assertEqual(
+            canonical_downstream_tool_name('api_v1_actions_deliveries_list'),
+            'list_deliveries',
+        )
+        self.assertEqual(
+            canonical_downstream_tool_name('identity_api_v1_users_list', service_id='identity'),
+            'list_users',
+        )
 
     def test_newest_api_version(self):
         schema = {
