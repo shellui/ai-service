@@ -11,7 +11,7 @@ from django.views.decorators.csrf import csrf_exempt
 from drf_spectacular.generators import SchemaGenerator
 from rest_framework.request import Request
 from shellui_django.mcp.gateway import AggregatingMcpServer, McpGatewayConfig, public_mcp_tools, scope_service_ids
-from apps.connector.mcp_tool_naming import canonical_downstream_tool_name, gateway_export_name
+from apps.connector.mcp_tool_naming import gateway_export_name, service_local_tool_name
 from apps.connector.mcp_openapi_tools import tools_from_schema
 from apps.connector.mcp_tool_schema import normalize_mcp_tool
 
@@ -67,7 +67,7 @@ def prefixed_tool_catalog(
             downstream_name = str(tool.get('name') or '')
             if not downstream_name:
                 continue
-            canonical = canonical_downstream_tool_name(downstream_name, service_id=service_id)
+            canonical = service_local_tool_name(tool, service_id=service_id)
             export_name = gateway_export_name(service_id, canonical, taken=taken)
             if remember_route is not None:
                 remember_route(export_name, service_id, downstream_name)

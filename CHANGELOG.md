@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased] - 2026-11-04
 
+### 🛠 Improvements
+
+- MCP gateway exports stable ``service_verb_noun`` tool names with titles, descriptions, field help, and MCP annotations on every ``tools/list`` entry.
+
 ### ✨ Feature
 
 - MCP OAuth protected-resource metadata advertises `shellui_mcp_authorize_query` (`saas_offered=1`) when SaaS tools are forwarded; e2e OAuth clients append it on authorize.

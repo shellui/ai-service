@@ -27,17 +27,36 @@ _ACTION_SUFFIXES: tuple[tuple[str, str], ...] = (
     ('sign_create', 'sign'),
     ('link_destroy', 'delete_link'),
     ('send_test', 'send_test'),
-    ('rotate_secret', 'rotate_secret'),
+    ('rotate_secret', 'rotate'),
+    ('rotate_key', 'rotate'),
     ('test_send', 'test_send'),
     ('requeue', 'requeue'),
     ('publish', 'publish'),
     ('cancel', 'cancel'),
+    ('revoke', 'revoke'),
+    ('export', 'export'),
+    ('import', 'import'),
     ('retrieve', 'get'),
     ('destroy', 'delete'),
     ('create', 'create'),
     ('list', 'list'),
     ('update', 'update'),
 )
+
+# Stable overrides where operationId heuristics collide or read poorly.
+_OPERATION_ID_TOOL_NAMES: dict[str, str] = {
+    'storage_v1_object_retrieve': 'get_public_object',
+    'storage_v1_object_authenticated_retrieve': 'get_object',
+    'hosting_v1_deploy_tokens_revoke_create': 'revoke_deploy_token',
+    'api_v1_scim_status': 'get_scim_status',
+    'api_v1_users_audience': 'get_users_audience',
+    'storage_v1_object_sign_path_create': 'sign_object_path',
+    'api_v1_newsletters_rotate_key': 'rotate_newsletter_key',
+    'api_v1_newsletters_subscribers_export': 'export_newsletter_subscribers',
+    'api_v1_newsletters_subscribers_import': 'import_newsletter_subscribers',
+    'api_v1_actions_rules_rotate_secret': 'rotate_rule_secret',
+    'api_v1_actions_rules_send_test': 'send_test_rule',
+}
 
 _RESOURCE_ALIASES = {
     'mcp_services': 'services',
@@ -105,8 +124,40 @@ def _base_name_from_stripped(stripped: str, *, method: str) -> str:
         needle = f'_{suffix}'
         if stripped.endswith(needle):
             resource = stripped[: -len(needle)]
+            if verb == 'rotate' and suffix == 'rotate_secret':
+                resource = _RESOURCE_ALIASES.get(resource, resource)
+                if resource.endswith('s') and not resource.endswith('ss'):
+                    resource = resource[:-1]
+                return f'rotate_{resource}_secret' if resource else 'rotate_secret'
             return _resource_label(resource, verb)
     return stripped
+
+
+def _path_scope_token(path: str) -> str | None:
+    """Insert after the verb for ``/actions/…`` routes so names stay unique without ``_2``."""
+    normalized = versionless_path(path)
+    if '/actions/' in normalized:
+        return 'action'
+    return None
+
+
+def _apply_path_scope(name: str, path: str) -> str:
+    scope = _path_scope_token(path)
+    if not scope:
+        return name
+    parts = name.split('_', 1)
+    if len(parts) != 2:
+        return name
+    verb, noun = parts
+    if noun.startswith(f'{scope}_'):
+        return name
+    return f'{verb}_{scope}_{noun}'
+
+
+def _apply_method_verb_tweaks(name: str, method: str) -> str:
+    if method.upper() == 'PUT' and name.startswith('update_'):
+        return f'replace_{name[7:]}'
+    return name
 
 
 def resolve_mcp_tool_name(operation: dict[str, Any], method: str, path: str) -> str:
@@ -115,16 +166,23 @@ def resolve_mcp_tool_name(operation: dict[str, Any], method: str, path: str) -> 
     if explicit:
         return clamp_tool_name(_sanitize_token(explicit))
 
-    op_id = operation.get('operationId')
-    if op_id:
-        tokens = _strip_version_and_service_prefix(_sanitize_token(str(op_id)).split('_'))
-        stripped = '_'.join(tokens)
-        return clamp_tool_name(_base_name_from_stripped(stripped, method=method))
+    op_id = str(operation.get('operationId') or '').strip()
+    if op_id and op_id in _OPERATION_ID_TOOL_NAMES:
+        return clamp_tool_name(_OPERATION_ID_TOOL_NAMES[op_id])
 
-    fallback = _sanitize_token(f'{method}_{path}')
-    fallback = re.sub(r'api_v\d+_', '', fallback)
-    fallback = re.sub(r'_+', '_', fallback).strip('_')
-    return clamp_tool_name(_base_name_from_stripped(fallback, method=method))
+    if op_id:
+        tokens = _strip_version_and_service_prefix(_sanitize_token(op_id).split('_'))
+        stripped = '_'.join(tokens)
+        name = _base_name_from_stripped(stripped, method=method)
+    else:
+        fallback = _sanitize_token(f'{method}_{path}')
+        fallback = re.sub(r'api_v\d+_', '', fallback)
+        fallback = re.sub(r'_+', '_', fallback).strip('_')
+        name = _base_name_from_stripped(fallback, method=method)
+
+    name = _apply_path_scope(name, path)
+    name = _apply_method_verb_tweaks(name, method)
+    return clamp_tool_name(name)
 
 
 def clamp_tool_name(name: str) -> str:
@@ -153,6 +211,70 @@ def ensure_unique_tool_names(proposed: list[str]) -> list[str]:
     return out
 
 
+def _canonicalize_numeric_suffix(name: str) -> str:
+    """Map downstream ``*_2`` collision slugs to stable verb_noun names when metadata is absent."""
+    if not re.search(r'_\d+$', name):
+        return name
+    base = re.sub(r'_\d+$', '', name)
+    if base.startswith('update_'):
+        return f'replace_{base[7:]}'
+    return base
+
+
+def _infer_http_method(operation_id: str | None, declared: str | None) -> str:
+    if declared:
+        return str(declared).lower()
+    oid = _sanitize_token(str(operation_id or ''))
+    if oid.endswith('_partial_update'):
+        return 'patch'
+    if oid.endswith('_update'):
+        return 'put'
+    if oid.endswith('_destroy') or oid.endswith('_delete'):
+        return 'delete'
+    if oid.endswith('_create'):
+        return 'post'
+    if oid.endswith('_list'):
+        return 'get'
+    if oid.endswith('_retrieve') or oid.endswith('_get'):
+        return 'get'
+    return 'get'
+
+
+def service_local_tool_name(tool: dict[str, Any], *, service_id: str | None = None) -> str:
+    """Resolve the service-local MCP tool name before the gateway adds a service prefix."""
+    raw = str(tool.get('name') or '')
+    raw_local = _sanitize_token(raw)
+    if service_id:
+        sid = _sanitize_token(service_id)
+        if raw_local.startswith(f'{sid}_'):
+            raw_local = raw_local[len(sid) + 1 :]
+    had_numeric_suffix = bool(re.search(r'_\d+$', raw_local))
+
+    meta = tool.get('_meta') if isinstance(tool.get('_meta'), dict) else {}
+    operation_id = meta.get('operationId') or tool.get('operationId')
+    path = meta.get('path')
+    method = _infer_http_method(
+        str(operation_id) if operation_id else None,
+        str(meta.get('method') or '') or None,
+    )
+    if had_numeric_suffix and raw_local.startswith('update_'):
+        base = re.sub(r'_\d+$', '', raw_local)
+        return clamp_tool_name(f'replace_{base[7:]}')
+    if operation_id and path:
+        operation: dict[str, Any] = {'operationId': operation_id}
+        x_mcp = meta.get('x-mcp')
+        if isinstance(x_mcp, dict):
+            operation['x-mcp'] = x_mcp
+        name = resolve_mcp_tool_name(operation, method, str(path))
+    else:
+        name = canonical_downstream_tool_name(raw, service_id=service_id)
+    if had_numeric_suffix:
+        name = _canonicalize_numeric_suffix(name)
+    if method == 'put' and name.startswith('update_'):
+        name = f'replace_{name[7:]}'
+    return clamp_tool_name(name)
+
+
 def canonical_downstream_tool_name(name: str, *, service_id: str | None = None) -> str:
     """Map legacy ``api_v1_*`` downstream names to ``verb_noun`` before gateway export."""
     tokens = _sanitize_token(name).split('_')
@@ -165,6 +287,7 @@ def canonical_downstream_tool_name(name: str, *, service_id: str | None = None) 
         stripped_tokens = _strip_version_and_service_prefix(tokens)
         stripped = '_'.join(stripped_tokens)
         return clamp_tool_name(_base_name_from_stripped(stripped, method='get'))
+    joined = _canonicalize_numeric_suffix(joined)
     return clamp_tool_name(joined or name)
 
 
@@ -174,6 +297,15 @@ def gateway_export_name(service_id: str, downstream_name: str, *, taken: set[str
     export_name = clamp_tool_name(f'{service_id}_{downstream_name}')
     if taken is None:
         return export_name
+    if export_name not in taken:
+        taken.add(export_name)
+        return export_name
+    # Prefer a readable suffix over ``_2`` when two service-local names still collide.
+    for alt in ('_put', '_patch', '_alt'):
+        candidate = clamp_tool_name(f'{export_name}{alt}')
+        if candidate not in taken:
+            taken.add(candidate)
+            return candidate
     candidate = export_name
     n = 2
     while candidate in taken:

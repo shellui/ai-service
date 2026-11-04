@@ -92,7 +92,7 @@ def tool_annotations(operation: dict[str, Any], *, method: str, access: dict[str
     destructive = bool(access.get('destructive')) or verb == 'DELETE'
     if not read_only and not destructive and verb in {'PUT', 'PATCH'}:
         destructive = True
-    idempotent = read_only or verb in {'PUT', 'HEAD'}
+    idempotent = read_only or verb in {'PUT', 'DELETE', 'HEAD'}
     if verb == 'POST' and not read_only:
         idempotent = False
     x_mcp = operation.get('x-mcp') if isinstance(operation.get('x-mcp'), dict) else {}
@@ -254,7 +254,9 @@ def shellui_gateway_instructions(
         'Shellui exposes company-scoped HTTP APIs as MCP tools. Each tool maps to one OpenAPI operation.\n'
         f'Connected services for this agent: {services}.\n'
         f'Every tool name starts with a service id ({prefixes or "service_"}), then verb and resource '
-        '(for example ai_list_services, storage_list_buckets).\n'
+        '(for example ai_list_services, email_send_message).\n'
+        'Prefer list_* tools before get_* detail calls. Requests are scoped to the company in the MCP URL '
+        '(/c/<company_id>/mcp).\n'
         'Use annotations.readOnlyHint and annotations.destructiveHint to decide when to confirm with the user. '
         'Use ai_list_services for per-service MCP URLs and resource-bound tokens.'
     )
