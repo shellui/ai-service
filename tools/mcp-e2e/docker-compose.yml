@@ -30,6 +30,8 @@ services:
       dockerfile: Dockerfile
       target: dev
     image: shellui/identity-service:mcp-e2e
+    env_file:
+      - ${MCP_E2E_IDENTITY_JWT_ENV:-./.e2e-secrets/identity-jwt.env}
     environment:
       SECRET_KEY: ${E2E_IDENTITY_SECRET_KEY}
       DEBUG: 'true'

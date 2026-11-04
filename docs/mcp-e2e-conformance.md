@@ -21,7 +21,7 @@ Clone [identity-service](https://github.com/shellui/identity-service) on `develo
 ./tools/mcp-e2e/run.sh
 ```
 
-Requirements: Docker, `uv`, Node 22+, network to pull base images. Ephemeral keys land in `tools/mcp-e2e/.e2e-secrets/` (gitignored). Identity runs `seed_dev` only with `DEBUG=true` and `IDENTITY_DEV_SEED=true` inside compose.
+Requirements: Docker, `uv`, Node 22+, network to pull base images. Ephemeral keys land in `tools/mcp-e2e/.e2e-secrets/` (gitignored): ai-service RS256 delegation material and identity `JWT_PRIVATE_KEY` / `JWT_KEY_ID` (RS256 is required for signed MCP revocation list responses; DEBUG-only HS256 identity is not enough for authenticated MCP traffic). Identity runs `seed_dev` only with `DEBUG=true` and `IDENTITY_DEV_SEED=true` inside compose.
 
 Set `MCP_E2E_LEAVE_STACK=1` to keep containers running after a failure.
 
