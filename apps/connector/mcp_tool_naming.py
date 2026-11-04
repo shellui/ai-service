@@ -221,6 +221,25 @@ def _canonicalize_numeric_suffix(name: str) -> str:
     return base
 
 
+def _infer_http_method(operation_id: str | None, declared: str | None) -> str:
+    if declared:
+        return str(declared).lower()
+    oid = _sanitize_token(str(operation_id or ''))
+    if oid.endswith('_partial_update'):
+        return 'patch'
+    if oid.endswith('_update'):
+        return 'put'
+    if oid.endswith('_destroy') or oid.endswith('_delete'):
+        return 'delete'
+    if oid.endswith('_create'):
+        return 'post'
+    if oid.endswith('_list'):
+        return 'get'
+    if oid.endswith('_retrieve') or oid.endswith('_get'):
+        return 'get'
+    return 'get'
+
+
 def service_local_tool_name(tool: dict[str, Any], *, service_id: str | None = None) -> str:
     """Resolve the service-local MCP tool name before the gateway adds a service prefix."""
     raw = str(tool.get('name') or '')
@@ -234,7 +253,10 @@ def service_local_tool_name(tool: dict[str, Any], *, service_id: str | None = No
     meta = tool.get('_meta') if isinstance(tool.get('_meta'), dict) else {}
     operation_id = meta.get('operationId') or tool.get('operationId')
     path = meta.get('path')
-    method = str(meta.get('method') or 'get').lower()
+    method = _infer_http_method(
+        str(operation_id) if operation_id else None,
+        str(meta.get('method') or '') or None,
+    )
     if had_numeric_suffix and raw_local.startswith('update_'):
         base = re.sub(r'_\d+$', '', raw_local)
         return clamp_tool_name(f'replace_{base[7:]}')
@@ -248,6 +270,8 @@ def service_local_tool_name(tool: dict[str, Any], *, service_id: str | None = No
         name = canonical_downstream_tool_name(raw, service_id=service_id)
     if had_numeric_suffix:
         name = _canonicalize_numeric_suffix(name)
+    if method == 'put' and name.startswith('update_'):
+        name = f'replace_{name[7:]}'
     return clamp_tool_name(name)
 
 
@@ -273,6 +297,15 @@ def gateway_export_name(service_id: str, downstream_name: str, *, taken: set[str
     export_name = clamp_tool_name(f'{service_id}_{downstream_name}')
     if taken is None:
         return export_name
+    if export_name not in taken:
+        taken.add(export_name)
+        return export_name
+    # Prefer a readable suffix over ``_2`` when two service-local names still collide.
+    for alt in ('_put', '_patch', '_alt'):
+        candidate = clamp_tool_name(f'{export_name}{alt}')
+        if candidate not in taken:
+            taken.add(candidate)
+            return candidate
     candidate = export_name
     n = 2
     while candidate in taken:
