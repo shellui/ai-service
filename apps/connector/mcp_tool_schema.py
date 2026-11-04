@@ -332,13 +332,24 @@ def normalize_mcp_tool(tool: dict[str, Any], root: dict[str, Any] | None = None)
         out['title'] = human_title_from_tool_name(name)
     desc = sanitize_shellui_copy(str(out.get('description') or '').strip())
     if len(desc) < 24:
+        from apps.connector.mcp_tool_presentation import human_title_from_tool_name
+
+        title = str(out.get('title') or human_title_from_tool_name(name)).strip()
         op = (out.get('_meta') or {}).get('operationId') or name
-        desc = desc or f'Shellui MCP tool {name} ({op}).'
+        if desc:
+            desc = f'{desc} Available through Shellui MCP as {name}.'
+        else:
+            desc = f'{title}. Shellui MCP tool {name} ({op}).'
+        desc = sanitize_shellui_copy(desc)
     out['description'] = desc
     if not isinstance(out.get('annotations'), dict):
         meta = out.get('_meta') or {}
         read_only = bool(meta.get('read_only'))
         destructive = bool(meta.get('destructive'))
+        if not meta:
+            core = name.split('_', 1)[1] if '_' in name else name
+            read_only = core.startswith(('list_', 'get_'))
+            destructive = core.startswith(('delete_', 'create_', 'update_', 'destroy_'))
         out['annotations'] = {
             'readOnlyHint': read_only,
             'destructiveHint': destructive and not read_only,
