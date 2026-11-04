@@ -119,17 +119,10 @@ async def main() -> None:
                 if 'ai_list_services' not in names:
                     raise RuntimeError(f'ai_list_services missing; got {sorted(names)}')
                 from apps.connector.mcp_tool_metadata_checks import validate_tool_metadata
+                from mcp_sdk_tool_payload import tool_payload_from_sdk
 
                 for t in tools.tools:
-                    payload = {
-                        'name': t.name,
-                        'title': getattr(t, 'title', None),
-                        'description': getattr(t, 'description', None),
-                        'annotations': getattr(t, 'annotations', None),
-                    }
-                    if hasattr(payload['annotations'], 'model_dump'):
-                        payload['annotations'] = payload['annotations'].model_dump()
-                    failures = validate_tool_metadata(payload)
+                    failures = validate_tool_metadata(tool_payload_from_sdk(t))
                     if failures:
                         raise RuntimeError(f'tool metadata: {failures[0]}')
                 result = await session.call_tool('ai_list_services', {})

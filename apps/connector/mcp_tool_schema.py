@@ -342,7 +342,10 @@ def normalize_mcp_tool(tool: dict[str, Any], root: dict[str, Any] | None = None)
             desc = f'{title}. Shellui MCP tool {name} ({op}).'
         desc = sanitize_shellui_copy(desc)
     out['description'] = desc
-    if not isinstance(out.get('annotations'), dict):
+    ann = out.get('annotations')
+    if not isinstance(ann, dict) or not all(
+        key in ann for key in ('readOnlyHint', 'destructiveHint', 'idempotentHint', 'openWorldHint')
+    ):
         from apps.connector.mcp_tool_presentation import tool_annotations
 
         meta = out.get('_meta') or {}
