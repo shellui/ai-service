@@ -447,6 +447,8 @@ def _default_ai_service_issuer() -> str:
 _ai_signing_pem = _load_ai_service_signing_pem()
 AI_SERVICE_SIGNING_KID = os.getenv('AI_SERVICE_SIGNING_KID', '').strip()
 AI_SERVICE_ISSUER = os.getenv('AI_SERVICE_ISSUER', '').strip().rstrip('/') or _default_ai_service_issuer()
+# Public origin of this service. MCP resources are {AI_PUBLIC_URL}/c/<company_id>/mcp.
+AI_PUBLIC_URL = os.getenv('AI_PUBLIC_URL', '').strip().rstrip('/') or AI_SERVICE_ISSUER
 AI_SERVICE_SIGNING_KEY = (
     load_ai_service_signing_key(private_pem=_ai_signing_pem, kid=AI_SERVICE_SIGNING_KID)
     if _ai_signing_pem

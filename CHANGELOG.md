@@ -39,4 +39,6 @@ See for sample https://raw.githubusercontent.com/favoloso/conventional-changelog
 
 ### 🐛 Bug Fixes
 
+- Gateway tests in `apps/connector` now run in CI (the package was missing `__init__.py`).
+- The MCP gateway is served per company at `/c/<company_id>/mcp`, with matching protected-resource metadata; tokens must name that company, plain `/mcp` returns 404 `company_required`, and every downstream tool carries its service prefix (`storage__…`).
 - MCP gateway asks identity for downstream tokens bound to each service's public resource (`*_SERVICE_PUBLIC_URL`), not the internal URL it calls.

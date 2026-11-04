@@ -25,6 +25,7 @@ For the Shellui multi-service stack (`shellui/shellui/dev`), see [Local dev stac
 | `AI_SERVICE_SIGNING_KEY` | RSA PEM for RS256 delegation JWTs to identity (or `AI_SERVICE_SIGNING_KEY_FILE`) |
 | `AI_SERVICE_SIGNING_KID` | JWKS `kid` (`python manage.py generate_signing_key`) |
 | `AI_SERVICE_ISSUER` | JWT `iss` on those requests; defaults to the first `https://` entry in `CSRF_TRUSTED_ORIGINS` |
+| `AI_PUBLIC_URL` | Public origin of the gateway; the MCP resource is `{AI_PUBLIC_URL}/c/<company_id>/mcp`. Defaults to `AI_SERVICE_ISSUER` |
 
 Identity verifies delegation requests with `AI_SERVICE_JWKS` / `AI_SERVICE_JWKS_URL` (default `{AI_SERVICE_URL}/.well-known/jwks.json`). This service publishes its public key at `GET /.well-known/jwks.json`.
 
