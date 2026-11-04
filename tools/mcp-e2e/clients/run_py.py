@@ -43,7 +43,7 @@ class _MemoryStorage:
         self._client_info = client_info
 
 
-def _run_headless(auth_url: str) -> str:
+def _run_headless(auth_url: str) -> tuple[str, str | None]:
     if not COMPOSE_FILE:
         raise RuntimeError('MCP_E2E_COMPOSE_FILE is required')
     py = os.environ.get('MCP_E2E_PYTHON', sys.executable)
@@ -68,7 +68,10 @@ def _run_headless(auth_url: str) -> str:
     )
     if proc.returncode != 0:
         raise RuntimeError(proc.stderr or proc.stdout or 'headless OAuth failed')
-    return proc.stdout.strip().splitlines()[0]
+    code = proc.stdout.strip().splitlines()[0]
+    state_lines = [ln.strip() for ln in (proc.stderr or '').splitlines() if ln.strip()]
+    state = state_lines[0] if state_lines else None
+    return code, state
 
 
 async def main() -> None:
@@ -76,8 +79,9 @@ async def main() -> None:
     holder: dict[str, str | None] = {'code': None, 'state': None}
 
     async def redirect_handler(url: str) -> None:
-        code = await asyncio.to_thread(_run_headless, url)
+        code, state = await asyncio.to_thread(_run_headless, url)
         holder['code'] = code
+        holder['state'] = state
 
     async def callback_handler() -> AuthorizationCodeResult:
         while holder['code'] is None:
