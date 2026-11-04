@@ -45,7 +45,7 @@ class InMemoryOAuthClientProvider {
   }
 }
 
-const MCP_URL = process.env.MCP_URL || 'http://127.0.0.1:8006/c/1/mcp';
+const MCP_URL = process.env.MCP_URL || 'http://localhost:8006/c/1/mcp';
 const CALLBACK_PORT = Number(process.env.MCP_E2E_CALLBACK_PORT || '8765');
 const CALLBACK_URL = `http://127.0.0.1:${CALLBACK_PORT}/callback`;
 const COMPOSE_FILE = process.env.MCP_E2E_COMPOSE_FILE;

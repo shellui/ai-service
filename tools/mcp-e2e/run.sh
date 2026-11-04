@@ -13,7 +13,7 @@ export IDENTITY_SRC
 export E2E_IDENTITY_SECRET_KEY="${E2E_IDENTITY_SECRET_KEY:-e2e-identity-secret-not-for-production-0123456789abcdef0123456789ab}"
 export E2E_AI_SECRET_KEY="${E2E_AI_SECRET_KEY:-e2e-ai-secret-not-for-production-0123456789abcdef0123456789abcdef}"
 export MCP_E2E_COMPOSE_FILE="${COMPOSE_FILE}"
-export MCP_URL="${MCP_URL:-http://127.0.0.1:8006/c/1/mcp}"
+export MCP_URL="${MCP_URL:-http://localhost:8006/c/1/mcp}"
 export IDENTITY_ORIGIN="${IDENTITY_ORIGIN:-http://127.0.0.1:8001}"
 export E2E_IDENTITY_SECRET_KEY
 export MCP_E2E_TOKEN_FILE="${SECRETS_DIR}/access.token"

@@ -12,9 +12,9 @@ from urllib.parse import urlencode
 import jwt
 import requests
 
-MCP_URL = os.environ.get('MCP_URL', 'http://127.0.0.1:8006/c/1/mcp')
-MCP_URL_C2 = os.environ.get('MCP_URL_COMPANY_2', 'http://127.0.0.1:8006/c/2/mcp')
-PLAIN_MCP = os.environ.get('PLAIN_MCP_URL', 'http://127.0.0.1:8006/mcp')
+MCP_URL = os.environ.get('MCP_URL', 'http://localhost:8006/c/1/mcp')
+MCP_URL_C2 = os.environ.get('MCP_URL_COMPANY_2', 'http://localhost:8006/c/2/mcp')
+PLAIN_MCP = os.environ.get('PLAIN_MCP_URL', 'http://localhost:8006/mcp')
 IDENTITY_ORIGIN = os.environ.get('IDENTITY_ORIGIN', 'http://127.0.0.1:8001').rstrip('/')
 ISSUER = IDENTITY_ORIGIN
 AUD = MCP_URL
