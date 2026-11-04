@@ -20,11 +20,42 @@ class McpToolNamingTests(SimpleTestCase):
 
     def test_clean_names(self):
         op = {'operationId': 'api_v1_actions_rules_create', 'tags': ['mcp-tools']}
-        self.assertEqual(resolve_mcp_tool_name(op, 'post', '/api/v1/actions/rules/'), 'create_rules')
+        self.assertEqual(
+            resolve_mcp_tool_name(op, 'post', '/api/v1/actions/rules/'),
+            'create_action_rules',
+        )
         op = {'operationId': 'api_v1_users_list', 'tags': ['mcp-tools']}
         self.assertEqual(resolve_mcp_tool_name(op, 'get', '/api/v1/users/'), 'list_users')
         op = {'operationId': 'api_v1_mcp_services_list', 'tags': ['mcp-tools']}
         self.assertEqual(resolve_mcp_tool_name(op, 'get', '/api/v1/mcp/services/'), 'list_services')
+
+    def test_disambiguate_events_and_put_update(self):
+        actions = {'operationId': 'api_v1_actions_events_list', 'tags': ['mcp-tools']}
+        audit = {'operationId': 'api_v1_events_list', 'tags': ['mcp-tools']}
+        self.assertEqual(
+            resolve_mcp_tool_name(actions, 'get', '/api/v1/actions/events/'),
+            'list_action_events',
+        )
+        self.assertEqual(resolve_mcp_tool_name(audit, 'get', '/api/v1/events/'), 'list_events')
+        put = {'operationId': 'api_v1_auth_methods_update', 'tags': ['mcp-tools']}
+        patch = {'operationId': 'api_v1_auth_methods_partial_update', 'tags': ['mcp-tools']}
+        self.assertEqual(
+            resolve_mcp_tool_name(put, 'put', '/api/v1/auth/methods/'),
+            'replace_auth_methods',
+        )
+        self.assertEqual(
+            resolve_mcp_tool_name(patch, 'patch', '/api/v1/auth/methods/'),
+            'update_auth_methods',
+        )
+
+    def test_revoke_and_rotate_names(self):
+        op = {'operationId': 'api_v1_invitations_revoke', 'tags': ['mcp-tools']}
+        self.assertEqual(resolve_mcp_tool_name(op, 'post', '/api/v1/invitations/revoke/'), 'revoke_invitations')
+        op = {'operationId': 'api_v1_actions_rules_rotate_secret', 'tags': ['mcp-tools']}
+        self.assertEqual(
+            resolve_mcp_tool_name(op, 'post', '/api/v1/actions/rules/rotate-secret/'),
+            'rotate_rule_secret',
+        )
 
     def test_gateway_prefix(self):
         self.assertEqual(gateway_export_name('email', 'send_message'), 'email_send_message')

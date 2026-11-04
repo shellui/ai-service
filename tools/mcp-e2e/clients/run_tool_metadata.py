@@ -1,19 +1,23 @@
 #!/usr/bin/env python3
-"""Assert live gateway tools/list exports titles and MCP annotations."""
+"""Assert live gateway tools/list exports titles, descriptions, annotations, and names."""
 
 from __future__ import annotations
 
-import json
 import os
 import sys
 from pathlib import Path
 
 import requests
 
+ROOT = Path(__file__).resolve().parents[3]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from apps.connector.mcp_tool_metadata_checks import validate_tools_list  # noqa: E402
+
 MCP_URL = os.environ.get('MCP_URL', 'http://localhost:8006/c/1/mcp')
 MCP_ACCEPT = 'application/json, text/event-stream'
 TOKEN_FILE = os.environ.get('MCP_E2E_TOKEN_FILE', '')
-ANNOTATION_KEYS = ('readOnlyHint', 'destructiveHint', 'idempotentHint', 'openWorldHint')
 
 
 def main() -> int:
@@ -34,34 +38,15 @@ def main() -> int:
     if not tools:
         print('[tool-metadata] no tools exported', file=sys.stderr)
         return 1
-    errors: list[str] = []
-    for tool in tools:
-        if not isinstance(tool, dict):
-            continue
-        name = str(tool.get('name') or '')
-        if 'api_v1' in name or '__' in name:
-            errors.append(f'{name}: invalid tool name (api_v1 or double underscore)')
-        title = str(tool.get('title') or '').strip()
-        if len(title) < 3:
-            errors.append(f'{name}: missing title')
-        desc = str(tool.get('description') or '').strip()
-        if len(desc) < 20:
-            errors.append(f'{name}: description too short')
-        ann = tool.get('annotations')
-        if not isinstance(ann, dict):
-            errors.append(f'{name}: missing annotations')
-            continue
-        for key in ANNOTATION_KEYS:
-            if key not in ann:
-                errors.append(f'{name}: annotations.{key} missing')
+    errors = validate_tools_list([t for t in tools if isinstance(t, dict)])
     if errors:
         print('[tool-metadata] failures:', file=sys.stderr)
-        for line in errors[:20]:
+        for line in errors[:30]:
             print(f'  - {line}', file=sys.stderr)
         return 1
     sample = next((t for t in tools if t.get('name') == 'ai_list_services'), tools[0])
     print(
-        f'[tool-metadata] {len(tools)} tool(s): titles + annotations ok; '
+        f'[tool-metadata] {len(tools)} tool(s): names, titles, descriptions, annotations ok; '
         f'sample {sample.get("name")!r} title={sample.get("title")!r}'
     )
     return 0

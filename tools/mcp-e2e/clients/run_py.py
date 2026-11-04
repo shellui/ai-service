@@ -16,11 +16,14 @@ from mcp.client.streamable_http import streamable_http_client
 from mcp.shared._httpx_utils import create_mcp_http_client
 from mcp.shared.auth import AuthorizationCodeResult, OAuthClientMetadata, OAuthToken
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[3]
 CLIENTS = Path(__file__).resolve().parent
-HEADLESS = ROOT / 'headless_identity_oauth.py'
+E2E_DIR = Path(__file__).resolve().parents[1]
+HEADLESS = E2E_DIR / 'headless_identity_oauth.py'
 if str(CLIENTS) not in sys.path:
     sys.path.insert(0, str(CLIENTS))
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 from shellui_oauth_extra import append_shellui_authorize_params  # noqa: E402
 
 MCP_URL = os.environ.get('MCP_URL', 'http://localhost:8006/c/1/mcp')
@@ -115,12 +118,20 @@ async def main() -> None:
                 names = {t.name for t in tools.tools}
                 if 'ai_list_services' not in names:
                     raise RuntimeError(f'ai_list_services missing; got {sorted(names)}')
+                from apps.connector.mcp_tool_metadata_checks import validate_tool_metadata
+
                 for t in tools.tools:
-                    if not (getattr(t, 'title', None) or '').strip():
-                        raise RuntimeError(f'tool {t.name} missing title')
-                    ann = getattr(t, 'annotations', None)
-                    if ann is None:
-                        raise RuntimeError(f'tool {t.name} missing annotations')
+                    payload = {
+                        'name': t.name,
+                        'title': getattr(t, 'title', None),
+                        'description': getattr(t, 'description', None),
+                        'annotations': getattr(t, 'annotations', None),
+                    }
+                    if hasattr(payload['annotations'], 'model_dump'):
+                        payload['annotations'] = payload['annotations'].model_dump()
+                    failures = validate_tool_metadata(payload)
+                    if failures:
+                        raise RuntimeError(f'tool metadata: {failures[0]}')
                 result = await session.call_tool('ai_list_services', {})
                 if getattr(result, 'is_error', False):
                     raise RuntimeError(f'tools/call failed: {result}')

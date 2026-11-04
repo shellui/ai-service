@@ -18,6 +18,12 @@ class McpToolPresentationTests(SimpleTestCase):
         self.assertTrue(ann['readOnlyHint'])
         self.assertFalse(ann['destructiveHint'])
 
+    def test_delete_is_idempotent(self):
+        op = {'operationId': 'api_v1_users_destroy'}
+        ann = tool_annotations(op, method='delete', access={'read_only': False, 'destructive': True})
+        self.assertTrue(ann['destructiveHint'])
+        self.assertTrue(ann['idempotentHint'])
+
     def test_apply_tool_presentation_from_openapi(self):
         operation = {
             'summary': 'List templates',

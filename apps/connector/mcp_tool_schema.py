@@ -343,17 +343,25 @@ def normalize_mcp_tool(tool: dict[str, Any], root: dict[str, Any] | None = None)
         desc = sanitize_shellui_copy(desc)
     out['description'] = desc
     if not isinstance(out.get('annotations'), dict):
+        from apps.connector.mcp_tool_presentation import tool_annotations
+
         meta = out.get('_meta') or {}
-        read_only = bool(meta.get('read_only'))
-        destructive = bool(meta.get('destructive'))
-        if not meta:
+        method = str(meta.get('method') or 'GET')
+        access = {
+            'read_only': bool(meta.get('read_only')),
+            'destructive': bool(meta.get('destructive')),
+        }
+        if meta.get('method'):
+            operation = {'operationId': meta.get('operationId') or name}
+            out['annotations'] = tool_annotations(operation, method=method, access=access)
+        else:
             core = name.split('_', 1)[1] if '_' in name else name
             read_only = core.startswith(('list_', 'get_'))
-            destructive = core.startswith(('delete_', 'create_', 'update_', 'destroy_'))
-        out['annotations'] = {
-            'readOnlyHint': read_only,
-            'destructiveHint': destructive and not read_only,
-            'idempotentHint': read_only,
-            'openWorldHint': False,
-        }
+            destructive = core.startswith(('delete_', 'create_', 'update_', 'replace_', 'destroy_'))
+            out['annotations'] = {
+                'readOnlyHint': read_only,
+                'destructiveHint': destructive and not read_only,
+                'idempotentHint': read_only or core.startswith(('replace_', 'delete_')),
+                'openWorldHint': 'send' in core,
+            }
     return out

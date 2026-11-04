@@ -27,17 +27,36 @@ _ACTION_SUFFIXES: tuple[tuple[str, str], ...] = (
     ('sign_create', 'sign'),
     ('link_destroy', 'delete_link'),
     ('send_test', 'send_test'),
-    ('rotate_secret', 'rotate_secret'),
+    ('rotate_secret', 'rotate'),
+    ('rotate_key', 'rotate'),
     ('test_send', 'test_send'),
     ('requeue', 'requeue'),
     ('publish', 'publish'),
     ('cancel', 'cancel'),
+    ('revoke', 'revoke'),
+    ('export', 'export'),
+    ('import', 'import'),
     ('retrieve', 'get'),
     ('destroy', 'delete'),
     ('create', 'create'),
     ('list', 'list'),
     ('update', 'update'),
 )
+
+# Stable overrides where operationId heuristics collide or read poorly.
+_OPERATION_ID_TOOL_NAMES: dict[str, str] = {
+    'storage_v1_object_retrieve': 'get_public_object',
+    'storage_v1_object_authenticated_retrieve': 'get_object',
+    'hosting_v1_deploy_tokens_revoke_create': 'revoke_deploy_token',
+    'api_v1_scim_status': 'get_scim_status',
+    'api_v1_users_audience': 'get_users_audience',
+    'storage_v1_object_sign_path_create': 'sign_object_path',
+    'api_v1_newsletters_rotate_key': 'rotate_newsletter_key',
+    'api_v1_newsletters_subscribers_export': 'export_newsletter_subscribers',
+    'api_v1_newsletters_subscribers_import': 'import_newsletter_subscribers',
+    'api_v1_actions_rules_rotate_secret': 'rotate_rule_secret',
+    'api_v1_actions_rules_send_test': 'send_test_rule',
+}
 
 _RESOURCE_ALIASES = {
     'mcp_services': 'services',
@@ -105,8 +124,40 @@ def _base_name_from_stripped(stripped: str, *, method: str) -> str:
         needle = f'_{suffix}'
         if stripped.endswith(needle):
             resource = stripped[: -len(needle)]
+            if verb == 'rotate' and suffix == 'rotate_secret':
+                resource = _RESOURCE_ALIASES.get(resource, resource)
+                if resource.endswith('s') and not resource.endswith('ss'):
+                    resource = resource[:-1]
+                return f'rotate_{resource}_secret' if resource else 'rotate_secret'
             return _resource_label(resource, verb)
     return stripped
+
+
+def _path_scope_token(path: str) -> str | None:
+    """Insert after the verb for ``/actions/…`` routes so names stay unique without ``_2``."""
+    normalized = versionless_path(path)
+    if '/actions/' in normalized:
+        return 'action'
+    return None
+
+
+def _apply_path_scope(name: str, path: str) -> str:
+    scope = _path_scope_token(path)
+    if not scope:
+        return name
+    parts = name.split('_', 1)
+    if len(parts) != 2:
+        return name
+    verb, noun = parts
+    if noun.startswith(f'{scope}_'):
+        return name
+    return f'{verb}_{scope}_{noun}'
+
+
+def _apply_method_verb_tweaks(name: str, method: str) -> str:
+    if method.upper() == 'PUT' and name.startswith('update_'):
+        return f'replace_{name[7:]}'
+    return name
 
 
 def resolve_mcp_tool_name(operation: dict[str, Any], method: str, path: str) -> str:
@@ -115,16 +166,23 @@ def resolve_mcp_tool_name(operation: dict[str, Any], method: str, path: str) -> 
     if explicit:
         return clamp_tool_name(_sanitize_token(explicit))
 
-    op_id = operation.get('operationId')
-    if op_id:
-        tokens = _strip_version_and_service_prefix(_sanitize_token(str(op_id)).split('_'))
-        stripped = '_'.join(tokens)
-        return clamp_tool_name(_base_name_from_stripped(stripped, method=method))
+    op_id = str(operation.get('operationId') or '').strip()
+    if op_id and op_id in _OPERATION_ID_TOOL_NAMES:
+        return clamp_tool_name(_OPERATION_ID_TOOL_NAMES[op_id])
 
-    fallback = _sanitize_token(f'{method}_{path}')
-    fallback = re.sub(r'api_v\d+_', '', fallback)
-    fallback = re.sub(r'_+', '_', fallback).strip('_')
-    return clamp_tool_name(_base_name_from_stripped(fallback, method=method))
+    if op_id:
+        tokens = _strip_version_and_service_prefix(_sanitize_token(op_id).split('_'))
+        stripped = '_'.join(tokens)
+        name = _base_name_from_stripped(stripped, method=method)
+    else:
+        fallback = _sanitize_token(f'{method}_{path}')
+        fallback = re.sub(r'api_v\d+_', '', fallback)
+        fallback = re.sub(r'_+', '_', fallback).strip('_')
+        name = _base_name_from_stripped(fallback, method=method)
+
+    name = _apply_path_scope(name, path)
+    name = _apply_method_verb_tweaks(name, method)
+    return clamp_tool_name(name)
 
 
 def clamp_tool_name(name: str) -> str:

@@ -46,6 +46,9 @@ class InMemoryOAuthClientProvider {
 }
 
 const MCP_URL = process.env.MCP_URL || 'http://localhost:8006/c/1/mcp';
+const GATEWAY_TOOL_NAME_RE =
+  /^(?:ai|identity|storage|hosting|email|saas)_[a-z][a-z0-9]*(?:_[a-z][a-z0-9]+)+$/;
+const ANNOTATION_KEYS = ['readOnlyHint', 'destructiveHint', 'idempotentHint', 'openWorldHint'];
 const CALLBACK_PORT = Number(process.env.MCP_E2E_CALLBACK_PORT || '8765');
 const CALLBACK_URL = `http://127.0.0.1:${CALLBACK_PORT}/callback`;
 const COMPOSE_FILE = process.env.MCP_E2E_COMPOSE_FILE;
@@ -149,8 +152,16 @@ async function main() {
   const target = tools.tools.find((t) => t.name === 'ai_list_services');
   if (!target) fail('ai_list_services missing from tools/list');
   for (const t of tools.tools) {
+    const name = String(t.name || '');
+    if (name.includes('api_v1') || name.includes('__')) fail(`tool ${name} invalid name`);
+    if (/_\d+$/.test(name)) fail(`tool ${name} numeric collision suffix`);
+    if (!GATEWAY_TOOL_NAME_RE.test(name)) fail(`tool ${name} must match service_verb_noun`);
     if (!String(t.title || '').trim()) fail(`tool ${t.name} missing title`);
+    if (String(t.description || '').trim().length < 20) fail(`tool ${t.name} description too short`);
     if (!t.annotations || typeof t.annotations !== 'object') fail(`tool ${t.name} missing annotations`);
+    for (const key of ANNOTATION_KEYS) {
+      if (!(key in t.annotations)) fail(`tool ${t.name} missing annotations.${key}`);
+    }
   }
   const result = await client.callTool({ name: target.name, arguments: {} });
   if (result.isError) fail(`tools/call error: ${JSON.stringify(result)}`);
