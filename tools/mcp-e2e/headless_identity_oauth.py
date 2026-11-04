@@ -99,10 +99,24 @@ def complete_mcp_oauth_authorization(
                 continue
         if not raw_token:
             raise RuntimeError('timed out waiting for magic link email in identity logs')
+        # Browser flow: GET the link (CSRF cookie + token), then auto-POST the form.
+        verify_get_url = urljoin(
+            identity_origin,
+            f'/api/v1/magic-link/verify?token={raw_token}&company_id={company_id}',
+        )
+        verify_page = get(verify_get_url)
+        if verify_page.status_code >= 400:
+            raise RuntimeError(
+                f'magic-link verify page failed: HTTP {verify_page.status_code} {verify_page.text[:200]}'
+            )
         verify = post(
             urljoin(identity_origin, '/api/v1/magic-link/verify'),
-            data={'token': raw_token, 'company_id': str(company_id)},
-            headers={'Accept': 'text/html'},
+            data={
+                'token': raw_token,
+                'company_id': str(company_id),
+                'csrfmiddlewaretoken': _csrf(verify_page.text),
+            },
+            headers={'Referer': verify_page.url, 'Accept': 'text/html'},
         )
         if verify.status_code not in (302, 303):
             raise RuntimeError(f'magic-link verify failed: HTTP {verify.status_code} {verify.text[:200]}')
