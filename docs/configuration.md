@@ -4,6 +4,8 @@ title: Configuration
 
 # Configuration
 
+For the Shellui multi-service stack (`shellui/shellui/dev`), see [Local dev stack](./devstack.md) for compose service name **`ai`**, host port **8006**, internal URLs (`http://identity:8000`, …), and public issuers (`http://localhost:8001`, `http://localhost:8006`).
+
 ## Required in production (`DEBUG=false`)
 
 | Variable | Notes |
@@ -59,7 +61,7 @@ Identity verifies delegation requests with `AI_SERVICE_JWKS` / `AI_SERVICE_JWKS_
 
 | Variable | Default |
 | -------- | ------- |
-| `AI_SERVICE_PORT` | `8003` |
+| `AI_SERVICE_PORT` | `8006` |
 
 ## Runtime
 

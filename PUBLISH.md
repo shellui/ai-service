@@ -10,7 +10,7 @@ Publishing is automatic: publishing a GitHub release builds and pushes the image
 | ----------- | ----------------------------------------------------------- |
 | Registry    | Docker Hub                                                  |
 | Repository  | `shellui/ai-service`                                        |
-| Listen port | `8000` (Compose maps host `${AI_SERVICE_PORT:-8003}`)       |
+| Listen port | `8000` (Compose maps host `${AI_SERVICE_PORT:-8006}`)       |
 | Data volume | `/app/data` (SQLite when not using Postgres)                |
 
 ## Pre-release checklist

@@ -46,7 +46,7 @@ OPTIONAL = (
     Var('LOG_LEVEL', 'INFO', 'Runtime'),
     Var('SETUP_TOKEN', ''),
     Var('DJANGO_ADMIN_ENABLED', 'true'),
-    Var('AI_SERVICE_PORT', '8003', 'Docker Compose host port'),
+    Var('AI_SERVICE_PORT', '8006', 'Docker Compose host port'),
     Var('SQLITE_PATH', 'db.sqlite3', 'Database'),
     Var('POSTGRES_SSL_REQUIRE', 'true'),
     Var('IDENTITY_JWKS_FILE', '', 'Pin identity JWKS in production.'),
@@ -111,6 +111,7 @@ def optional_lines(skip: frozenset[str] = frozenset()) -> list[str]:
 
 _EXAMPLE_HEADER = """\
 # ai-service settings. Full reference: docs/configuration.md
+# Shellui local stack: docs/devstack.md
 # Generated from config/env_registry.py: python manage.py generate_env --example > .env.example
 # Production: python manage.py generate_env --host ai.example.com
 # Copy to .env for local runs. Commented-out lines show the default the code uses.
@@ -119,7 +120,8 @@ _EXAMPLE_HEADER = """\
 SECRET_KEY=
 DEBUG=true
 ALLOWED_HOSTS=localhost,127.0.0.1
-IDENTITY_SERVICE_URL=http://localhost:8000
+IDENTITY_SERVICE_URL=http://localhost:8001
+IDENTITY_JWKS_URL=http://localhost:8001/.well-known/jwks.json
 
 # Required when DEBUG=false (production)
 IDENTITY_ISSUER=

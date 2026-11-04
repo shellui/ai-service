@@ -66,6 +66,12 @@ gunicorn_cmd() {
 }
 
 case "${MODE}" in
+  dev)
+    require_redis_in_production
+    prepare_data_dir
+    python manage.py migrate --noinput
+    exec python manage.py runserver 0.0.0.0:8000
+    ;;
   web)
     require_redis_in_production
     prepare_data_dir

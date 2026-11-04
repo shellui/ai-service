@@ -25,6 +25,7 @@ See for sample https://raw.githubusercontent.com/favoloso/conventional-changelog
 
 ### ✨ Feature
 
+- Docker `dev` target and devstack env documentation for the Shellui local compose stack.
 - Bootstrap ai-service on Django 6 and Python 3.14 with sibling CI, Docker, and docs layout.
 - Aggregated MCP gateway at `POST /mcp` using `shellui-django[mcp]==0.3.0` (`AggregatingMcpServer`).
 - OAuth protected-resource metadata pointing authorization to identity-service.
