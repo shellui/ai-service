@@ -14,7 +14,9 @@ from typing import Any
 
 from django.core.cache import cache
 from django.http import HttpRequest, HttpResponse, JsonResponse
-from shellui_django.mcp.gateway import AggregatingMcpServer, gateway_instructions
+from shellui_django.mcp.gateway import AggregatingMcpServer
+
+from apps.connector.mcp_tool_presentation import shellui_gateway_instructions
 from shellui_django.mcp.rate_limit import check_agent_rate_limit
 from shellui_django.mcp.server import McpServer
 
@@ -57,6 +59,11 @@ def build_initialize_result(
     )
     agent = server._gateway.resolve_agent(agent_claims)
     urls = server._gateway.get_service_urls()
+    from shellui_django.mcp.gateway import scope_service_ids
+
+    scope = scope_service_ids(agent_claims)
+    allowed_rows = set(agent.services_allowed or []) if agent else set()
+    connected = sorted(sid for sid in scope if sid in allowed_rows and sid in urls)
     return {
         'protocolVersion': protocol_version,
         'capabilities': server_capabilities(),
@@ -65,11 +72,10 @@ def build_initialize_result(
             'title': 'Shellui AI MCP gateway',
             'version': MCP_SERVER_VERSION,
         },
-        'instructions': gateway_instructions(
-            agent_claims,
-            agent=agent,
-            service_urls=urls,
+        'instructions': shellui_gateway_instructions(
             title=server._gateway.instructions_title,
+            connected_services=connected,
+            local_service_id=server._gateway.local_service_id,
         ),
     }
 

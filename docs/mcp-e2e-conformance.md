@@ -12,6 +12,8 @@ This suite proves the Shellui MCP gateway works with **official MCP clients**, n
 
 Negative checks cover tenant isolation, expired tokens, revoked agents, invalid OAuth redirect/PKCE, staff refusal, and plain `/mcp`. A dedicated step asserts `POST /oauth/mcp/token` accepts `application/x-www-form-urlencoded` and refresh tokens. After OAuth clients run, `run_schema_audit.py` fails if any exported tool has an untyped or empty JSON Schema property (OpenAI/Gemini function-calling subsets: no bare `{}`, no top-level `anyOf`, objects with explicit `type` and `properties`).
 
+Full cross-service audit (201 tools): [mcp-tool-schema-audit.md](mcp-tool-schema-audit.md). Regenerate with `uv run python tools/mcp-audit/generate_report.py` (requires sibling service checkouts under `.e2e-*` or CI fetch).
+
 ## Run locally (one command)
 
 Clone [identity-service](https://github.com/shellui/identity-service) on `develop` next to ai-service (or set `IDENTITY_SRC`):

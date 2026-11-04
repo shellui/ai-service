@@ -8,6 +8,7 @@ from django.views.decorators.csrf import csrf_exempt
 from drf_spectacular.generators import SchemaGenerator
 from rest_framework.request import Request
 from shellui_django.mcp.gateway import AggregatingMcpServer, McpGatewayConfig, public_mcp_tools, scope_service_ids
+from apps.connector.mcp_tool_naming import canonical_downstream_tool_name, gateway_export_name
 from apps.connector.mcp_openapi_tools import tools_from_schema
 from apps.connector.mcp_tool_schema import normalize_mcp_tool
 
@@ -31,26 +32,26 @@ def prefixed_tool_catalog(
     local_tools: list[dict],
     remote_by_service: dict[str, list[dict]],
     *,
+    local_service_id: str = 'ai',
     remember_route=None,
 ) -> list[dict]:
-    """Gateway tools keep their name; every downstream tool is exported as ``<service>__<name>``."""
+    """Every exported tool is ``<service>_<verb>_<noun>`` (single underscore, no ``api_v1``)."""
     merged: list[dict] = []
     taken: set[str] = set()
     for tool in local_tools:
         name = str(tool.get('name') or '')
-        if not name or name in taken:
+        if not name:
             continue
-        taken.add(name)
-        merged.append(tool)
+        export_name = gateway_export_name(local_service_id, name, taken=taken)
+        taken.add(export_name)
+        merged.append({**tool, 'name': export_name})
     for service_id, tools in remote_by_service.items():
         for tool in tools:
             downstream_name = str(tool.get('name') or '')
             if not downstream_name:
                 continue
-            export_name = f'{service_id}__{downstream_name}'
-            if export_name in taken:
-                continue
-            taken.add(export_name)
+            canonical = canonical_downstream_tool_name(downstream_name, service_id=service_id)
+            export_name = gateway_export_name(service_id, canonical, taken=taken)
             if remember_route is not None:
                 remember_route(export_name, service_id, downstream_name)
             merged.append({**tool, 'name': export_name})
@@ -60,12 +61,16 @@ def prefixed_tool_catalog(
 class PrefixingMcpServer(AggregatingMcpServer):
     """Same gateway, with an unambiguous service prefix on every downstream tool.
 
-    Routing is derived from the name itself (``<service>__<tool>``), so a call works even after
+    Routing is derived from the name itself (``<service>_<tool>``), so a call works even after
     the tools cache expires, and an unprefixed downstream name is never routed anywhere.
     """
 
     def _lookup_route(self, tool_name: str) -> dict[str, str] | None:
-        service_id, sep, downstream_name = str(tool_name or '').partition('__')
+        cached = super()._lookup_route(tool_name)
+        if cached is not None:
+            return cached
+        raw = str(tool_name or '')
+        service_id, sep, downstream_name = raw.partition('_')
         if not sep or not service_id or not downstream_name:
             return None
         if service_id == self._gateway.local_service_id:
@@ -74,8 +79,60 @@ class PrefixingMcpServer(AggregatingMcpServer):
             return None
         return {'service_id': service_id, 'downstream_name': downstream_name}
 
+    def _local_tool_export_name(self, export_name: str) -> str | None:
+        """Map ``ai_<tool>`` back to the local OpenAPI tool name for ``tools/call``."""
+        local_id = self._gateway.local_service_id
+        prefix = f'{local_id}_'
+        raw = str(export_name or '')
+        if not raw.startswith(prefix):
+            return None
+        downstream = raw[len(prefix) :]
+        if not downstream:
+            return None
+        local_names = {str(t.get('name') or '') for t in tools_from_schema(self.schema_provider())}
+        return downstream if downstream in local_names else None
+
     def handle(self, request: HttpRequest, *, agent_claims: dict | None):
         return handle_mcp_gateway_request(self, request, agent_claims=agent_claims)
+
+    def _using_connector_tool_catalog(self, handler, request, req_id, params, agent_claims):
+        import shellui_django.mcp.gateway as gw
+        import shellui_django.mcp.server as srv
+
+        orig_gw, orig_srv = gw.tools_from_schema, srv.tools_from_schema
+        gw.tools_from_schema = srv.tools_from_schema = tools_from_schema
+        try:
+            return handler(request, req_id, params, agent_claims)
+        finally:
+            gw.tools_from_schema, srv.tools_from_schema = orig_gw, orig_srv
+
+    def _maybe_forward_tool_call(self, request, req_id, params, agent_claims):
+        call_params = dict(params or {})
+        local_name = self._local_tool_export_name(str(call_params.get('name') or ''))
+        if local_name is not None:
+            call_params['name'] = local_name
+
+        return self._using_connector_tool_catalog(
+            lambda *args: super(PrefixingMcpServer, self)._maybe_forward_tool_call(*args),
+            request,
+            req_id,
+            call_params,
+            agent_claims,
+        )
+
+    def _tools_call(self, request, req_id, params, agent_claims):
+        call_params = dict(params or {})
+        local_name = self._local_tool_export_name(str(call_params.get('name') or ''))
+        if local_name is not None:
+            call_params['name'] = local_name
+
+        return self._using_connector_tool_catalog(
+            lambda *args: super(PrefixingMcpServer, self)._tools_call(*args),
+            request,
+            req_id,
+            call_params,
+            agent_claims,
+        )
 
     def _aggregated_tools_list(self, req_id, agent_claims, params=None):
         agent = self._gateway.resolve_agent(agent_claims)
@@ -92,7 +149,12 @@ class PrefixingMcpServer(AggregatingMcpServer):
             tools = self._fetch_remote_tools_list(mcp_url=mcp_url, bearer_token=token)
             if tools is not None:
                 remote[service_id] = tools
-        tools = prefixed_tool_catalog(local, remote)
+        tools = prefixed_tool_catalog(
+            local,
+            remote,
+            local_service_id=local_id,
+            remember_route=self._remember_route,
+        )
         tools = [normalize_mcp_tool(tool) for tool in tools]
         page = paginate_tools(tools, params or {})
         return JsonResponse(self._result(req_id, page))
@@ -122,7 +184,7 @@ def _get_server() -> AggregatingMcpServer:
             local_service_id='ai',
             tools_cache_ttl_seconds=int(getattr(settings, 'MCP_GATEWAY_TOOLS_CACHE_TTL_SECONDS', 30)),
             downstream_timeout_seconds=float(getattr(settings, 'MCP_GATEWAY_DOWNSTREAM_TIMEOUT_SECONDS', 5)),
-            instructions_title='Shellui AI MCP gateway.',
+            instructions_title='Shellui AI MCP gateway',
         )
         _server = PrefixingMcpServer(
             gateway=gateway,
