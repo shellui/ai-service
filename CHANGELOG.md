@@ -36,3 +36,7 @@ See for sample https://raw.githubusercontent.com/favoloso/conventional-changelog
 - Public JWKS at `GET /.well-known/jwks.json` and `python manage.py generate_signing_key` for operators.
 - Pre-release Docker smoke generates ephemeral RS256 signing material (same pattern as smoke JWKS).
 - Bump `shellui-django[mcp]` to 0.4.0 and sign internal MCP assertions to identity (revocation polling, call logs) with `AI_SERVICE_SIGNING_KEY` and `AI_SERVICE_ISSUER`, failing closed when unset.
+
+### 🐛 Bug Fixes
+
+- MCP gateway asks identity for downstream tokens bound to each service's public resource (`*_SERVICE_PUBLIC_URL`), not the internal URL it calls.

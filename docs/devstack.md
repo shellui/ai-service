@@ -41,6 +41,10 @@ Set these on the **`ai`** container (shellui `dev/.env.local.example` may prefix
 | `EMAIL_SERVICE_ALLOW_PRIVATE` | `true` | Allows internal `http://` email origin in the stack. |
 | `EMAIL_SERVICE_API_KEY` | `esk_…` or empty | Empty omits email from the aggregated MCP catalog. |
 | `SAAS_SERVICE_URL` | `http://saas:8000` | Downstream MCP origin. |
+| `STORAGE_SERVICE_PUBLIC_URL` | `http://localhost:8002` | Public resource for downstream tokens (`{url}/mcp`). |
+| `HOSTING_SERVICE_PUBLIC_URL` | `http://localhost:8003` | Same, for hosting. |
+| `EMAIL_SERVICE_PUBLIC_URL` | `http://localhost:8004` | Same, for email. |
+| `SAAS_SERVICE_PUBLIC_URL` | `http://localhost:8005` | Same, for saas. |
 | `SECURE_SSL_REDIRECT` | `false` | Local HTTP. |
 | `SESSION_COOKIE_SECURE` | `false` | Local HTTP. |
 | `CSRF_COOKIE_SECURE` | `false` | Local HTTP. |

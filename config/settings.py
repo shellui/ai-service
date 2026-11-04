@@ -413,6 +413,12 @@ MCP_GATEWAY_DOWNSTREAM_TIMEOUT_SECONDS = _env_float('MCP_GATEWAY_DOWNSTREAM_TIME
 STORAGE_SERVICE_URL = os.getenv('STORAGE_SERVICE_URL', '').strip().rstrip('/') or None
 HOSTING_SERVICE_URL = os.getenv('HOSTING_SERVICE_URL', '').strip().rstrip('/') or None
 SAAS_SERVICE_URL = os.getenv('SAAS_SERVICE_URL', '').strip().rstrip('/') or None
+# Public origins, the RFC 8707 resource identity mints downstream tokens for ({origin}/mcp).
+# Set them when the *_SERVICE_URL above are internal (for example Docker Compose). Unset: same as *_SERVICE_URL.
+STORAGE_SERVICE_PUBLIC_URL = os.getenv('STORAGE_SERVICE_PUBLIC_URL', '').strip().rstrip('/') or None
+HOSTING_SERVICE_PUBLIC_URL = os.getenv('HOSTING_SERVICE_PUBLIC_URL', '').strip().rstrip('/') or None
+EMAIL_SERVICE_PUBLIC_URL = os.getenv('EMAIL_SERVICE_PUBLIC_URL', '').strip().rstrip('/') or None
+SAAS_SERVICE_PUBLIC_URL = os.getenv('SAAS_SERVICE_PUBLIC_URL', '').strip().rstrip('/') or None
 
 # RS256 delegation JWTs for identity downstream MCP access-token minting.
 from apps.authapi.ai_service_jwks import load_ai_service_signing_key  # noqa: E402
