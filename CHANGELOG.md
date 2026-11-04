@@ -39,7 +39,8 @@ See for sample https://raw.githubusercontent.com/favoloso/conventional-changelog
 
 ### 🛠 Improvements
 
-- CI MCP client conformance job (`tools/mcp-e2e/run.sh`): identity + ai stack, official TypeScript and Python MCP SDK OAuth flows, MCP Inspector CLI `tools/list`, form-urlencoded token exchange, and negative OAuth/tenant checks.
+- CI MCP client conformance job (`tools/mcp-e2e/run.sh`): identity + ai stack, official TypeScript and Python MCP SDK OAuth flows, MCP Inspector CLI `tools/list`, form-urlencoded token exchange, negative OAuth/tenant checks, and strict MCP tool `inputSchema` audit.
+- MCP tool `inputSchema` builder copies typed OpenAPI query/body fields (resolves `$ref`) and normalizes aggregated tools for strict clients; same change belongs in `shellui-django` 0.4.1 (`django-commons`).
 
 ### 🐛 Bug Fixes
 

@@ -10,7 +10,7 @@ This suite proves the Shellui MCP gateway works with **official MCP clients**, n
 - Official **Python `mcp`** SDK with the same OAuth and MCP flow.
 - **`@modelcontextprotocol/inspector --cli`** for `tools/list` using the OAuth access token.
 
-Negative checks cover tenant isolation, expired tokens, revoked agents, invalid OAuth redirect/PKCE, staff refusal, and plain `/mcp`. A dedicated step asserts `POST /oauth/mcp/token` accepts `application/x-www-form-urlencoded` and refresh tokens.
+Negative checks cover tenant isolation, expired tokens, revoked agents, invalid OAuth redirect/PKCE, staff refusal, and plain `/mcp`. A dedicated step asserts `POST /oauth/mcp/token` accepts `application/x-www-form-urlencoded` and refresh tokens. After OAuth clients run, `run_schema_audit.py` fails if any exported tool has an untyped or empty JSON Schema property (OpenAI/Gemini function-calling subsets: no bare `{}`, no top-level `anyOf`, objects with explicit `type` and `properties`).
 
 ## Run locally (one command)
 
