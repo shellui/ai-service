@@ -1,0 +1,3175 @@
+[
+  {
+    "service": "ai",
+    "tool_count": 1,
+    "before": [],
+    "after_source": [],
+    "after_gateway": [],
+    "before_summary": {
+      "total_issues": 0,
+      "tools_with_issues": 0,
+      "by_category": {},
+      "by_service": {}
+    },
+    "after_source_summary": {
+      "total_issues": 0,
+      "tools_with_issues": 0,
+      "by_category": {},
+      "by_service": {}
+    },
+    "after_gateway_summary": {
+      "total_issues": 0,
+      "tools_with_issues": 0,
+      "by_category": {},
+      "by_service": {}
+    }
+  },
+  {
+    "service": "identity",
+    "tool_count": 62,
+    "before": [
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_deliveries_list",
+        "path": "properties.query.properties.action_rule_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_deliveries_list",
+        "path": "properties.query.properties.created_after",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_deliveries_list",
+        "path": "properties.query.properties.created_before",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_deliveries_list",
+        "path": "properties.query.properties.event_type",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_deliveries_list",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_deliveries_list",
+        "path": "properties.query.properties.page",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_deliveries_list",
+        "path": "properties.query.properties.page_size",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_deliveries_list",
+        "path": "properties.query.properties.scheduled_job_run_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_deliveries_list",
+        "path": "properties.query.properties.status",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_deliveries_requeue",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_deliveries_requeue",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_deliveries_requeue",
+        "path": "properties.path_params.properties.delivery_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_deliveries_retrieve",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_deliveries_retrieve",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_deliveries_retrieve",
+        "path": "properties.path_params.properties.delivery_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_events_list",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_rules_create",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_rules_destroy",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_rules_destroy",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_rules_destroy",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_rules_list",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_rules_partial_update",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_rules_partial_update",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_rules_partial_update",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_rules_retrieve",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_rules_retrieve",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_rules_retrieve",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_rules_rotate_secret",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_rules_rotate_secret",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_rules_rotate_secret",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_rules_send_test",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_rules_send_test",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_rules_send_test",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_auth_methods_partial_update",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_auth_methods_retrieve",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_auth_methods_update",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_companies_list",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_companies_partial_update",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_companies_partial_update",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_companies_partial_update",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_companies_retrieve",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_companies_retrieve",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_companies_retrieve",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_companies_update",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_companies_update",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_companies_update",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_events_list",
+        "path": "properties.query.properties.created_after",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_events_list",
+        "path": "properties.query.properties.created_before",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_events_list",
+        "path": "properties.query.properties.event_type",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_events_list",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_events_list",
+        "path": "properties.query.properties.page",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_events_list",
+        "path": "properties.query.properties.page_size",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_events_list",
+        "path": "properties.query.properties.scope",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_events_list",
+        "path": "properties.query.properties.user",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_events_list",
+        "path": "properties.query.properties.user_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_events_retention_retrieve",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_events_retrieve",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_events_retrieve",
+        "path": "properties.query.properties.scope",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_events_retrieve",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_events_retrieve",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_events_types_list",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_groups_create",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_groups_destroy",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_groups_destroy",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_groups_destroy",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_groups_list",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_groups_partial_update",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_groups_partial_update",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_groups_partial_update",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_groups_retrieve",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_groups_retrieve",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_groups_retrieve",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_groups_update",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_groups_update",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_groups_update",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_hosting_oauth_redirects_destroy",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_hosting_oauth_redirects_update",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_invitations_create",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_invitations_destroy",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_invitations_destroy",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_invitations_destroy",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_invitations_list",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_invitations_revoke",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_invitations_revoke",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_invitations_revoke",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_mcp_services_list",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_clients_create",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_clients_destroy",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_clients_destroy",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_clients_destroy",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_clients_list",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_clients_retrieve",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_clients_retrieve",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_clients_retrieve",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_clients_update",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_clients_update",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_clients_update",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_provider_catalog_retrieve",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_provider_catalog_retrieve",
+        "path": "properties.query.properties.include_legacy",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_redirects_create",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_redirects_destroy",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_redirects_destroy",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_redirects_destroy",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_redirects_list",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_redirects_partial_update",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_redirects_partial_update",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_redirects_partial_update",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_redirects_retrieve",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_redirects_retrieve",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_redirects_retrieve",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_social_apps_create",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_social_apps_destroy",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_social_apps_destroy",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_social_apps_destroy",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_social_apps_list",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_social_apps_update",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_social_apps_update",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_social_apps_update",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_personal_access_tokens_create",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_personal_access_tokens_list",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_personal_access_tokens_revoke",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_personal_access_tokens_revoke",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_personal_access_tokens_revoke",
+        "path": "properties.path_params.properties.key_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_scim_status",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_scim_tokens_create",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_scim_tokens_list",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_scim_tokens_revoke",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_scim_tokens_revoke",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_scim_tokens_revoke",
+        "path": "properties.path_params.properties.token_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_audience",
+        "path": "properties.query.properties.access",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_audience",
+        "path": "properties.query.properties.count_only",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_audience",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_audience",
+        "path": "properties.query.properties.group_ids",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_audience",
+        "path": "properties.query.properties.joined_after",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_audience",
+        "path": "properties.query.properties.joined_before",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_audience",
+        "path": "properties.query.properties.page",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_audience",
+        "path": "properties.query.properties.page_size",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_audience",
+        "path": "properties.query.properties.roles",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_audience",
+        "path": "properties.query.properties.seen_after",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_audience",
+        "path": "properties.query.properties.seen_before",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_audience",
+        "path": "properties.query.properties.user_ids",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_destroy",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_destroy",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_destroy",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_list",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_list",
+        "path": "properties.query.properties.page",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_list",
+        "path": "properties.query.properties.page_size",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_list",
+        "path": "properties.query.properties.q",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_retrieve",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_retrieve",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_retrieve",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_update",
+        "path": "properties.query.properties.format",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_update",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_update",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      }
+    ],
+    "after_source": [],
+    "after_gateway": [],
+    "before_summary": {
+      "total_issues": 154,
+      "tools_with_issues": 62,
+      "by_category": {
+        "missing_description": 60,
+        "untyped_or_empty": 94
+      },
+      "by_service": {
+        "identity": 154
+      }
+    },
+    "after_source_summary": {
+      "total_issues": 0,
+      "tools_with_issues": 0,
+      "by_category": {},
+      "by_service": {}
+    },
+    "after_gateway_summary": {
+      "total_issues": 0,
+      "tools_with_issues": 0,
+      "by_category": {},
+      "by_service": {}
+    }
+  },
+  {
+    "service": "storage",
+    "tool_count": 44,
+    "before": [
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_deliveries_list",
+        "path": "properties.query.properties.action_rule_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_deliveries_list",
+        "path": "properties.query.properties.company_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_deliveries_list",
+        "path": "properties.query.properties.created_after",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_deliveries_list",
+        "path": "properties.query.properties.created_before",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_deliveries_list",
+        "path": "properties.query.properties.event_type",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_deliveries_list",
+        "path": "properties.query.properties.page",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_deliveries_list",
+        "path": "properties.query.properties.page_size",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_deliveries_list",
+        "path": "properties.query.properties.scheduled_job_run_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_deliveries_list",
+        "path": "properties.query.properties.status",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_deliveries_requeue",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_deliveries_requeue",
+        "path": "properties.path_params.properties.delivery_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_deliveries_retrieve",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_deliveries_retrieve",
+        "path": "properties.path_params.properties.delivery_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_event_log_list",
+        "path": "properties.query.properties.created_after",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_event_log_list",
+        "path": "properties.query.properties.created_before",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_event_log_list",
+        "path": "properties.query.properties.event_type",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_event_log_list",
+        "path": "properties.query.properties.page",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_event_log_list",
+        "path": "properties.query.properties.page_size",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_event_log_list",
+        "path": "properties.query.properties.scope",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_event_log_list",
+        "path": "properties.query.properties.user",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_event_log_list",
+        "path": "properties.query.properties.user_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_event_log_retrieve",
+        "path": "properties.query.properties.scope",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_event_log_retrieve",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_event_log_retrieve",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_rules_destroy",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_rules_destroy",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_rules_partial_update",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_rules_partial_update",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_rules_retrieve",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_rules_retrieve",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_rules_rotate_secret",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_rules_rotate_secret",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_rules_send_test",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_rules_send_test",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_access_grant_destroy",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_access_grant_destroy",
+        "path": "properties.path_params.properties.grant_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_access_grant_list",
+        "path": "properties.query.properties.bucket",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_access_grant_list",
+        "path": "properties.query.properties.include_effective",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_access_grant_list",
+        "path": "properties.query.properties.resource_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_access_grant_list",
+        "path": "properties.query.properties.resource_type",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_bucket_empty_create",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_bucket_empty_create",
+        "path": "properties.path_params.properties.bucket_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_bucket_retrieve",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_bucket_retrieve",
+        "path": "properties.path_params.properties.bucket_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_authenticated_retrieve",
+        "path": "properties.query.properties.download",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_authenticated_retrieve",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_authenticated_retrieve",
+        "path": "properties.path_params.properties.bucket_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_authenticated_retrieve",
+        "path": "properties.path_params.properties.object_path",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_create",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_create",
+        "path": "properties.path_params.properties.bucket_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_create",
+        "path": "properties.path_params.properties.object_path",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_delete_many",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_delete_many",
+        "path": "properties.path_params.properties.bucket_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_destroy",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_destroy",
+        "path": "properties.path_params.properties.bucket_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_destroy",
+        "path": "properties.path_params.properties.object_path",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_id_retrieve",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_id_retrieve",
+        "path": "properties.path_params.properties.object_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_info_authenticated_retrieve",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_info_authenticated_retrieve",
+        "path": "properties.path_params.properties.bucket_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_info_authenticated_retrieve",
+        "path": "properties.path_params.properties.object_path",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_list_create",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_list_create",
+        "path": "properties.path_params.properties.bucket_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_prefix_create",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_prefix_create",
+        "path": "properties.path_params.properties.bucket_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_prefix_destroy",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_prefix_destroy",
+        "path": "properties.path_params.properties.bucket_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_prefix_retrieve",
+        "path": "properties.query.properties.prefix",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_prefix_retrieve",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_prefix_retrieve",
+        "path": "properties.path_params.properties.bucket_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_retrieve",
+        "path": "properties.query.properties.download",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_retrieve",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_retrieve",
+        "path": "properties.path_params.properties.bucket_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_retrieve",
+        "path": "properties.path_params.properties.object_path",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_sign_create",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_sign_create",
+        "path": "properties.path_params.properties.bucket_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_sign_path_create",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_sign_path_create",
+        "path": "properties.path_params.properties.bucket_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_sign_path_create",
+        "path": "properties.path_params.properties.object_path",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_update",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_update",
+        "path": "properties.path_params.properties.bucket_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_update",
+        "path": "properties.path_params.properties.object_path",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_quota_company_update",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_quota_company_update",
+        "path": "properties.path_params.properties.company_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_quota_company_user_update",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_quota_company_user_update",
+        "path": "properties.path_params.properties.company_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_quota_company_user_update",
+        "path": "properties.path_params.properties.user_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_share_create",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_share_create",
+        "path": "properties.path_params.properties.bucket_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_share_create",
+        "path": "properties.path_params.properties.object_path",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_share_link_destroy",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_share_link_destroy",
+        "path": "properties.path_params.properties.token",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_share_list",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_share_list",
+        "path": "properties.path_params.properties.bucket_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_share_list",
+        "path": "properties.path_params.properties.object_path",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_stats_retrieve",
+        "path": "properties.query.properties.days",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      }
+    ],
+    "after_source": [],
+    "after_gateway": [],
+    "before_summary": {
+      "total_issues": 96,
+      "tools_with_issues": 34,
+      "by_category": {
+        "missing_description": 70,
+        "untyped_or_empty": 26
+      },
+      "by_service": {
+        "storage": 96
+      }
+    },
+    "after_source_summary": {
+      "total_issues": 0,
+      "tools_with_issues": 0,
+      "by_category": {},
+      "by_service": {}
+    },
+    "after_gateway_summary": {
+      "total_issues": 0,
+      "tools_with_issues": 0,
+      "by_category": {},
+      "by_service": {}
+    }
+  },
+  {
+    "service": "hosting",
+    "tool_count": 29,
+    "before": [
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_deliveries_list",
+        "path": "properties.query.properties.action_rule_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_deliveries_list",
+        "path": "properties.query.properties.company_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_deliveries_list",
+        "path": "properties.query.properties.created_after",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_deliveries_list",
+        "path": "properties.query.properties.created_before",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_deliveries_list",
+        "path": "properties.query.properties.event_type",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_deliveries_list",
+        "path": "properties.query.properties.page",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_deliveries_list",
+        "path": "properties.query.properties.page_size",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_deliveries_list",
+        "path": "properties.query.properties.scheduled_job_run_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_deliveries_list",
+        "path": "properties.query.properties.status",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_deliveries_requeue",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_deliveries_requeue",
+        "path": "properties.path_params.properties.delivery_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_deliveries_retrieve",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_deliveries_retrieve",
+        "path": "properties.path_params.properties.delivery_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_event_log_list",
+        "path": "properties.query.properties.company_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_event_log_list",
+        "path": "properties.query.properties.created_after",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_event_log_list",
+        "path": "properties.query.properties.created_before",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_event_log_list",
+        "path": "properties.query.properties.event_type",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_event_log_list",
+        "path": "properties.query.properties.page",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_event_log_list",
+        "path": "properties.query.properties.page_size",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_event_log_list",
+        "path": "properties.query.properties.user",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_event_log_list",
+        "path": "properties.query.properties.user_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_event_log_retention_retrieve",
+        "path": "properties.query.properties.company_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_event_log_retrieve",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_event_log_retrieve",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_event_log_types_list",
+        "path": "properties.query.properties.company_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_events_list",
+        "path": "properties.query.properties.company_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_rules_create",
+        "path": "properties.query.properties.company_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_rules_destroy",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_rules_destroy",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_rules_list",
+        "path": "properties.query.properties.company_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_rules_partial_update",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_rules_partial_update",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_rules_retrieve",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_rules_retrieve",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_rules_rotate_secret",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_rules_rotate_secret",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_rules_send_test",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_rules_send_test",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_deployments_create",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_deployments_create",
+        "path": "properties.path_params.properties.app_ref",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_deployments_finalize_create",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_deployments_finalize_create",
+        "path": "properties.path_params.properties.app_ref",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_deployments_finalize_create",
+        "path": "properties.path_params.properties.deployment_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_deployments_list",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_deployments_list",
+        "path": "properties.path_params.properties.app_ref",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_deployments_rollback_create",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_deployments_rollback_create",
+        "path": "properties.path_params.properties.app_ref",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_deployments_rollback_create",
+        "path": "properties.path_params.properties.deployment_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_destroy",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_destroy",
+        "path": "properties.path_params.properties.app_ref",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_renew_expiry_create",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_renew_expiry_create",
+        "path": "properties.path_params.properties.app_ref",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_retrieve",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_retrieve",
+        "path": "properties.path_params.properties.app_ref",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_deploy_tokens_revoke_create",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_deploy_tokens_revoke_create",
+        "path": "properties.path_params.properties.token_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      }
+    ],
+    "after_source": [],
+    "after_gateway": [],
+    "before_summary": {
+      "total_issues": 56,
+      "tools_with_issues": 23,
+      "by_category": {
+        "missing_description": 34,
+        "untyped_or_empty": 22
+      },
+      "by_service": {
+        "hosting": 56
+      }
+    },
+    "after_source_summary": {
+      "total_issues": 0,
+      "tools_with_issues": 0,
+      "by_category": {},
+      "by_service": {}
+    },
+    "after_gateway_summary": {
+      "total_issues": 0,
+      "tools_with_issues": 0,
+      "by_category": {},
+      "by_service": {}
+    }
+  },
+  {
+    "service": "email",
+    "tool_count": 65,
+    "before": [
+      {
+        "service": "email",
+        "tool": "api_v1_actions_deliveries_list",
+        "path": "properties.query.properties.company_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_deliveries_requeue",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_deliveries_requeue",
+        "path": "properties.path_params.properties.delivery_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_deliveries_retrieve",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_deliveries_retrieve",
+        "path": "properties.path_params.properties.delivery_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_event_log_list",
+        "path": "properties.query.properties.company_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_event_log_retention_retrieve",
+        "path": "properties.query.properties.company_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_event_log_retrieve",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_event_log_retrieve",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_event_log_types_list",
+        "path": "properties.query.properties.company_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_events_list",
+        "path": "properties.query.properties.company_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_rules_create",
+        "path": "properties.query.properties.company_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_rules_destroy",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_rules_destroy",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_rules_list",
+        "path": "properties.query.properties.company_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_rules_partial_update",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_rules_partial_update",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_rules_retrieve",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_rules_retrieve",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_rules_rotate_secret",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_rules_rotate_secret",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_rules_send_test",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_rules_send_test",
+        "path": "properties.path_params.properties.id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_auth_link_hosts_retrieve",
+        "path": "properties.query.properties.company_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_auth_link_hosts_update",
+        "path": "properties.query.properties.company_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_broadcasts_create",
+        "path": "properties.query.properties.company_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_broadcasts_destroy",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_broadcasts_destroy",
+        "path": "properties.path_params.properties.broadcast_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_broadcasts_list",
+        "path": "properties.query.properties.company_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_broadcasts_partial_update",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_broadcasts_partial_update",
+        "path": "properties.path_params.properties.broadcast_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_broadcasts_preview",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_broadcasts_preview",
+        "path": "properties.path_params.properties.broadcast_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_broadcasts_retrieve",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_broadcasts_retrieve",
+        "path": "properties.path_params.properties.broadcast_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_broadcasts_send",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_broadcasts_send",
+        "path": "properties.path_params.properties.broadcast_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_library_create",
+        "path": "properties.query.properties.company_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_library_destroy",
+        "path": "properties.query.properties.company_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_library_destroy",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_library_destroy",
+        "path": "properties.path_params.properties.library_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_library_list",
+        "path": "properties.query.properties.company_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_library_retrieve",
+        "path": "properties.query.properties.company_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_library_retrieve",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_library_retrieve",
+        "path": "properties.path_params.properties.library_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_library_update",
+        "path": "properties.query.properties.company_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_library_update",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_library_update",
+        "path": "properties.path_params.properties.library_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_messages_cancel",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_messages_cancel",
+        "path": "properties.path_params.properties.message_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_messages_list",
+        "path": "properties.query.properties.company_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_messages_list",
+        "path": "properties.query.properties.lane",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_messages_list",
+        "path": "properties.query.properties.limit",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_messages_list",
+        "path": "properties.query.properties.status",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_messages_list",
+        "path": "properties.query.properties.template_key",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_messages_retrieve",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_messages_retrieve",
+        "path": "properties.path_params.properties.message_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_create",
+        "path": "properties.query.properties.company_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_destroy",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_destroy",
+        "path": "properties.path_params.properties.newsletter_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_list",
+        "path": "properties.query.properties.company_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_partial_update",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_partial_update",
+        "path": "properties.path_params.properties.newsletter_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_retrieve",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_retrieve",
+        "path": "properties.path_params.properties.newsletter_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_rotate_key",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_rotate_key",
+        "path": "properties.path_params.properties.newsletter_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_subscribers_create",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_subscribers_create",
+        "path": "properties.path_params.properties.newsletter_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_subscribers_destroy",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_subscribers_destroy",
+        "path": "properties.path_params.properties.newsletter_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_subscribers_destroy",
+        "path": "properties.path_params.properties.subscriber_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_subscribers_export",
+        "path": "properties.query.properties.status",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_subscribers_export",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_subscribers_export",
+        "path": "properties.path_params.properties.newsletter_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_subscribers_import",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_subscribers_import",
+        "path": "properties.path_params.properties.newsletter_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_subscribers_list",
+        "path": "properties.query.properties.email",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_subscribers_list",
+        "path": "properties.query.properties.page",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_subscribers_list",
+        "path": "properties.query.properties.status",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_subscribers_list",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_subscribers_list",
+        "path": "properties.path_params.properties.newsletter_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_provider_retrieve",
+        "path": "properties.query.properties.company_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_provider_test_send",
+        "path": "properties.query.properties.company_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_provider_update",
+        "path": "properties.query.properties.company_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_rules_create",
+        "path": "properties.query.properties.company_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_rules_destroy",
+        "path": "properties.query.properties.company_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_rules_destroy",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_rules_destroy",
+        "path": "properties.path_params.properties.rule_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_rules_list",
+        "path": "properties.query.properties.company_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_rules_list",
+        "path": "properties.query.properties.service",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_rules_partial_update",
+        "path": "properties.query.properties.company_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_rules_partial_update",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_rules_partial_update",
+        "path": "properties.path_params.properties.rule_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_rules_retrieve",
+        "path": "properties.query.properties.company_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_rules_retrieve",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_rules_retrieve",
+        "path": "properties.path_params.properties.rule_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_stats_retrieve",
+        "path": "properties.query.properties.company_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_stats_retrieve",
+        "path": "properties.query.properties.event_type",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_stats_retrieve",
+        "path": "properties.query.properties.from",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_stats_retrieve",
+        "path": "properties.query.properties.lane",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_stats_retrieve",
+        "path": "properties.query.properties.to",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_suppressions_create",
+        "path": "properties.query.properties.company_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_suppressions_destroy",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_suppressions_destroy",
+        "path": "properties.path_params.properties.suppression_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_suppressions_list",
+        "path": "properties.query.properties.company_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_template_versions_create",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_template_versions_create",
+        "path": "properties.path_params.properties.template_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_template_versions_list",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_template_versions_list",
+        "path": "properties.path_params.properties.template_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_template_versions_publish",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_template_versions_publish",
+        "path": "properties.path_params.properties.template_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_template_versions_publish",
+        "path": "properties.path_params.properties.number",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_template_versions_retrieve",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_template_versions_retrieve",
+        "path": "properties.path_params.properties.template_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_template_versions_retrieve",
+        "path": "properties.path_params.properties.number",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_templates_destroy",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_templates_destroy",
+        "path": "properties.path_params.properties.template_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_templates_list",
+        "path": "properties.query.properties.company_id",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_templates_list",
+        "path": "properties.query.properties.event_type",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_templates_render_preview",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_templates_render_preview",
+        "path": "properties.path_params.properties.template_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_templates_retrieve",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_templates_retrieve",
+        "path": "properties.path_params.properties.template_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_templates_send_test",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_templates_send_test",
+        "path": "properties.path_params.properties.template_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      }
+    ],
+    "after_source": [],
+    "after_gateway": [],
+    "before_summary": {
+      "total_issues": 126,
+      "tools_with_issues": 64,
+      "by_category": {
+        "missing_description": 81,
+        "untyped_or_empty": 45
+      },
+      "by_service": {
+        "email": 126
+      }
+    },
+    "after_source_summary": {
+      "total_issues": 0,
+      "tools_with_issues": 0,
+      "by_category": {},
+      "by_service": {}
+    },
+    "after_gateway_summary": {
+      "total_issues": 0,
+      "tools_with_issues": 0,
+      "by_category": {},
+      "by_service": {}
+    }
+  }
+]

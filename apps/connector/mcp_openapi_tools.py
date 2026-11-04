@@ -29,7 +29,11 @@ def _parameter_schemas(
             continue
         key = str(name)
         raw = param.get('schema') if isinstance(param.get('schema'), dict) else param
-        properties[key] = openapi_schema_to_json_schema(raw if isinstance(raw, dict) else {}, root)
+        prop = openapi_schema_to_json_schema(raw if isinstance(raw, dict) else {}, root)
+        desc = str(param.get('description') or (raw.get('description') if isinstance(raw, dict) else '') or '').strip()
+        if desc and not str(prop.get('description') or '').strip():
+            prop['description'] = desc
+        properties[key] = prop
         if param.get('required'):
             required.append(key)
     return properties, required
@@ -81,10 +85,24 @@ def tools_from_schema(schema: dict[str, Any]) -> list[dict[str, Any]]:
             query_props, query_required = _parameter_schemas(operation, schema, location='query')
             body_props, body_required = _body_schemas(operation, schema)
             properties: dict[str, Any] = {
-                'path': {'type': 'string', 'const': path},
-                'method': {'type': 'string', 'enum': [method.upper()]},
-                'query': {'type': 'object', 'additionalProperties': False, 'properties': query_props},
-                'body': {'type': 'object', 'additionalProperties': False, 'properties': body_props},
+                'path': {'type': 'string', 'const': path, 'description': 'OpenAPI path for this MCP proxy call.'},
+                'method': {
+                    'type': 'string',
+                    'enum': [method.upper()],
+                    'description': 'HTTP method for this MCP proxy call.',
+                },
+                'query': {
+                    'type': 'object',
+                    'additionalProperties': False,
+                    'properties': query_props,
+                    'description': 'Query string fields for this API operation.',
+                },
+                'body': {
+                    'type': 'object',
+                    'additionalProperties': False,
+                    'properties': body_props,
+                    'description': 'JSON body fields for this API operation.',
+                },
             }
             if query_required:
                 properties['query']['required'] = query_required
@@ -95,7 +113,13 @@ def tools_from_schema(schema: dict[str, Any]) -> list[dict[str, Any]]:
                 properties['path_params'] = {
                     'type': 'object',
                     'additionalProperties': False,
-                    'properties': {param: {'type': 'string'} for param in path_params},
+                    'properties': {
+                        param: {
+                            'type': 'string',
+                            'description': f'Path parameter `{param}`.',
+                        }
+                        for param in path_params
+                    },
                     'required': path_params,
                 }
                 required.append('path_params')

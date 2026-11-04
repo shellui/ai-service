@@ -189,6 +189,61 @@ def ensure_validation_keywords(node: dict[str, Any] | None) -> dict[str, Any]:
     return {'type': 'string', 'description': node.get('description') or 'Untyped OpenAPI schema; treated as string.'}
 
 
+def _finalize_schema_node(node: dict[str, Any], *, field_name: str = '') -> dict[str, Any]:
+    if '$ref' in node:
+        return {
+            'type': 'string',
+            'description': str(node.get('description') or f'OpenAPI ref {node["$ref"]} (inlined as string).'),
+        }
+    if 'anyOf' in node or 'oneOf' in node:
+        branches = node.get('anyOf') or node.get('oneOf') or []
+        merged = _merge_any_of(
+            branches if isinstance(branches, list) else [],
+            {},
+            description=node.get('description'),
+        )
+        node = {**node, **merged}
+        node.pop('anyOf', None)
+        node.pop('oneOf', None)
+    raw_type = node.get('type')
+    if isinstance(raw_type, list):
+        non_null = [t for t in raw_type if t != 'null']
+        node = {**node, 'type': non_null[0] if non_null else 'string'}
+    node = ensure_validation_keywords(node)
+    if not str(node.get('description') or '').strip() and field_name:
+        node = {
+            **node,
+            'description': f'Value for `{field_name}` (Shellui MCP proxy field).',
+        }
+    if node.get('type') == 'object':
+        props = node.get('properties')
+        if isinstance(props, dict):
+            node = {
+                **node,
+                'additionalProperties': False,
+                'properties': {
+                    k: _finalize_schema_node(v if isinstance(v, dict) else {}, field_name=str(k))
+                    for k, v in props.items()
+                },
+            }
+    if node.get('type') == 'array' and isinstance(node.get('items'), dict):
+        node = {**node, 'items': _finalize_schema_node(node['items'], field_name=f'{field_name}[]')}
+    return node
+
+
+def finalize_tool_input_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    finalized = _finalize_schema_node(schema if isinstance(schema, dict) else {}, field_name='input')
+    if finalized.get('type') != 'object':
+        finalized = {
+            'type': 'object',
+            'properties': {'value': finalized},
+            'required': ['value'],
+            'additionalProperties': False,
+        }
+    finalized.setdefault('additionalProperties', False)
+    return finalized
+
+
 def normalize_tool_input_schema(schema: dict[str, Any], root: dict[str, Any] | None = None) -> dict[str, Any]:
     """Resolve refs and enforce validation keywords on a tool ``inputSchema``."""
     root = root or {}
@@ -208,7 +263,7 @@ def normalize_tool_input_schema(schema: dict[str, Any], root: dict[str, Any] | N
             'additionalProperties': False,
         }
     normalized.setdefault('additionalProperties', False)
-    return normalized
+    return finalize_tool_input_schema(normalized)
 
 
 def _walk_schema(node: Any, path: str) -> list[tuple[str, str]]:
@@ -268,4 +323,9 @@ def normalize_mcp_tool(tool: dict[str, Any], root: dict[str, Any] | None = None)
     schema = out.get('inputSchema')
     if isinstance(schema, dict):
         out['inputSchema'] = normalize_tool_input_schema(schema, root)
+    desc = str(out.get('description') or '').strip()
+    name = str(out.get('name') or 'tool')
+    if len(desc) < 12:
+        op = (out.get('_meta') or {}).get('operationId') or name
+        out['description'] = desc or f'Shellui MCP tool `{name}` ({op}).'
     return out

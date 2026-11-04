@@ -75,6 +75,37 @@ jobs:
       - name: Run tests
         run: uv run python manage.py test --verbosity=1
 
+      - name: Checkout identity-service (develop)
+        uses: actions/checkout@v4
+        with:
+          repository: shellui/identity-service
+          ref: develop
+          path: .e2e-identity
+
+      - name: Checkout storage-service (develop)
+        uses: actions/checkout@v4
+        with:
+          repository: shellui/storage-service
+          ref: develop
+          path: .e2e-storage-service
+
+      - name: Checkout hosting-service (develop)
+        uses: actions/checkout@v4
+        with:
+          repository: shellui/hosting-service
+          ref: develop
+          path: .e2e-hosting-service
+
+      - name: Checkout email-service (develop)
+        uses: actions/checkout@v4
+        with:
+          repository: shellui/email-service
+          ref: develop
+          path: .e2e-email-service
+
+      - name: MCP tool schema audit (all services)
+        run: uv run python tools/mcp-audit/generate_report.py
+
   security:
     name: Security & hygiene
     runs-on: ubuntu-latest
