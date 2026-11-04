@@ -115,14 +115,14 @@ from django.contrib.auth import get_user_model
 from django.test import Client
 from urllib.parse import urlencode
 User = get_user_model()
-client = Client()
+client = Client(HTTP_HOST='localhost')
 client.force_login(User.objects.get(username='admin'))
 q = urlencode(
     {{
         'response_type': 'code',
         'client_id': {client_id!r},
         'redirect_uri': 'http://127.0.0.1:8765/callback',
-        'code_challenge': {'y' * 43!r},
+        'code_challenge': {repr('y' * 43)},
         'code_challenge_method': 'S256',
         'resource': {MCP_URL!r},
     }}
