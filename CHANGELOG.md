@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased] - 2026-11-04
+
+### ✨ Feature
+
+- MCP OAuth protected-resource metadata advertises `shellui_mcp_authorize_query` (`saas_offered=1`) when SaaS tools are forwarded; e2e OAuth clients append it on authorize.
+- Personal MCP agent RS256 bearer tokens (identity personal flow) on `POST /c/<company_id>/mcp` with JWKS verification, `aud` / `company_id` binding, revocation polling, and `personal_token_id` + `jti` honored.
+- MCP call logs to identity include `client_ip` and `result`; arguments and secrets are never forwarded.
+
 <!---
 ## [Unreleased] - yyyy-mm-dd
 

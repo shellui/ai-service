@@ -60,8 +60,23 @@ class McpIdentitySigningTests(SimpleTestCase):
 
     def test_call_log_is_signed_with_ai_service_key(self):
         with patch('apps.connector.mcp_identity.requests.post') as post:
-            mcp_identity.forward_call_log({'agent_id': 'a', 'company_id': 1})
+            mcp_identity.forward_call_log(
+                {
+                    'agent_id': 'a',
+                    'company_id': 1,
+                    'method': 'POST',
+                    'status': 200,
+                    'client_ip': '203.0.113.1',
+                    'result': 'success',
+                }
+            )
         self._verify(_bearer(post.call_args), audience=CALL_LOG_AUDIENCE, scope=CALL_LOG_SCOPE)
+        body = post.call_args.kwargs['json']
+        self.assertEqual(body['method'], 'POST')
+        self.assertEqual(body['client_ip'], '203.0.113.1')
+        self.assertEqual(body['result'], 'success')
+        self.assertNotIn('arguments', body)
+        self.assertNotIn('arguments_redacted', body)
 
     @override_settings(AI_SERVICE_SIGNING_KEY=None)
     def test_without_signing_key_revocation_fails_closed(self):

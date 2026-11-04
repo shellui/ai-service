@@ -6,7 +6,7 @@ title: MCP gateway
 
 Each company has its own MCP URL: `POST /c/<company_id>/mcp`, for example `https://ai.shellui.com/c/42/mcp`. Find it in the admin AI panel.
 
-- OAuth protected-resource metadata (RFC 9728) lives at `GET /.well-known/oauth-protected-resource/c/<company_id>/mcp`. Its `resource` is that exact per-company URL, and the authorization server is identity.
+- OAuth protected-resource metadata (RFC 9728) lives at `GET /.well-known/oauth-protected-resource/c/<company_id>/mcp`. Its `resource` is that exact per-company URL, and the authorization server is identity. When `SAAS_SERVICE_URL` is set, metadata includes `shellui_mcp_authorize_query: {"saas_offered": "1"}` so MCP OAuth clients append `saas_offered=1` on identity `GET /oauth/mcp/authorize` (optional SaaS access at consent).
 - An unauthenticated request gets `401` with a `WWW-Authenticate: Bearer resource_metadata="…"` header pointing at that metadata.
 - An access token is accepted only when its `aud` is the per-company URL and its `company_id` claim equals the company in the URL. A token for another company is refused, even if it is otherwise valid.
 - Identity refuses to authorize a resource for a company that does not exist, so no token can ever exist for one; such a URL only ever answers `401`.

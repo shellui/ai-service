@@ -48,6 +48,7 @@ services:
       AUTH_RATE_LIMIT_ENABLED: 'false'
       MCP_DYNAMIC_CLIENT_REGISTRATION: 'true'
       OAUTH_ALLOW_LOOPBACK_REDIRECTS: 'true'
+      SAAS_SERVICE_URL: http://saas-mock:8000
       EMAIL_BACKEND: config.email_backends.ConsoleEmailBackend
     volumes:
       - ${IDENTITY_SRC}:/app
@@ -64,6 +65,14 @@ services:
       timeout: 5s
       retries: 30
       start_period: 30s
+
+  saas-mock:
+    image: python:3.14-slim
+    command: ['python', '/app/tools/mcp-e2e/saas_mock_server.py']
+    volumes:
+      - ${AI_SRC:-../..}:/app:ro
+    ports:
+      - '8010:8000'
 
   ai:
     build:
@@ -89,8 +98,9 @@ services:
       STORAGE_SERVICE_URL: ''
       HOSTING_SERVICE_URL: ''
       EMAIL_SERVICE_URL: ''
-      SAAS_SERVICE_URL: ''
-      ALLOWED_HOSTS: localhost,127.0.0.1,ai,identity,host.docker.internal
+      SAAS_SERVICE_URL: http://saas-mock:8000
+      SAAS_SERVICE_PUBLIC_URL: http://localhost:8010
+      ALLOWED_HOSTS: localhost,127.0.0.1,ai,identity,host.docker.internal,saas-mock
       CSRF_TRUSTED_ORIGINS: http://localhost:8006,http://127.0.0.1:8006
       AUTH_RATE_LIMIT_ENABLED: 'false'
     volumes:
@@ -99,6 +109,8 @@ services:
     ports:
       - '8006:8000'
     depends_on:
+      saas-mock:
+        condition: service_started
       identity:
         condition: service_healthy
       postgres:

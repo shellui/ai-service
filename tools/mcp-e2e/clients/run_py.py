@@ -17,7 +17,11 @@ from mcp.shared._httpx_utils import create_mcp_http_client
 from mcp.shared.auth import AuthorizationCodeResult, OAuthClientMetadata, OAuthToken
 
 ROOT = Path(__file__).resolve().parents[1]
+CLIENTS = Path(__file__).resolve().parent
 HEADLESS = ROOT / 'headless_identity_oauth.py'
+if str(CLIENTS) not in sys.path:
+    sys.path.insert(0, str(CLIENTS))
+from shellui_oauth_extra import append_shellui_authorize_params  # noqa: E402
 
 MCP_URL = os.environ.get('MCP_URL', 'http://localhost:8006/c/1/mcp')
 CALLBACK_URL = os.environ.get('MCP_E2E_CALLBACK_URL', 'http://127.0.0.1:8766/callback')
@@ -79,6 +83,7 @@ async def main() -> None:
     holder: dict[str, str | None] = {'code': None, 'state': None}
 
     async def redirect_handler(url: str) -> None:
+        url = append_shellui_authorize_params(url, MCP_URL)
         code, state = await asyncio.to_thread(_run_headless, url)
         holder['code'] = code
         holder['state'] = state

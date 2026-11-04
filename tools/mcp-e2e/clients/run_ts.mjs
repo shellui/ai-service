@@ -51,6 +51,31 @@ const CALLBACK_URL = `http://127.0.0.1:${CALLBACK_PORT}/callback`;
 const COMPOSE_FILE = process.env.MCP_E2E_COMPOSE_FILE;
 const IDENTITY_ORIGIN = process.env.IDENTITY_ORIGIN || 'http://localhost:8001';
 const HEADLESS = join(dirname(fileURLToPath(import.meta.url)), '..', 'headless_identity_oauth.py');
+const SHELLUI_MCP_AUTHORIZE_QUERY_KEY = 'shellui_mcp_authorize_query';
+
+async function appendShelluiAuthorizeParams(authorizationUrl, mcpUrl) {
+  const mcp = new URL(mcpUrl);
+  const parts = mcp.pathname.split('/').filter(Boolean);
+  if (parts.length < 3 || parts[0] !== 'c' || parts.at(-1) !== 'mcp') return authorizationUrl;
+  const companyId = parts[1];
+  const metaUrl = `${mcp.origin}/.well-known/oauth-protected-resource/c/${companyId}/mcp`;
+  let extra = {};
+  try {
+    const res = await fetch(metaUrl);
+    if (res.ok) {
+      const body = await res.json();
+      const ext = body[SHELLUI_MCP_AUTHORIZE_QUERY_KEY];
+      if (ext && typeof ext === 'object') extra = ext;
+    }
+  } catch {
+    return authorizationUrl;
+  }
+  const url = new URL(authorizationUrl);
+  for (const [key, value] of Object.entries(extra)) {
+    if (!url.searchParams.has(key)) url.searchParams.set(key, String(value));
+  }
+  return url.toString();
+}
 
 function fail(msg) {
   console.error(`[ts-sdk] ${msg}`);
@@ -107,7 +132,8 @@ async function connectWithOAuth(client) {
   } catch (error) {
     if (!(error instanceof UnauthorizedError)) throw error;
     if (!pendingAuthUrl) fail('OAuth redirect URL missing');
-    const code = runHeadless(pendingAuthUrl);
+    const authUrl = await appendShelluiAuthorizeParams(pendingAuthUrl, MCP_URL);
+    const code = runHeadless(authUrl);
     await transport.finishAuth(code);
     transport = makeTransport();
     await client.connect(transport);
