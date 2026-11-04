@@ -41,7 +41,9 @@ prepare_data_dir() {
   sqlite_file="${SQLITE_PATH:-/app/data/db.sqlite3}"
   sqlite_dir="$(dirname "${sqlite_file}")"
   mkdir -p "${sqlite_dir}"
-  chown -R "${APP_USER}:${APP_USER}" "${sqlite_dir}"
+  if id -u "${APP_USER}" >/dev/null 2>&1; then
+    chown -R "${APP_USER}:${APP_USER}" "${sqlite_dir}"
+  fi
 }
 
 gunicorn_cmd() {
