@@ -14,7 +14,7 @@ from apps.authapi.agent_tokens import authenticate_agent_bearer, mcp_resource_au
 from apps.connector.agent_record import AgentRecord
 from apps.connector.downstream_tokens import DownstreamTokenError, mint_downstream_access_token
 from apps.connector.mcp_identity import agent_is_revoked, forward_call_log, identity_revocation_unavailable
-from apps.connector.services import configured_service_urls
+from apps.connector.services import configured_service_urls, downstream_resource_for
 
 _server: AggregatingMcpServer | None = None
 
@@ -24,7 +24,12 @@ def _schema() -> dict:
     return generator.get_schema(request=None, public=True)
 
 
-def _mint_token(agent: AgentRecord, resource: str) -> str:
+def _mint_token(agent: AgentRecord, mcp_url: str) -> str:
+    # The gateway passes the URL it calls, which may be internal. Identity binds tokens to the
+    # public resource the downstream service expects, so map it and refuse unknown URLs.
+    resource = downstream_resource_for(mcp_url)
+    if not resource:
+        raise DownstreamTokenError('MCP service is not configured.')
     return mint_downstream_access_token(agent, resource=resource)
 
 

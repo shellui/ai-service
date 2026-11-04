@@ -45,6 +45,12 @@ Identity verifies delegation requests with `AI_SERVICE_JWKS` / `AI_SERVICE_JWKS_
 | `EMAIL_SERVICE_URL` | `https://email.shellui.com` |
 | `EMAIL_SERVICE_API_KEY` | empty |
 | `SAAS_SERVICE_URL` | empty |
+| `STORAGE_SERVICE_PUBLIC_URL` | same as `STORAGE_SERVICE_URL` |
+| `HOSTING_SERVICE_PUBLIC_URL` | same as `HOSTING_SERVICE_URL` |
+| `EMAIL_SERVICE_PUBLIC_URL` | same as `EMAIL_SERVICE_URL` |
+| `SAAS_SERVICE_PUBLIC_URL` | same as `SAAS_SERVICE_URL` |
+
+The gateway calls each service at `{*_SERVICE_URL}/mcp`, and asks identity for a token bound to the public resource `{*_SERVICE_PUBLIC_URL}/mcp` (identity uses `IDENTITY_ISSUER`). Identity only mints tokens for resources in its catalog, so set the public URLs whenever the service URLs are internal. A URL that is not configured never gets a token.
 
 ## JWKS tuning
 
