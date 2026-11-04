@@ -7,10 +7,11 @@ title: Shellui local dev stack
 The full multi-service stack lives in **shellui/shellui** at `dev/docker-compose.yml`. Clone this repo next to the other Shellui services and start everything from shellui:
 
 ```bash
-cd shellui/shellui/dev
-cp .env.local.example .env.local
-docker compose --env-file .env.local up
+cd shellui/dev
+./start.sh
 ```
+
+Clone layout, URLs, common commands and troubleshooting are in the [Shellui dev stack guide](https://github.com/shellui/shellui/blob/develop/docs/dev-stack.md). This page only covers what is specific to this service.
 
 This service image must be built with Docker target **`dev`** (deps in `/opt/venv`, source bind-mounted at `/app`). Browser URL: `http://localhost:8006`. Compose service name (internal DNS): **`ai`**.
 
