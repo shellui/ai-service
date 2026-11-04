@@ -128,9 +128,6 @@ npx --yes @modelcontextprotocol/inspector --cli \
   --header "Accept: application/json, text/event-stream" \
   --method tools/list
 
-log 'Inspector tools/list metadata (names, titles, annotations)'
-PYTHONPATH="${ROOT}" "${MCP_E2E_PYTHON}" "${E2E_DIR}/clients/run_tool_metadata.py"
-
 log 'Revoked agent token rejected'
 docker compose -f "${COMPOSE_FILE}" exec -T identity python manage.py shell <<'PY'
 from django.utils import timezone

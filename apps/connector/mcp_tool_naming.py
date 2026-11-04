@@ -211,6 +211,32 @@ def ensure_unique_tool_names(proposed: list[str]) -> list[str]:
     return out
 
 
+def _canonicalize_numeric_suffix(name: str) -> str:
+    """Map downstream ``*_2`` collision slugs to stable verb_noun names when metadata is absent."""
+    if not re.search(r'_\d+$', name):
+        return name
+    base = re.sub(r'_\d+$', '', name)
+    if base.startswith('update_'):
+        return f'replace_{base[7:]}'
+    return base
+
+
+def service_local_tool_name(tool: dict[str, Any], *, service_id: str | None = None) -> str:
+    """Resolve the service-local MCP tool name before the gateway adds a service prefix."""
+    meta = tool.get('_meta') if isinstance(tool.get('_meta'), dict) else {}
+    operation_id = meta.get('operationId') or tool.get('operationId')
+    path = meta.get('path')
+    method = str(meta.get('method') or 'get').lower()
+    if operation_id and path:
+        operation: dict[str, Any] = {'operationId': operation_id}
+        x_mcp = meta.get('x-mcp')
+        if isinstance(x_mcp, dict):
+            operation['x-mcp'] = x_mcp
+        return resolve_mcp_tool_name(operation, method, str(path))
+    raw = str(tool.get('name') or '')
+    return canonical_downstream_tool_name(raw, service_id=service_id)
+
+
 def canonical_downstream_tool_name(name: str, *, service_id: str | None = None) -> str:
     """Map legacy ``api_v1_*`` downstream names to ``verb_noun`` before gateway export."""
     tokens = _sanitize_token(name).split('_')
@@ -223,6 +249,7 @@ def canonical_downstream_tool_name(name: str, *, service_id: str | None = None) 
         stripped_tokens = _strip_version_and_service_prefix(tokens)
         stripped = '_'.join(stripped_tokens)
         return clamp_tool_name(_base_name_from_stripped(stripped, method='get'))
+    joined = _canonicalize_numeric_suffix(joined)
     return clamp_tool_name(joined or name)
 
 

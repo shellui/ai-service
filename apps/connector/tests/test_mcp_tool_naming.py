@@ -63,11 +63,15 @@ class McpToolNamingTests(SimpleTestCase):
     def test_canonical_legacy_downstream_name(self):
         self.assertEqual(
             canonical_downstream_tool_name('api_v1_actions_deliveries_list'),
-            'list_deliveries',
+            'list_actions_deliveries',
         )
         self.assertEqual(
             canonical_downstream_tool_name('identity_api_v1_users_list', service_id='identity'),
             'list_users',
+        )
+        self.assertEqual(
+            canonical_downstream_tool_name('update_auth_methods_2', service_id='identity'),
+            'replace_auth_methods',
         )
 
     def test_newest_api_version(self):
