@@ -111,7 +111,7 @@ async def main() -> None:
                 if 'api_v1_mcp_services_list' not in names:
                     raise RuntimeError(f'api_v1_mcp_services_list missing; got {sorted(names)}')
                 result = await session.call_tool('api_v1_mcp_services_list', {})
-                if result.isError:
+                if getattr(result, 'is_error', False):
                     raise RuntimeError(f'tools/call failed: {result}')
                 tokens = await storage.get_tokens()
                 if not tokens or not tokens.refresh_token:
