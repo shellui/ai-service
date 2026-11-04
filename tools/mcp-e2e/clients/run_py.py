@@ -108,9 +108,9 @@ async def main() -> None:
                 await session.initialize()
                 tools = await session.list_tools()
                 names = {t.name for t in tools.tools}
-                if 'api_v1_mcp_services_list' not in names:
-                    raise RuntimeError(f'api_v1_mcp_services_list missing; got {sorted(names)}')
-                result = await session.call_tool('api_v1_mcp_services_list', {})
+                if 'list_services' not in names:
+                    raise RuntimeError(f'list_services missing; got {sorted(names)}')
+                result = await session.call_tool('list_services', {})
                 if getattr(result, 'is_error', False):
                     raise RuntimeError(f'tools/call failed: {result}')
                 tokens = await storage.get_tokens()

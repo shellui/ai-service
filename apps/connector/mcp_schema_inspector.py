@@ -8,6 +8,8 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
 
+from apps.connector.mcp_tool_naming import legacy_slug_tool_name
+
 from apps.connector.mcp_tool_schema import (
     normalize_mcp_tool,
     normalize_tool_input_schema,
@@ -71,14 +73,6 @@ def legacy_tools_from_schema(schema: dict[str, Any]) -> list[dict[str, Any]]:
         required = [str(key) for key in required_raw if str(key) in names]
         return names, required
 
-    def _slug_tool_name(method: str, path: str, operation_id: str | None) -> str:
-        if operation_id:
-            base = re.sub(r'[^a-zA-Z0-9_]+', '_', operation_id).strip('_').lower()
-            if base:
-                return base[:120]
-        cleaned = re.sub(r'[^a-zA-Z0-9_]+', '_', f'{method}_{path}').strip('_').lower()
-        return cleaned[:120]
-
     paths = schema.get('paths') or {}
     tools: list[dict[str, Any]] = []
     for path, path_item in paths.items():
@@ -92,7 +86,7 @@ def legacy_tools_from_schema(schema: dict[str, Any]) -> list[dict[str, Any]]:
             tags = operation.get('tags') or []
             if MCP_TOOL_TAG not in tags:
                 continue
-            name = _slug_tool_name(method, path, operation.get('operationId'))
+            name = legacy_slug_tool_name(method, path, operation.get('operationId'))
             description = (operation.get('summary') or operation.get('description') or name).strip()
             path_params = path_parameter_names(path)
             query_fields, query_required = _parameter_field_names(operation, location='query')
@@ -261,6 +255,7 @@ def format_report_markdown(
     services: dict[str, dict[str, Any]],
     before: dict[str, list[SchemaIssue]],
     after: dict[str, list[SchemaIssue]],
+    name_mappings: list[dict[str, str]] | None = None,
 ) -> str:
     lines = [
         '# MCP tool inputSchema audit (all services)',
@@ -302,6 +297,30 @@ def format_report_markdown(
     after_cat: Counter[str] = Counter(i.category for issues in after.values() for i in issues)
     for cat in sorted(cats):
         lines.append(f'- `{cat}`: {before_cat.get(cat, 0)} → {after_cat.get(cat, 0)}')
+    lines.extend(
+        [
+            '',
+            '## Tool name mapping (legacy → service → gateway)',
+            '',
+            'Legacy names are slugified `operationId` values (pre–shellui-django 0.4.2). Service names',
+            'use `verb_noun` without `api/v1` segments. The ai gateway exports downstream tools as',
+            '``{service}_{tool}`` (single underscore). Full list: `name_mappings` in',
+            '`docs/mcp-tool-schema-audit.json`.',
+            '',
+        ]
+    )
+    mappings = name_mappings or []
+    if mappings:
+        lines.append('| Service | Legacy | Service tool | Gateway export |')
+        lines.append('| --- | --- | --- | --- |')
+        for row in mappings:
+            lines.append(
+                f"| {row['service']} | `{row['legacy_name']}` | `{row['service_tool_name']}` | `{row['gateway_tool_name']}` |"
+            )
+        lines.append('')
+    else:
+        lines.append('_No mappings (missing service checkouts)._')
+        lines.append('')
     lines.extend(['', '## Per-service, per-tool issues (after fix)', ''])
     for svc in sorted(services.keys()):
         issues = after.get(svc, [])

@@ -8,6 +8,7 @@ from django.views.decorators.csrf import csrf_exempt
 from drf_spectacular.generators import SchemaGenerator
 from rest_framework.request import Request
 from shellui_django.mcp.gateway import AggregatingMcpServer, McpGatewayConfig, public_mcp_tools, scope_service_ids
+from apps.connector.mcp_tool_naming import gateway_export_name
 from apps.connector.mcp_openapi_tools import tools_from_schema
 from apps.connector.mcp_tool_schema import normalize_mcp_tool
 
@@ -33,7 +34,7 @@ def prefixed_tool_catalog(
     *,
     remember_route=None,
 ) -> list[dict]:
-    """Gateway tools keep their name; every downstream tool is exported as ``<service>__<name>``."""
+    """Gateway tools keep their name; downstream tools export as ``<service>_<name>`` (single underscore)."""
     merged: list[dict] = []
     taken: set[str] = set()
     for tool in local_tools:
@@ -47,10 +48,7 @@ def prefixed_tool_catalog(
             downstream_name = str(tool.get('name') or '')
             if not downstream_name:
                 continue
-            export_name = f'{service_id}__{downstream_name}'
-            if export_name in taken:
-                continue
-            taken.add(export_name)
+            export_name = gateway_export_name(service_id, downstream_name, taken=taken)
             if remember_route is not None:
                 remember_route(export_name, service_id, downstream_name)
             merged.append({**tool, 'name': export_name})
@@ -60,12 +58,13 @@ def prefixed_tool_catalog(
 class PrefixingMcpServer(AggregatingMcpServer):
     """Same gateway, with an unambiguous service prefix on every downstream tool.
 
-    Routing is derived from the name itself (``<service>__<tool>``), so a call works even after
+    Routing is derived from the name itself (``<service>_<tool>``), so a call works even after
     the tools cache expires, and an unprefixed downstream name is never routed anywhere.
     """
 
     def _lookup_route(self, tool_name: str) -> dict[str, str] | None:
-        service_id, sep, downstream_name = str(tool_name or '').partition('__')
+        raw = str(tool_name or '')
+        service_id, sep, downstream_name = raw.partition('_')
         if not sep or not service_id or not downstream_name:
             return None
         if service_id == self._gateway.local_service_id:

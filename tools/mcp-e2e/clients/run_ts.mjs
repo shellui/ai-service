@@ -120,8 +120,8 @@ async function main() {
   const { oauthProvider, transport } = await connectWithOAuth(client);
   const tools = await client.listTools();
   if (!tools.tools?.length) fail('tools/list returned no tools');
-  const target = tools.tools.find((t) => t.name === 'api_v1_mcp_services_list');
-  if (!target) fail('api_v1_mcp_services_list missing from tools/list');
+  const target = tools.tools.find((t) => t.name === 'list_services');
+  if (!target) fail('list_services missing from tools/list');
   const result = await client.callTool({ name: target.name, arguments: {} });
   if (result.isError) fail(`tools/call error: ${JSON.stringify(result)}`);
   const refresh = oauthProvider.tokens()?.refresh_token;

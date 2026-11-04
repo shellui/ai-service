@@ -103,6 +103,14 @@ jobs:
           ref: develop
           path: .e2e-email-service
 
+      - name: Checkout saas-service (develop)
+        uses: actions/checkout@v4
+        continue-on-error: true
+        with:
+          repository: shellui/saas-service
+          ref: develop
+          path: .e2e-saas-service
+
       - name: MCP tool schema audit (all services)
         run: uv run python tools/mcp-audit/generate_report.py
 

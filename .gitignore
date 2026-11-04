@@ -31,3 +31,4 @@ jwks.json
 # coverage
 /coverage
 htmlcov/
+*.e2e-*

@@ -12,7 +12,7 @@ Each company has its own MCP URL: `POST /c/<company_id>/mcp`, for example `https
 - Identity refuses to authorize a resource for a company that does not exist, so no token can ever exist for one; such a URL only ever answers `401`.
 - Plain `/mcp` and `/.well-known/oauth-protected-resource` never pick a default company. They return `404` with `{"error": "company_required"}`.
 
-`tools/list` keeps the gateway's own tools as they are and exports every downstream tool as `<service>__<tool>`, for example `storage__<tool>` or `saas__<tool>`.
+`tools/list` keeps the gateway's own tools as they are and exports every downstream tool as `<service>_<tool>` (single underscore), for example `storage_list_buckets` or `saas_list_projects`.
 
 `AI_PUBLIC_URL` sets the public origin used in the resource (defaults to `AI_SERVICE_ISSUER`). Set it whenever the service runs behind a proxy, since the request Host is never trusted for the audience.
 

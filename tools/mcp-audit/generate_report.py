@@ -27,6 +27,7 @@ SERVICES: list[tuple[str, Path]] = [
     ('storage', ROOT / '.e2e-storage-service'),
     ('hosting', ROOT / '.e2e-hosting-service'),
     ('email', ROOT / '.e2e-email-service'),
+    ('saas', ROOT / '.e2e-saas-service'),
 ]
 
 
@@ -67,16 +68,38 @@ def _audit_service(service: str, schema: dict) -> dict:
     from apps.connector.mcp_openapi_tools import tools_from_schema
     from apps.connector.mcp_schema_inspector import inspect_tools, legacy_tools_from_schema, summarize_issues
     from apps.connector.mcp_tool_schema import normalize_mcp_tool
+    from apps.connector.mcp_tool_naming import gateway_export_name
 
     legacy = legacy_tools_from_schema(schema)
     typed = tools_from_schema(schema)
-    after_gateway = [normalize_mcp_tool(tool, schema) for tool in legacy]
+    taken: set[str] = set()
+    name_mappings: list[dict[str, str]] = []
+    after_gateway: list[dict] = []
+    for tool in typed:
+        meta = tool.get('_meta') if isinstance(tool.get('_meta'), dict) else {}
+        legacy_name = str(meta.get('legacy_tool_name') or tool.get('name') or '')
+        service_name = str(tool.get('name') or '')
+        if service == 'ai':
+            gateway_name = service_name
+            taken.add(gateway_name)
+        else:
+            gateway_name = gateway_export_name(service, service_name, taken=taken)
+        name_mappings.append(
+            {
+                'service': service,
+                'legacy_name': legacy_name,
+                'service_tool_name': service_name,
+                'gateway_tool_name': gateway_name,
+            }
+        )
+        after_gateway.append(normalize_mcp_tool({**tool, 'name': gateway_name}, schema))
     before_issues = inspect_tools(service, legacy)
     after_source_issues = inspect_tools(service, typed)
     after_gateway_issues = inspect_tools(service, after_gateway)
     return {
         'service': service,
-        'tool_count': len(legacy),
+        'tool_count': len(typed),
+        'name_mappings': name_mappings,
         'before': [i.__dict__ for i in before_issues],
         'after_source': [i.__dict__ for i in after_source_issues],
         'after_gateway': [i.__dict__ for i in after_gateway_issues],
@@ -101,11 +124,14 @@ def main() -> int:
 
     payloads: list[dict] = []
     for service, path in SERVICES:
+        if service != 'ai' and not path.is_dir():
+            payloads.append({'service': service, 'tool_count': 0, 'error': f'missing checkout: {path}', 'name_mappings': []})
+            continue
         try:
             schema = _export_schema(service, path)
             payloads.append(_audit_service(service, schema))
         except (FileNotFoundError, RuntimeError) as exc:
-            payloads.append({'service': service, 'tool_count': 0, 'error': str(exc)})
+            payloads.append({'service': service, 'tool_count': 0, 'error': str(exc), 'name_mappings': []})
 
     services_meta: dict[str, dict] = {}
     before: dict[str, list[SchemaIssue]] = {}
@@ -119,7 +145,13 @@ def main() -> int:
         before[svc] = [SchemaIssue(**item) for item in row['before']]
         after[svc] = [SchemaIssue(**item) for item in row['after_gateway']]
 
-    markdown = format_report_markdown(services=services_meta, before=before, after=after)
+    name_mappings = [row for payload in payloads for row in payload.get('name_mappings', [])]
+    markdown = format_report_markdown(
+        services=services_meta,
+        before=before,
+        after=after,
+        name_mappings=name_mappings,
+    )
     DOC_PATH.write_text(markdown, encoding='utf-8')
     ARTIFACT_PATH.write_text(json.dumps(payloads, indent=2), encoding='utf-8')
     print(f'Wrote {DOC_PATH} and {ARTIFACT_PATH}')
