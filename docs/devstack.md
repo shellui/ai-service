@@ -32,6 +32,7 @@ Set these on the **`ai`** container (shellui `dev/.env.local.example` may prefix
 | `IDENTITY_JWKS_URL` | `http://identity:8000/.well-known/jwks.json` | Internal JWKS fetch (server-to-server). |
 | `IDENTITY_SERVICE_URL` | `http://identity:8000` | Internal origin for identity MCP (`/mcp`). |
 | `AI_SERVICE_ISSUER` | `http://localhost:8006` | Public `iss` on RS256 delegation JWTs to identity. |
+| `AI_PUBLIC_URL` | `http://localhost:8006` | Public origin; the MCP URL is `{url}/c/<company_id>/mcp`. Defaults to `AI_SERVICE_ISSUER`. |
 | `AI_SERVICE_SIGNING_KEY` | PEM or empty | RS256 private key; prefer `AI_SERVICE_SIGNING_KEY_FILE` on a mounted volume. |
 | `AI_SERVICE_SIGNING_KEY_FILE` | `/app/data/signing.pem` | Run `python manage.py generate_signing_key` once and persist under `/app/data`. |
 | `AI_SERVICE_SIGNING_KID` | from `generate_signing_key` | Required when `DEBUG=false`; recommended in the stack. |
@@ -63,6 +64,6 @@ docker compose up --build
 
 Health: `GET http://localhost:8006/ai/v1/health`
 
-MCP: `POST http://localhost:8006/mcp` with a Bearer agent token from identity OAuth.
+MCP: `POST http://localhost:8006/c/<company_id>/mcp` with a Bearer agent token from identity OAuth.
 
 Sibling services on the host use `host.docker.internal` defaults in `docker-compose.yml`; inside the shellui stack use the internal URLs in the table above.

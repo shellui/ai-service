@@ -1,4 +1,4 @@
-"""Aggregated MCP gateway at ai-service ``POST /mcp``."""
+"""Aggregated MCP gateway at ai-service ``POST /c/<company_id>/mcp``."""
 
 from __future__ import annotations
 
@@ -7,16 +7,88 @@ from django.http import HttpRequest, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from drf_spectacular.generators import SchemaGenerator
 from rest_framework.request import Request
-from shellui_django.mcp.gateway import AggregatingMcpServer, McpGatewayConfig
-from shellui_django.mcp.resources import access_token_audience_matches
+from shellui_django.mcp.gateway import AggregatingMcpServer, McpGatewayConfig, public_mcp_tools, scope_service_ids
+from shellui_django.mcp.openapi_tools import tools_from_schema
 
-from apps.authapi.agent_tokens import authenticate_agent_bearer, mcp_resource_audience
+from apps.authapi.agent_tokens import authenticate_agent_bearer
 from apps.connector.agent_record import AgentRecord
 from apps.connector.downstream_tokens import DownstreamTokenError, mint_downstream_access_token
 from apps.connector.mcp_identity import agent_is_revoked, forward_call_log, identity_revocation_unavailable
+from apps.connector.mcp_urls import (
+    PLAIN_MCP_MESSAGE,
+    company_audience_matches,
+    company_mcp_resource,
+    company_metadata_url,
+)
 from apps.connector.services import configured_service_urls, downstream_resource_for
 
 _server: AggregatingMcpServer | None = None
+
+
+def prefixed_tool_catalog(
+    local_tools: list[dict],
+    remote_by_service: dict[str, list[dict]],
+    *,
+    remember_route=None,
+) -> list[dict]:
+    """Gateway tools keep their name; every downstream tool is exported as ``<service>__<name>``."""
+    merged: list[dict] = []
+    taken: set[str] = set()
+    for tool in local_tools:
+        name = str(tool.get('name') or '')
+        if not name or name in taken:
+            continue
+        taken.add(name)
+        merged.append(tool)
+    for service_id, tools in remote_by_service.items():
+        for tool in tools:
+            downstream_name = str(tool.get('name') or '')
+            if not downstream_name:
+                continue
+            export_name = f'{service_id}__{downstream_name}'
+            if export_name in taken:
+                continue
+            taken.add(export_name)
+            if remember_route is not None:
+                remember_route(export_name, service_id, downstream_name)
+            merged.append({**tool, 'name': export_name})
+    return merged
+
+
+class PrefixingMcpServer(AggregatingMcpServer):
+    """Same gateway, with an unambiguous service prefix on every downstream tool.
+
+    Routing is derived from the name itself (``<service>__<tool>``), so a call works even after
+    the tools cache expires, and an unprefixed downstream name is never routed anywhere.
+    """
+
+    def _lookup_route(self, tool_name: str) -> dict[str, str] | None:
+        service_id, sep, downstream_name = str(tool_name or '').partition('__')
+        if not sep or not service_id or not downstream_name:
+            return None
+        if service_id == self._gateway.local_service_id:
+            return None
+        if service_id not in self._gateway.get_service_urls():
+            return None
+        return {'service_id': service_id, 'downstream_name': downstream_name}
+
+    def _aggregated_tools_list(self, req_id, agent_claims):
+        agent = self._gateway.resolve_agent(agent_claims)
+        if agent is None:
+            return JsonResponse(self._error(req_id, -32603, 'Forbidden'))
+        allowed = scope_service_ids(agent_claims) & set(agent.services_allowed or [])
+        local = public_mcp_tools(tools_from_schema(self.schema_provider()))
+        local_id = self._gateway.local_service_id
+        remote: dict[str, list[dict]] = {}
+        for service_id, mcp_url in self._gateway.get_service_urls().items():
+            if service_id == local_id or service_id not in allowed:
+                continue
+            token = self._gateway.mint_downstream_token(agent, mcp_url)
+            tools = self._fetch_remote_tools_list(mcp_url=mcp_url, bearer_token=token)
+            if tools is not None:
+                remote[service_id] = tools
+        tools = prefixed_tool_catalog(local, remote)
+        return JsonResponse(self._result(req_id, {'tools': tools}))
 
 
 def _schema() -> dict:
@@ -45,28 +117,36 @@ def _get_server() -> AggregatingMcpServer:
             downstream_timeout_seconds=float(getattr(settings, 'MCP_GATEWAY_DOWNSTREAM_TIMEOUT_SECONDS', 5)),
             instructions_title='Shellui AI MCP gateway.',
         )
-        _server = AggregatingMcpServer(
+        _server = PrefixingMcpServer(
             gateway=gateway,
             schema_provider=_schema,
             urlconf=settings.ROOT_URLCONF,
             service_name='ai',
-            identity_revocation_check=agent_is_revoked,
-            on_call=forward_call_log,
+            identity_revocation_check=lambda agent_id, company_id: agent_is_revoked(agent_id, company_id),
+            on_call=lambda entry: forward_call_log(entry),
         )
     return _server
 
 
-def _agent_claims(request: HttpRequest) -> dict | None:
+def _agent_claims(request: HttpRequest, company_id: int) -> dict | None:
     header = request.headers.get('Authorization', '')
     if not header.lower().startswith('bearer '):
         return None
     raw = header.split(' ', 1)[1].strip()
-    expected_resource = mcp_resource_audience(request)
+    expected_resource = company_mcp_resource(request, company_id)
+    if not expected_resource:
+        return None
     result = authenticate_agent_bearer(raw, expected_resource=expected_resource)
     if not result:
         return None
     principal, claims = result
-    if not access_token_audience_matches(claims, expected_resource):
+    if not company_audience_matches(claims, expected_resource):
+        return None
+    # The URL names the tenant. A token for another company never works here, even with a matching aud.
+    try:
+        if int(claims.get('company_id')) != int(company_id):
+            return None
+    except (TypeError, ValueError):
         return None
     request.user = principal
     drf_request = Request(request)
@@ -74,12 +154,28 @@ def _agent_claims(request: HttpRequest) -> dict | None:
     return dict(claims)
 
 
+def _unauthorized(request: HttpRequest, company_id: int) -> JsonResponse:
+    response = JsonResponse({'error': 'unauthorized'}, status=401)
+    response['WWW-Authenticate'] = f'Bearer resource_metadata="{company_metadata_url(request, company_id)}"'
+    return response
+
+
 @csrf_exempt
-def mcp_endpoint(request: HttpRequest):
-    claims = _agent_claims(request)
+def mcp_endpoint(request: HttpRequest, company_id: int):
+    if int(company_id) < 1:
+        return JsonResponse({'error': 'not_found'}, status=404)
+    claims = _agent_claims(request, company_id)
+    if claims is None and request.method == 'POST':
+        return _unauthorized(request, company_id)
     if claims is not None and identity_revocation_unavailable():
         return JsonResponse({'error': 'identity_unavailable'}, status=503)
     try:
         return _get_server().handle(request, agent_claims=claims)
     except DownstreamTokenError:
         return JsonResponse({'error': 'downstream_token_unavailable'}, status=503)
+
+
+@csrf_exempt
+def mcp_plain_endpoint(request: HttpRequest):
+    """``/mcp`` has no company, so it never authenticates or picks a default tenant."""
+    return JsonResponse({'error': 'company_required', 'message': PLAIN_MCP_MESSAGE}, status=404)

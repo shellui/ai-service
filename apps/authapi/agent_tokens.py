@@ -7,18 +7,13 @@ from django.conf import settings
 from django.http import HttpRequest
 
 from apps.authapi.jwks_client import get_jwks_client
-from shellui_django.mcp.resources import access_token_audience_matches, normalize_resource_indicator
+from apps.connector.mcp_urls import company_audience_matches, normalize_company_resource
 
 from .principal import StoragePrincipal
 
 
-def mcp_resource_audience(request: HttpRequest) -> str:
-    """RFC 8707 resource indicator: this service's ``/mcp`` URL."""
-    return normalize_resource_indicator(request.build_absolute_uri('/mcp')) or ''
-
-
 def _decode_agent_claims(raw_token: str, *, expected_resource: str) -> dict | None:
-    expected = normalize_resource_indicator(expected_resource) or ''
+    expected = normalize_company_resource(expected_resource) or ''
     if not expected:
         return None
     algorithms = list(getattr(settings, 'JWT_ALGORITHMS', ['RS256']))
@@ -35,7 +30,7 @@ def _decode_agent_claims(raw_token: str, *, expected_resource: str) -> dict | No
         signing_key = get_jwks_client().get_signing_key(raw_token)
         if signing_key is not None:
             payload = jwt.decode(raw_token, key=signing_key.key, **decode_kwargs)
-            if str(payload.get('sub', '')).startswith('agent:') and access_token_audience_matches(
+            if str(payload.get('sub', '')).startswith('agent:') and company_audience_matches(
                 payload, expected
             ):
                 return payload
@@ -58,7 +53,7 @@ def _decode_agent_claims(raw_token: str, *, expected_resource: str) -> dict | No
                 issuer=settings.IDENTITY_ISSUER or None,
                 options=options,
             )
-            if str(payload.get('sub', '')).startswith('agent:') and access_token_audience_matches(
+            if str(payload.get('sub', '')).startswith('agent:') and company_audience_matches(
                 payload, expected
             ):
                 return payload

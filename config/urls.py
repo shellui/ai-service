@@ -12,7 +12,7 @@ from drf_spectacular.views import (
 
 from apps.authapi.ai_jwks_views import AiServiceJwksView
 from apps.connector.mcp_oauth import OAuthProtectedResourceMetadataView
-from apps.connector.mcp_views import mcp_endpoint
+from apps.connector.mcp_views import mcp_endpoint, mcp_plain_endpoint
 
 from . import views
 
@@ -21,11 +21,17 @@ urlpatterns = [
     path('health/live', views.health_live, name='health-live'),
     path('.well-known/jwks.json', AiServiceJwksView.as_view(), name='jwks'),
     path(
-        '.well-known/oauth-protected-resource',
+        '.well-known/oauth-protected-resource/c/<int:company_id>/mcp',
         OAuthProtectedResourceMetadataView.as_view(),
         name='mcp-oauth-protected-resource',
     ),
-    path('mcp', mcp_endpoint, name='mcp'),
+    path(
+        '.well-known/oauth-protected-resource',
+        OAuthProtectedResourceMetadataView.as_view(),
+        name='mcp-oauth-protected-resource-plain',
+    ),
+    path('c/<int:company_id>/mcp', mcp_endpoint, name='mcp'),
+    path('mcp', mcp_plain_endpoint, name='mcp-plain'),
     path('ai/v1/', include('apps.connector.urls')),
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path(
