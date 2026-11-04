@@ -34,10 +34,13 @@ def _audit(tools: list[dict]) -> list[tuple[str, str, str]]:
     if str(root) not in sys.path:
         sys.path.insert(0, str(root))
     from apps.connector.mcp_schema_inspector import inspect_tools, summarize_issues
-    from apps.connector.mcp_tool_schema import normalize_mcp_tool
+    from apps.connector.mcp_tool_schema import audit_tool_input_schemas
 
-    normalized = [normalize_mcp_tool(t) for t in tools]
-    issues = inspect_tools('live', normalized)
+    # Gateway tools/list already applies connector normalization; re-audit inputSchema only.
+    schema_rows = audit_tool_input_schemas(tools)
+    if schema_rows:
+        return [(name, path, reason) for name, path, reason in schema_rows]
+    issues = inspect_tools('live', tools)
     summary = summarize_issues(issues)
     if summary['total_issues']:
         return [(i.tool, i.path, i.category) for i in issues]
