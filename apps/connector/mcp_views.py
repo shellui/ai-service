@@ -32,17 +32,19 @@ def prefixed_tool_catalog(
     local_tools: list[dict],
     remote_by_service: dict[str, list[dict]],
     *,
+    local_service_id: str = 'ai',
     remember_route=None,
 ) -> list[dict]:
-    """Gateway tools keep their name; downstream tools export as ``<service>_<name>`` (single underscore)."""
+    """Every exported tool is ``<service>_<verb>_<noun>`` (single underscore, no ``api_v1``)."""
     merged: list[dict] = []
     taken: set[str] = set()
     for tool in local_tools:
         name = str(tool.get('name') or '')
-        if not name or name in taken:
+        if not name:
             continue
-        taken.add(name)
-        merged.append(tool)
+        export_name = gateway_export_name(local_service_id, name, taken=taken)
+        taken.add(export_name)
+        merged.append({**tool, 'name': export_name})
     for service_id, tools in remote_by_service.items():
         for tool in tools:
             downstream_name = str(tool.get('name') or '')
@@ -73,6 +75,19 @@ class PrefixingMcpServer(AggregatingMcpServer):
             return None
         return {'service_id': service_id, 'downstream_name': downstream_name}
 
+    def _local_tool_export_name(self, export_name: str) -> str | None:
+        """Map ``ai_<tool>`` back to the local OpenAPI tool name for ``tools/call``."""
+        local_id = self._gateway.local_service_id
+        prefix = f'{local_id}_'
+        raw = str(export_name or '')
+        if not raw.startswith(prefix):
+            return None
+        downstream = raw[len(prefix) :]
+        if not downstream:
+            return None
+        local_names = {str(t.get('name') or '') for t in tools_from_schema(self.schema_provider())}
+        return downstream if downstream in local_names else None
+
     def handle(self, request: HttpRequest, *, agent_claims: dict | None):
         return handle_mcp_gateway_request(self, request, agent_claims=agent_claims)
 
@@ -88,20 +103,30 @@ class PrefixingMcpServer(AggregatingMcpServer):
             gw.tools_from_schema, srv.tools_from_schema = orig_gw, orig_srv
 
     def _maybe_forward_tool_call(self, request, req_id, params, agent_claims):
+        call_params = dict(params or {})
+        local_name = self._local_tool_export_name(str(call_params.get('name') or ''))
+        if local_name is not None:
+            call_params['name'] = local_name
+
         return self._using_connector_tool_catalog(
             lambda *args: super(PrefixingMcpServer, self)._maybe_forward_tool_call(*args),
             request,
             req_id,
-            params,
+            call_params,
             agent_claims,
         )
 
     def _tools_call(self, request, req_id, params, agent_claims):
+        call_params = dict(params or {})
+        local_name = self._local_tool_export_name(str(call_params.get('name') or ''))
+        if local_name is not None:
+            call_params['name'] = local_name
+
         return self._using_connector_tool_catalog(
             lambda *args: super(PrefixingMcpServer, self)._tools_call(*args),
             request,
             req_id,
-            params,
+            call_params,
             agent_claims,
         )
 
@@ -120,7 +145,7 @@ class PrefixingMcpServer(AggregatingMcpServer):
             tools = self._fetch_remote_tools_list(mcp_url=mcp_url, bearer_token=token)
             if tools is not None:
                 remote[service_id] = tools
-        tools = prefixed_tool_catalog(local, remote)
+        tools = prefixed_tool_catalog(local, remote, local_service_id=local_id)
         tools = [normalize_mcp_tool(tool) for tool in tools]
         page = paginate_tools(tools, params or {})
         return JsonResponse(self._result(req_id, page))

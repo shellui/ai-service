@@ -110,6 +110,9 @@ node "${E2E_DIR}/clients/run_ts.mjs"
 log 'Python MCP SDK client'
 "${MCP_E2E_PYTHON}" "${E2E_DIR}/clients/run_py.py"
 
+log 'Tool titles and annotations (live tools/list)'
+"${MCP_E2E_PYTHON}" "${E2E_DIR}/clients/run_tool_metadata.py"
+
 log 'MCP tool inputSchema audit (strict client subsets)'
 PYTHONPATH="${ROOT}" "${MCP_E2E_PYTHON}" "${E2E_DIR}/clients/run_schema_audit.py"
 

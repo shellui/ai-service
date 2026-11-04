@@ -325,16 +325,16 @@ def normalize_mcp_tool(tool: dict[str, Any], root: dict[str, Any] | None = None)
     schema = out.get('inputSchema')
     if isinstance(schema, dict):
         out['inputSchema'] = normalize_tool_input_schema(schema, root)
-    desc = sanitize_shellui_copy(str(out.get('description') or '').strip())
     name = str(out.get('name') or 'tool')
-    if len(desc) < 24:
-        op = (out.get('_meta') or {}).get('operationId') or name
-        desc = desc or f'Shellui MCP tool {name} ({op}).'
-    out['description'] = desc
     if not str(out.get('title') or '').strip():
         from apps.connector.mcp_tool_presentation import human_title_from_tool_name
 
         out['title'] = human_title_from_tool_name(name)
+    desc = sanitize_shellui_copy(str(out.get('description') or '').strip())
+    if len(desc) < 24:
+        op = (out.get('_meta') or {}).get('operationId') or name
+        desc = desc or f'Shellui MCP tool {name} ({op}).'
+    out['description'] = desc
     if not isinstance(out.get('annotations'), dict):
         meta = out.get('_meta') or {}
         read_only = bool(meta.get('read_only'))

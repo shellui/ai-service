@@ -120,8 +120,12 @@ async function main() {
   const { oauthProvider, transport } = await connectWithOAuth(client);
   const tools = await client.listTools();
   if (!tools.tools?.length) fail('tools/list returned no tools');
-  const target = tools.tools.find((t) => t.name === 'list_services');
-  if (!target) fail('list_services missing from tools/list');
+  const target = tools.tools.find((t) => t.name === 'ai_list_services');
+  if (!target) fail('ai_list_services missing from tools/list');
+  for (const t of tools.tools) {
+    if (!String(t.title || '').trim()) fail(`tool ${t.name} missing title`);
+    if (!t.annotations || typeof t.annotations !== 'object') fail(`tool ${t.name} missing annotations`);
+  }
   const result = await client.callTool({ name: target.name, arguments: {} });
   if (result.isError) fail(`tools/call error: ${JSON.stringify(result)}`);
   const refresh = oauthProvider.tokens()?.refresh_token;

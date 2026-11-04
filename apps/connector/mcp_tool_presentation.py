@@ -50,14 +50,30 @@ def tool_title(operation: dict[str, Any], tool_name: str) -> str:
     return human_title_from_tool_name(tool_name)
 
 
+def _strip_openapi_noise(text: str) -> str:
+    """Drop drf-spectacular parameter dumps and ``key: type`` lines from descriptions."""
+    lines: list[str] = []
+    for raw in str(text or '').splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if re.match(r'^[\w.-]+\s*:\s*(string|integer|number|boolean|array|object)\b', line, re.I):
+            continue
+        if line.startswith('- ') and ':' in line[:80]:
+            continue
+        lines.append(line)
+    joined = ' '.join(lines)
+    return re.sub(r'\s+', ' ', joined).strip()
+
+
 def tool_description(operation: dict[str, Any], *, method: str, access: dict[str, bool]) -> str:
     summary = str(operation.get('summary') or '').strip()
-    body = str(operation.get('description') or '').strip()
+    body = _strip_openapi_noise(str(operation.get('description') or ''))
     parts: list[str] = []
     if summary:
         parts.append(_first_sentences(summary, max_sentences=1))
     if body:
-        detail = _first_sentences(body, max_sentences=2)
+        detail = _first_sentences(body, max_sentences=1)
         if detail and detail not in parts:
             parts.append(detail)
     if not parts:
@@ -237,10 +253,10 @@ def shellui_gateway_instructions(
         f'{title}\n'
         'Shellui exposes company-scoped HTTP APIs as MCP tools. Each tool maps to one OpenAPI operation.\n'
         f'Connected services for this agent: {services}.\n'
-        f'Downstream tools use a service prefix ({prefixes or "service_"} plus the tool name). '
-        'Local gateway tools such as list_services have no prefix.\n'
+        f'Every tool name starts with a service id ({prefixes or "service_"}), then verb and resource '
+        '(for example ai_list_services, storage_list_buckets).\n'
         'Use annotations.readOnlyHint and annotations.destructiveHint to decide when to confirm with the user. '
-        'Use list_services for per-service MCP URLs and resource-bound tokens.'
+        'Use ai_list_services for per-service MCP URLs and resource-bound tokens.'
     )
 
 

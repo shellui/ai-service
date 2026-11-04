@@ -7,7 +7,7 @@
         "service": "ai",
         "legacy_name": "api_v1_mcp_services_list",
         "service_tool_name": "list_services",
-        "gateway_tool_name": "list_services"
+        "gateway_tool_name": "ai_list_services"
       }
     ],
     "before": [

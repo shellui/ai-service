@@ -162,7 +162,11 @@ class McpGatewayTests(TestCase):
         names = {t['name'] for t in response.json()['result']['tools']}
         self.assertIn('storage_list_buckets', names)
         self.assertNotIn('list_buckets', names)
-        self.assertIn('list_services', names)
+        self.assertIn('ai_list_services', names)
+        self.assertNotIn('list_services', names)
+        for n in names:
+            self.assertNotIn('api_v1', n)
+            self.assertNotIn('__', n)
 
     @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
     @patch('shellui_django.mcp.gateway.requests.post', side_effect=requests.Timeout('slow'))
@@ -202,13 +206,16 @@ class McpGatewayTests(TestCase):
             'identity': [{'name': 'unique_tool'}],
         }
         names = [t['name'] for t in prefixed_tool_catalog(local, remote)]
-        self.assertEqual(names, ['dup_tool', 'storage_dup_tool', 'storage_unique_tool', 'identity_unique_tool'])
+        self.assertEqual(
+            names,
+            ['ai_dup_tool', 'storage_dup_tool', 'storage_unique_tool', 'identity_unique_tool'],
+        )
 
     def test_list_services_tools_call(self, _rev_ok):
         token = _agent_token(secret=self.secret, issuer=self.issuer)
         response = self.client.post(
             '/c/10/mcp',
-            data=_rpc('tools/call', name='list_services', arguments={}),
+            data=_rpc('tools/call', name='ai_list_services', arguments={}),
             content_type='application/json',
             **self._auth(token),
         )
@@ -226,6 +233,7 @@ class McpGatewayTests(TestCase):
         )
         self.assertIsNone(server._lookup_route('list_buckets'))
         self.assertIsNone(server._lookup_route('unknown_tool'))
+        self.assertIsNone(server._lookup_route('ai_list_services'))
         self.assertIsNone(server._lookup_route('list_services'))
 
     @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
