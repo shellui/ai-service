@@ -12,6 +12,7 @@ from django.core.cache import cache
 
 from shellui_django.mcp.internal import (
     REVOCATION_CACHE_SECONDS,
+    InternalAssertionError,
     build_mcp_call_log_assertion,
     build_mcp_revocation_assertion,
     parse_trusted_revocation_poll_response,
@@ -33,8 +34,16 @@ def _identity_audience(origin: str) -> str:
     return (settings.IDENTITY_ISSUER or origin).rstrip('/')
 
 
+def _signing_kwargs() -> dict[str, str]:
+    """Sign internal assertions with this service's own RS256 key; Identity trusts it via our JWKS."""
+    signing = getattr(settings, 'AI_SERVICE_SIGNING_KEY', None)
+    if signing is None or not settings.AI_SERVICE_ISSUER:
+        raise InternalAssertionError('Service assertion signing is not configured.', status=503)
+    return {'private_key_pem': signing.private_pem, 'kid': signing.kid, 'issuer': settings.AI_SERVICE_ISSUER}
+
+
 def _revocation_headers(origin: str) -> dict[str, str]:
-    assertion = build_mcp_revocation_assertion(audience_url=_identity_audience(origin))
+    assertion = build_mcp_revocation_assertion(audience_url=_identity_audience(origin), **_signing_kwargs())
     return {'Authorization': f'Bearer {assertion}'}
 
 
@@ -106,7 +115,13 @@ def _refresh_revocations() -> bool:
         return False
     url = f'{origin}/api/v1/mcp/internal/mcp-revocations'
     try:
-        response = requests.get(url, headers=_revocation_headers(origin), timeout=5)
+        headers = _revocation_headers(origin)
+    except InternalAssertionError:
+        logger.warning('MCP revocation poll skipped: service assertion signing is not configured')
+        _mark_revocation_untrusted()
+        return False
+    try:
+        response = requests.get(url, headers=headers, timeout=5)
     except requests.RequestException as exc:
         logger.warning('MCP revocation poll failed: %s', type(exc).__name__)
         _mark_revocation_untrusted()
@@ -160,7 +175,11 @@ def forward_call_log(entry: dict) -> None:
     if not origin:
         return
     url = f'{origin}/api/v1/mcp/internal/mcp-call-logs'
-    assertion = build_mcp_call_log_assertion(audience_url=_identity_audience(origin))
+    try:
+        assertion = build_mcp_call_log_assertion(audience_url=_identity_audience(origin), **_signing_kwargs())
+    except InternalAssertionError:
+        logger.warning('MCP call log skipped: service assertion signing is not configured')
+        return
     body = {
         'agent_id': entry.get('agent_id'),
         'company_id': entry.get('company_id'),
