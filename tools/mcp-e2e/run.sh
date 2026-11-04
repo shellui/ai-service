@@ -111,8 +111,7 @@ log 'Python MCP SDK client'
 "${MCP_E2E_PYTHON}" "${E2E_DIR}/clients/run_py.py"
 
 log 'MCP tool inputSchema audit (strict client subsets)'
-SECRET_KEY="${E2E_AI_SECRET_KEY}" DEBUG=true PYTHONPATH="${ROOT}" \
-  uv run --directory "${ROOT}" python "${E2E_DIR}/clients/run_schema_audit.py"
+PYTHONPATH="${ROOT}" "${MCP_E2E_PYTHON}" "${E2E_DIR}/clients/run_schema_audit.py"
 
 log 'MCP Inspector CLI (tools/list with OAuth access token)'
 INSPECTOR_TOKEN="$(cat "${MCP_E2E_TOKEN_FILE}")"
