@@ -121,6 +121,8 @@ def complete_mcp_oauth_authorization(
         if verify.status_code not in (302, 303):
             raise RuntimeError(f'magic-link verify failed: HTTP {verify.status_code} {verify.text[:200]}')
         authorize_after_login = verify.headers.get('Location') or authorization_url
+        if authorize_after_login.startswith('/'):
+            authorize_after_login = urljoin(identity_origin, authorize_after_login)
         consent_page = get(authorize_after_login)
     elif first.status_code == 200:
         consent_page = first
