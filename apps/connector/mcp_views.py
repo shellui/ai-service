@@ -76,6 +76,35 @@ class PrefixingMcpServer(AggregatingMcpServer):
     def handle(self, request: HttpRequest, *, agent_claims: dict | None):
         return handle_mcp_gateway_request(self, request, agent_claims=agent_claims)
 
+    def _using_connector_tool_catalog(self, handler, request, req_id, params, agent_claims):
+        import shellui_django.mcp.gateway as gw
+        import shellui_django.mcp.server as srv
+
+        orig_gw, orig_srv = gw.tools_from_schema, srv.tools_from_schema
+        gw.tools_from_schema = srv.tools_from_schema = tools_from_schema
+        try:
+            return handler(request, req_id, params, agent_claims)
+        finally:
+            gw.tools_from_schema, srv.tools_from_schema = orig_gw, orig_srv
+
+    def _maybe_forward_tool_call(self, request, req_id, params, agent_claims):
+        return self._using_connector_tool_catalog(
+            lambda *args: super(PrefixingMcpServer, self)._maybe_forward_tool_call(*args),
+            request,
+            req_id,
+            params,
+            agent_claims,
+        )
+
+    def _tools_call(self, request, req_id, params, agent_claims):
+        return self._using_connector_tool_catalog(
+            lambda *args: super(PrefixingMcpServer, self)._tools_call(*args),
+            request,
+            req_id,
+            params,
+            agent_claims,
+        )
+
     def _aggregated_tools_list(self, req_id, agent_claims, params=None):
         agent = self._gateway.resolve_agent(agent_claims)
         if agent is None:

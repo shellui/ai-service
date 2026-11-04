@@ -204,6 +204,18 @@ class McpGatewayTests(TestCase):
         names = [t['name'] for t in prefixed_tool_catalog(local, remote)]
         self.assertEqual(names, ['dup_tool', 'storage_dup_tool', 'storage_unique_tool', 'identity_unique_tool'])
 
+    def test_list_services_tools_call(self, _rev_ok):
+        token = _agent_token(secret=self.secret, issuer=self.issuer)
+        response = self.client.post(
+            '/c/10/mcp',
+            data=_rpc('tools/call', name='list_services', arguments={}),
+            content_type='application/json',
+            **self._auth(token),
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        body = response.json()
+        self.assertNotIn('error', body.get('result') or body)
+
     def test_route_comes_from_prefix_only(self, _rev_ok):
         from apps.connector.mcp_views import _get_server
 
