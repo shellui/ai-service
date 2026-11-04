@@ -8,7 +8,8 @@ from django.views.decorators.csrf import csrf_exempt
 from drf_spectacular.generators import SchemaGenerator
 from rest_framework.request import Request
 from shellui_django.mcp.gateway import AggregatingMcpServer, McpGatewayConfig, public_mcp_tools, scope_service_ids
-from shellui_django.mcp.openapi_tools import tools_from_schema
+from apps.connector.mcp_openapi_tools import tools_from_schema
+from apps.connector.mcp_tool_schema import normalize_mcp_tool
 
 from apps.authapi.agent_tokens import authenticate_agent_bearer
 from apps.connector.mcp_protocol import handle_mcp_gateway_request, paginate_tools
@@ -92,6 +93,7 @@ class PrefixingMcpServer(AggregatingMcpServer):
             if tools is not None:
                 remote[service_id] = tools
         tools = prefixed_tool_catalog(local, remote)
+        tools = [normalize_mcp_tool(tool) for tool in tools]
         page = paginate_tools(tools, params or {})
         return JsonResponse(self._result(req_id, page))
 
