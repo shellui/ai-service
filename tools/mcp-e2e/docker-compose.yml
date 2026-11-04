@@ -1,0 +1,111 @@
+# MCP client conformance stack (local + CI). DEBUG-only seeding on identity; never for production.
+name: shellui-mcp-e2e
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: shellui
+      POSTGRES_PASSWORD: shellui-e2e-not-for-production
+      POSTGRES_DB: postgres
+    volumes:
+      - ./init-databases.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U shellui -d postgres']
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:8-alpine
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  identity:
+    build:
+      context: ${IDENTITY_SRC:?Set IDENTITY_SRC to identity-service checkout}
+      dockerfile: Dockerfile
+      target: dev
+    image: shellui/identity-service:mcp-e2e
+    environment:
+      SECRET_KEY: ${E2E_IDENTITY_SECRET_KEY}
+      DEBUG: 'true'
+      IDENTITY_DEV_SEED: 'true'
+      POSTGRES_DATABASE_URL: postgres://shellui:shellui-e2e-not-for-production@postgres:5432/identity
+      REDIS_URL: redis://redis:6379/0
+      JWT_ISSUER: http://localhost:8001
+      JWT_AUDIENCE: shellui
+      AI_SERVICE_URL: http://localhost:8006
+      AI_SERVICE_ISSUER: http://localhost:8006
+      AI_SERVICE_JWKS_URL: http://ai:8000/.well-known/jwks.json
+      ALLOWED_HOSTS: localhost,127.0.0.1,identity,ai,host.docker.internal
+      CSRF_TRUSTED_ORIGINS: http://localhost:8001,http://127.0.0.1:8001,http://localhost:8006,http://127.0.0.1:8006
+      AUTH_RATE_LIMIT_ENABLED: 'false'
+      MCP_DYNAMIC_CLIENT_REGISTRATION: 'true'
+      OAUTH_ALLOW_LOOPBACK_REDIRECTS: 'true'
+      EMAIL_BACKEND: config.email_backends.ConsoleEmailBackend
+    volumes:
+      - ${IDENTITY_SRC}:/app
+    ports:
+      - '8001:8000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'python -c "import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:8000/health/live\")"']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  ai:
+    build:
+      context: ${AI_SRC:-../..}
+      dockerfile: Dockerfile
+      target: dev
+    image: shellui/ai-service:mcp-e2e
+    environment:
+      SECRET_KEY: ${E2E_AI_SECRET_KEY}
+      DEBUG: 'true'
+      JWT_HS256_FALLBACK_SECRET: ${E2E_IDENTITY_SECRET_KEY}
+      POSTGRES_DATABASE_URL: postgres://shellui:shellui-e2e-not-for-production@postgres:5432/ai
+      REDIS_URL: redis://redis:6379/5
+      IDENTITY_ISSUER: http://localhost:8001
+      IDENTITY_AUDIENCE: shellui
+      IDENTITY_JWKS_URL: http://identity:8000/.well-known/jwks.json
+      IDENTITY_SERVICE_URL: http://identity:8000
+      IDENTITY_SERVICE_PUBLIC_URL: http://localhost:8001
+      AI_PUBLIC_URL: http://localhost:8006
+      AI_SERVICE_ISSUER: http://localhost:8006
+      AI_SERVICE_SIGNING_KEY_FILE: /run/e2e/signing.pem
+      AI_SERVICE_SIGNING_KID: ${E2E_AI_SIGNING_KID}
+      STORAGE_SERVICE_URL: ''
+      HOSTING_SERVICE_URL: ''
+      EMAIL_SERVICE_URL: ''
+      SAAS_SERVICE_URL: ''
+      ALLOWED_HOSTS: localhost,127.0.0.1,ai,identity,host.docker.internal
+      CSRF_TRUSTED_ORIGINS: http://localhost:8006,http://127.0.0.1:8006
+      AUTH_RATE_LIMIT_ENABLED: 'false'
+    volumes:
+      - ${AI_SRC:-../..}:/app
+      - ./.e2e-secrets:/run/e2e:ro
+    ports:
+      - '8006:8000'
+    depends_on:
+      identity:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'python -c "import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:8000/ai/v1/health\")"']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s

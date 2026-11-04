@@ -37,6 +37,10 @@ See for sample https://raw.githubusercontent.com/favoloso/conventional-changelog
 - Pre-release Docker smoke generates ephemeral RS256 signing material (same pattern as smoke JWKS).
 - Bump `shellui-django[mcp]` to 0.4.0 and sign internal MCP assertions to identity (revocation polling, call logs) with `AI_SERVICE_SIGNING_KEY` and `AI_SERVICE_ISSUER`, failing closed when unset.
 
+### 🛠 Improvements
+
+- CI MCP client conformance job (`tools/mcp-e2e/run.sh`): identity + ai stack, official TypeScript and Python MCP SDK OAuth flows, MCP Inspector CLI `tools/list`, form-urlencoded token exchange, and negative OAuth/tenant checks.
+
 ### 🐛 Bug Fixes
 
 - MCP gateway `initialize` responses now include `serverInfo` and negotiate `protocolVersion` per the 2025-06-18 spec (workaround for `shellui-django` 0.4.0 omitting `serverInfo`); Streamable HTTP accepts `notifications/initialized` with `202`, validates `Accept` and `MCP-Protocol-Version`, issues `Mcp-Session-Id`, and paginates `tools/list`.

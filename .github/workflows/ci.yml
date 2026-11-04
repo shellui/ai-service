@@ -177,9 +177,54 @@ jobs:
           test -f docs/index.md
           test -f docs/configuration.md
           test -f docs/mcp.md
+          test -f docs/mcp-e2e-conformance.md
           test -f docs/getting-started.md
           test -f docs/sidebars.js
           node --check docs/sidebars.js
+
+  mcp-e2e:
+    name: MCP client conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout ai-service
+        uses: actions/checkout@v4
+
+      - name: Checkout identity-service (develop)
+        uses: actions/checkout@v4
+        with:
+          repository: shellui/identity-service
+          ref: develop
+          path: identity-service
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          version: '0.12.1'
+          python-version: '3.14'
+          enable-cache: true
+          cache-dependency-glob: |
+            uv.lock
+            tools/mcp-e2e/uv.lock
+
+      - name: Sync ai-service (signing key helper)
+        run: uv sync --frozen --no-dev
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tools/mcp-e2e/clients/package-lock.json
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Run MCP client conformance
+        env:
+          IDENTITY_SRC: ${{ github.workspace }}/identity-service
+          AI_SRC: ${{ github.workspace }}
+        run: ./tools/mcp-e2e/run.sh
 
   docker:
     name: Docker build
