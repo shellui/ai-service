@@ -121,7 +121,7 @@ def _get_server() -> AggregatingMcpServer:
             local_service_id='ai',
             tools_cache_ttl_seconds=int(getattr(settings, 'MCP_GATEWAY_TOOLS_CACHE_TTL_SECONDS', 30)),
             downstream_timeout_seconds=float(getattr(settings, 'MCP_GATEWAY_DOWNSTREAM_TIMEOUT_SECONDS', 5)),
-            instructions_title='Shellui AI MCP gateway.',
+            instructions_title='Shellui AI MCP gateway',
         )
         _server = PrefixingMcpServer(
             gateway=gateway,

@@ -319,13 +319,30 @@ def audit_tool_input_schemas(tools: list[dict[str, Any]]) -> list[tuple[str, str
 
 
 def normalize_mcp_tool(tool: dict[str, Any], root: dict[str, Any] | None = None) -> dict[str, Any]:
+    from apps.connector.mcp_tool_presentation import sanitize_shellui_copy
+
     out = deepcopy(tool)
     schema = out.get('inputSchema')
     if isinstance(schema, dict):
         out['inputSchema'] = normalize_tool_input_schema(schema, root)
-    desc = str(out.get('description') or '').strip()
+    desc = sanitize_shellui_copy(str(out.get('description') or '').strip())
     name = str(out.get('name') or 'tool')
-    if len(desc) < 12:
+    if len(desc) < 24:
         op = (out.get('_meta') or {}).get('operationId') or name
-        out['description'] = desc or f'Shellui MCP tool `{name}` ({op}).'
+        desc = desc or f'Shellui MCP tool {name} ({op}).'
+    out['description'] = desc
+    if not str(out.get('title') or '').strip():
+        from apps.connector.mcp_tool_presentation import human_title_from_tool_name
+
+        out['title'] = human_title_from_tool_name(name)
+    if not isinstance(out.get('annotations'), dict):
+        meta = out.get('_meta') or {}
+        read_only = bool(meta.get('read_only'))
+        destructive = bool(meta.get('destructive'))
+        out['annotations'] = {
+            'readOnlyHint': read_only,
+            'destructiveHint': destructive and not read_only,
+            'idempotentHint': read_only,
+            'openWorldHint': False,
+        }
     return out

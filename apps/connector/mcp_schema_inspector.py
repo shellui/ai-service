@@ -25,6 +25,11 @@ _ISSUE_MISSING_REQUIRED = 'missing_required'
 _ISSUE_BROAD_OBJECT = 'broad_free_form_object'
 _ISSUE_VAGUE_TOOL = 'vague_tool_metadata'
 _ISSUE_DUPLICATE = 'duplicate_tool_metadata'
+_ISSUE_MISSING_TITLE = 'missing_title'
+_ISSUE_MISSING_ANNOTATIONS = 'missing_annotations'
+_ISSUE_INCOMPLETE_ANNOTATIONS = 'incomplete_annotations'
+_ISSUE_MISSING_OUTPUT = 'missing_output_schema'
+_ISSUE_SHELLUI_COPY = 'shellui_copy'
 
 
 @dataclass(frozen=True)
@@ -200,10 +205,25 @@ def _required_mismatch(tool: dict[str, Any], issues: list[tuple[str, str]]) -> N
 
 
 def inspect_tool(service: str, tool: dict[str, Any]) -> list[SchemaIssue]:
+    from apps.connector.mcp_tool_presentation import inspect_tool_presentation
+
     name = str(tool.get('name') or '<unnamed>')
     issues: list[tuple[str, str]] = []
+    for path, cat in inspect_tool_presentation(tool):
+        if cat == 'missing_title':
+            issues.append((path, _ISSUE_MISSING_TITLE))
+        elif cat == 'missing_description':
+            issues.append((path, _ISSUE_MISSING_DESC))
+        elif cat.startswith('shellui_copy'):
+            issues.append((path, _ISSUE_SHELLUI_COPY))
+        elif cat == 'missing_annotations':
+            issues.append((path, _ISSUE_MISSING_ANNOTATIONS))
+        elif cat == 'incomplete_annotations':
+            issues.append((path, _ISSUE_INCOMPLETE_ANNOTATIONS))
+        elif cat == 'missing_output_schema':
+            issues.append((path, _ISSUE_MISSING_OUTPUT))
     desc = str(tool.get('description') or '').strip()
-    if len(desc) < 12 or desc.replace('_', ' ') == name.replace('_', ' '):
+    if len(desc) < 24 or desc.replace('_', ' ') == name.replace('_', ' '):
         issues.append(('_tool.description', _ISSUE_VAGUE_TOOL))
     if not desc:
         issues.append(('_tool.description', _ISSUE_MISSING_DESC))
@@ -256,6 +276,8 @@ def format_report_markdown(
     before: dict[str, list[SchemaIssue]],
     after: dict[str, list[SchemaIssue]],
     name_mappings: list[dict[str, str]] | None = None,
+    presentation_before: dict[str, dict[str, Any]] | None = None,
+    presentation_after: dict[str, dict[str, Any]] | None = None,
 ) -> str:
     lines = [
         '# MCP tool inputSchema audit (all services)',
@@ -297,6 +319,30 @@ def format_report_markdown(
     after_cat: Counter[str] = Counter(i.category for issues in after.values() for i in issues)
     for cat in sorted(cats):
         lines.append(f'- `{cat}`: {before_cat.get(cat, 0)} → {after_cat.get(cat, 0)}')
+    pres_before = presentation_before or {}
+    pres_after = presentation_after or {}
+    if pres_before or pres_after:
+        lines.extend(
+            [
+                '',
+                '## Tool presentation coverage',
+                '',
+                '| Service | Tools | Title | Description | Annotations | Output schema | Input props described |',
+                '| --- | ---: | ---: | ---: | ---: | ---: | ---: |',
+            ]
+        )
+        for svc in sorted(set(pres_before.keys()) | set(pres_after.keys())):
+            after_row = pres_after.get(svc) or {}
+            n = after_row.get('tools') or pres_before.get(svc, {}).get('tools') or 0
+            lines.append(
+                f"| {svc} | {n} | {after_row.get('with_title', 0)}/{n} | "
+                f"{after_row.get('with_description', 0)}/{n} | "
+                f"{after_row.get('with_annotations', 0)}/{n} | "
+                f"{after_row.get('with_output_schema', 0)}/{n} | "
+                f"{after_row.get('input_properties_with_description', 0)}/"
+                f"{after_row.get('input_properties', 0)} |"
+            )
+        lines.append('')
     lines.extend(
         [
             '',

@@ -67,6 +67,7 @@ def _export_schema(service: str, repo: Path) -> dict:
 def _audit_service(service: str, schema: dict) -> dict:
     from apps.connector.mcp_openapi_tools import tools_from_schema
     from apps.connector.mcp_schema_inspector import inspect_tools, legacy_tools_from_schema, summarize_issues
+    from apps.connector.mcp_tool_presentation import presentation_coverage
     from apps.connector.mcp_tool_schema import normalize_mcp_tool
     from apps.connector.mcp_tool_naming import gateway_export_name
 
@@ -106,6 +107,8 @@ def _audit_service(service: str, schema: dict) -> dict:
         'before_summary': summarize_issues(before_issues),
         'after_source_summary': summarize_issues(after_source_issues),
         'after_gateway_summary': summarize_issues(after_gateway_issues),
+        'presentation_before': presentation_coverage(legacy),
+        'presentation_after': presentation_coverage(after_gateway),
     }
 
 
@@ -146,11 +149,15 @@ def main() -> int:
         after[svc] = [SchemaIssue(**item) for item in row['after_gateway']]
 
     name_mappings = [row for payload in payloads for row in payload.get('name_mappings', [])]
+    presentation_before = {row['service']: row.get('presentation_before', {}) for row in payloads if not row.get('error')}
+    presentation_after = {row['service']: row.get('presentation_after', {}) for row in payloads if not row.get('error')}
     markdown = format_report_markdown(
         services=services_meta,
         before=before,
         after=after,
         name_mappings=name_mappings,
+        presentation_before=presentation_before,
+        presentation_after=presentation_after,
     )
     DOC_PATH.write_text(markdown, encoding='utf-8')
     ARTIFACT_PATH.write_text(json.dumps(payloads, indent=2), encoding='utf-8')

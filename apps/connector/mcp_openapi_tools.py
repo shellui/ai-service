@@ -13,6 +13,7 @@ from apps.connector.mcp_tool_naming import (
     select_newest_api_version_operations,
 )
 
+from apps.connector.mcp_tool_presentation import apply_tool_presentation
 from apps.connector.mcp_tool_schema import normalize_tool_input_schema, openapi_schema_to_json_schema
 
 
@@ -119,7 +120,7 @@ def tools_from_schema(schema: dict[str, Any]) -> list[dict[str, Any]]:
             },
             schema,
         )
-        tools.append(
+        tool = apply_tool_presentation(
             {
                 'name': name,
                 'description': description,
@@ -137,8 +138,28 @@ def tools_from_schema(schema: dict[str, Any]) -> list[dict[str, Any]]:
                     'read_only': access['read_only'],
                     'destructive': access['destructive'],
                     'mcp_tagged': access['tagged'],
+                    'has_json_response': bool(
+                        isinstance(operation.get('responses'), dict)
+                        and any(
+                            isinstance((operation.get('responses') or {}).get(code), dict)
+                            and isinstance(
+                                ((operation.get('responses') or {}).get(code) or {}).get('content'), dict
+                            )
+                            and (
+                                ((operation.get('responses') or {}).get(code) or {})
+                                .get('content', {})
+                                .get('application/json')
+                            )
+                            for code in ('200', '201', '202')
+                        )
+                    ),
                 },
-            }
+            },
+            operation=operation,
+            method=method,
+            path=path,
+            root=schema,
         )
+        tools.append(tool)
     tools.sort(key=lambda t: t['name'])
     return tools

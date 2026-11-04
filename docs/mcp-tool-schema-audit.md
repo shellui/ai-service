@@ -9,18 +9,32 @@ combinators, refs, nullable type arrays, required query/body fields).
 
 | Service | Tools | Issues before | Issues after |
 | --- | ---: | ---: | ---: |
-| ai | 1 | 0 | 0 |
-| email | 65 | 126 | 0 |
-| hosting | 29 | 56 | 0 |
-| identity | 62 | 154 | 0 |
+| ai | 1 | 2 | 0 |
+| email | 65 | 272 | 0 |
+| hosting | 29 | 120 | 0 |
+| identity | 62 | 320 | 0 |
 | saas | 0 | 0 | 0 |
-| storage | 44 | 96 | 0 |
-| **Total** | **201** | **432** | **0** |
+| storage | 44 | 222 | 0 |
+| **Total** | **201** | **936** | **0** |
 
 ### By category (before → after)
 
-- `missing_description`: 245 → 0
+- `missing_annotations`: 201 → 0
+- `missing_description`: 296 → 0
+- `missing_title`: 201 → 0
 - `untyped_or_empty`: 187 → 0
+- `vague_tool_metadata`: 51 → 0
+
+## Tool presentation coverage
+
+| Service | Tools | Title | Description | Annotations | Output schema | Input props described |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| ai | 1 | 1/1 | 1/1 | 1/1 | 0/1 | 2/2 |
+| email | 65 | 65/65 | 65/65 | 65/65 | 56/65 | 349/349 |
+| hosting | 29 | 29/29 | 29/29 | 29/29 | 27/29 | 139/139 |
+| identity | 62 | 62/62 | 62/62 | 62/62 | 4/62 | 346/346 |
+| storage | 44 | 44/44 | 44/44 | 44/44 | 28/44 | 238/238 |
+
 
 ## Tool name mapping (legacy → service → gateway)
 
@@ -266,202 +280,354 @@ Machine-readable full dump: `docs/mcp-tool-schema-audit.json` (`before` / `after
 SaaS is omitted (no public `saas-service` checkout in this audit); **201** tools matches the
 five audited services (identity, storage, hosting, email, ai gateway).
 
-### ai (0 issues)
+### ai (2 issues)
+- **api_v1_mcp_services_list** (2 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
 
-### email (126 issues)
-- **api_v1_actions_deliveries_list** (1 issues)
+### email (272 issues)
+- **api_v1_actions_deliveries_list** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.company_id`: untyped_or_empty
-- **api_v1_actions_deliveries_requeue** (2 issues)
+- **api_v1_actions_deliveries_requeue** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.delivery_id`: missing_description
-- **api_v1_actions_deliveries_retrieve** (2 issues)
+- **api_v1_actions_deliveries_retrieve** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.delivery_id`: missing_description
-- **api_v1_actions_event_log_list** (1 issues)
+- **api_v1_actions_event_log_list** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.company_id`: untyped_or_empty
-- **api_v1_actions_event_log_retention_retrieve** (1 issues)
+- **api_v1_actions_event_log_retention_retrieve** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.company_id`: untyped_or_empty
-- **api_v1_actions_event_log_retrieve** (2 issues)
+- **api_v1_actions_event_log_retrieve** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.id`: missing_description
-- **api_v1_actions_event_log_types_list** (1 issues)
+- **api_v1_actions_event_log_types_list** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.company_id`: untyped_or_empty
-- **api_v1_actions_events_list** (1 issues)
+- **api_v1_actions_events_list** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.company_id`: untyped_or_empty
-- **api_v1_actions_rules_create** (1 issues)
+- **api_v1_actions_rules_create** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.company_id`: untyped_or_empty
-- **api_v1_actions_rules_destroy** (2 issues)
+- **api_v1_actions_rules_destroy** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.id`: missing_description
-- **api_v1_actions_rules_list** (1 issues)
+- **api_v1_actions_rules_list** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.company_id`: untyped_or_empty
-- **api_v1_actions_rules_partial_update** (2 issues)
+- **api_v1_actions_rules_partial_update** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.id`: missing_description
-- **api_v1_actions_rules_retrieve** (2 issues)
+- **api_v1_actions_rules_retrieve** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.id`: missing_description
-- **api_v1_actions_rules_rotate_secret** (2 issues)
+- **api_v1_actions_rules_rotate_secret** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.id`: missing_description
-- **api_v1_actions_rules_send_test** (2 issues)
+- **api_v1_actions_rules_send_test** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.id`: missing_description
-- **api_v1_auth_link_hosts_retrieve** (1 issues)
+- **api_v1_auth_link_hosts_retrieve** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.company_id`: untyped_or_empty
-- **api_v1_auth_link_hosts_update** (1 issues)
+- **api_v1_auth_link_hosts_update** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.company_id`: untyped_or_empty
-- **api_v1_broadcasts_create** (1 issues)
+- **api_v1_broadcasts_create** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.company_id`: untyped_or_empty
-- **api_v1_broadcasts_destroy** (2 issues)
+- **api_v1_broadcasts_destroy** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.broadcast_id`: missing_description
-- **api_v1_broadcasts_list** (1 issues)
+- **api_v1_broadcasts_list** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.company_id`: untyped_or_empty
-- **api_v1_broadcasts_partial_update** (2 issues)
+- **api_v1_broadcasts_partial_update** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.broadcast_id`: missing_description
-- **api_v1_broadcasts_preview** (2 issues)
+- **api_v1_broadcasts_preview** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.broadcast_id`: missing_description
-- **api_v1_broadcasts_retrieve** (2 issues)
+- **api_v1_broadcasts_retrieve** (6 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.broadcast_id`: missing_description
-- **api_v1_broadcasts_send** (2 issues)
+- **api_v1_broadcasts_send** (6 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.broadcast_id`: missing_description
-- **api_v1_library_create** (1 issues)
+- **api_v1_catalog_retrieve** (2 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
+- **api_v1_library_create** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.company_id`: untyped_or_empty
-- **api_v1_library_destroy** (3 issues)
+- **api_v1_library_destroy** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.company_id`: untyped_or_empty
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.library_id`: missing_description
-- **api_v1_library_list** (1 issues)
+- **api_v1_library_list** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.company_id`: untyped_or_empty
-- **api_v1_library_retrieve** (3 issues)
+- **api_v1_library_retrieve** (7 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
   - `properties.query.properties.company_id`: untyped_or_empty
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.library_id`: missing_description
-- **api_v1_library_update** (3 issues)
+- **api_v1_library_update** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.company_id`: untyped_or_empty
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.library_id`: missing_description
-- **api_v1_messages_cancel** (2 issues)
+- **api_v1_messages_cancel** (6 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.message_id`: missing_description
-- **api_v1_messages_list** (5 issues)
+- **api_v1_messages_list** (7 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.company_id`: untyped_or_empty
   - `properties.query.properties.lane`: untyped_or_empty
   - `properties.query.properties.limit`: untyped_or_empty
   - `properties.query.properties.status`: untyped_or_empty
   - `properties.query.properties.template_key`: untyped_or_empty
-- **api_v1_messages_retrieve** (2 issues)
+- **api_v1_messages_retrieve** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.message_id`: missing_description
-- **api_v1_newsletters_create** (1 issues)
+- **api_v1_newsletters_create** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.company_id`: untyped_or_empty
-- **api_v1_newsletters_destroy** (2 issues)
+- **api_v1_newsletters_destroy** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.newsletter_id`: missing_description
-- **api_v1_newsletters_list** (1 issues)
+- **api_v1_newsletters_list** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
   - `properties.query.properties.company_id`: untyped_or_empty
-- **api_v1_newsletters_partial_update** (2 issues)
+- **api_v1_newsletters_partial_update** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.newsletter_id`: missing_description
-- **api_v1_newsletters_retrieve** (2 issues)
+- **api_v1_newsletters_retrieve** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.newsletter_id`: missing_description
-- **api_v1_newsletters_rotate_key** (2 issues)
+- **api_v1_newsletters_rotate_key** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.newsletter_id`: missing_description
-- **api_v1_newsletters_subscribers_create** (2 issues)
+- **api_v1_newsletters_subscribers_create** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.newsletter_id`: missing_description
-- **api_v1_newsletters_subscribers_destroy** (3 issues)
+- **api_v1_newsletters_subscribers_destroy** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.newsletter_id`: missing_description
   - `properties.path_params.properties.subscriber_id`: missing_description
-- **api_v1_newsletters_subscribers_export** (3 issues)
+- **api_v1_newsletters_subscribers_export** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.status`: untyped_or_empty
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.newsletter_id`: missing_description
-- **api_v1_newsletters_subscribers_import** (2 issues)
+- **api_v1_newsletters_subscribers_import** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.newsletter_id`: missing_description
-- **api_v1_newsletters_subscribers_list** (5 issues)
+- **api_v1_newsletters_subscribers_list** (7 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.email`: untyped_or_empty
   - `properties.query.properties.page`: untyped_or_empty
   - `properties.query.properties.status`: untyped_or_empty
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.newsletter_id`: missing_description
-- **api_v1_provider_retrieve** (1 issues)
+- **api_v1_provider_retrieve** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.company_id`: untyped_or_empty
-- **api_v1_provider_test_send** (1 issues)
+- **api_v1_provider_test_send** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.company_id`: untyped_or_empty
-- **api_v1_provider_update** (1 issues)
+- **api_v1_provider_update** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.company_id`: untyped_or_empty
-- **api_v1_rules_create** (1 issues)
+- **api_v1_rules_create** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.company_id`: untyped_or_empty
-- **api_v1_rules_destroy** (3 issues)
+- **api_v1_rules_destroy** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.company_id`: untyped_or_empty
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.rule_id`: missing_description
-- **api_v1_rules_list** (2 issues)
+- **api_v1_rules_list** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.company_id`: untyped_or_empty
   - `properties.query.properties.service`: untyped_or_empty
-- **api_v1_rules_partial_update** (3 issues)
+- **api_v1_rules_partial_update** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.company_id`: untyped_or_empty
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.rule_id`: missing_description
-- **api_v1_rules_retrieve** (3 issues)
+- **api_v1_rules_retrieve** (7 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
   - `properties.query.properties.company_id`: untyped_or_empty
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.rule_id`: missing_description
-- **api_v1_stats_retrieve** (5 issues)
+- **api_v1_stats_retrieve** (7 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.company_id`: untyped_or_empty
   - `properties.query.properties.event_type`: untyped_or_empty
   - `properties.query.properties.from`: untyped_or_empty
   - `properties.query.properties.lane`: untyped_or_empty
   - `properties.query.properties.to`: untyped_or_empty
-- **api_v1_suppressions_create** (1 issues)
+- **api_v1_suppressions_create** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
   - `properties.query.properties.company_id`: untyped_or_empty
-- **api_v1_suppressions_destroy** (2 issues)
+- **api_v1_suppressions_destroy** (6 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.suppression_id`: missing_description
-- **api_v1_suppressions_list** (1 issues)
+- **api_v1_suppressions_list** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.company_id`: untyped_or_empty
-- **api_v1_template_versions_create** (2 issues)
+- **api_v1_template_versions_create** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.template_id`: missing_description
-- **api_v1_template_versions_list** (2 issues)
+- **api_v1_template_versions_list** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.template_id`: missing_description
-- **api_v1_template_versions_publish** (3 issues)
+- **api_v1_template_versions_publish** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.template_id`: missing_description
   - `properties.path_params.properties.number`: missing_description
-- **api_v1_template_versions_retrieve** (3 issues)
+- **api_v1_template_versions_retrieve** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.template_id`: missing_description
   - `properties.path_params.properties.number`: missing_description
-- **api_v1_templates_destroy** (2 issues)
+- **api_v1_templates_destroy** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.template_id`: missing_description
-- **api_v1_templates_list** (2 issues)
+- **api_v1_templates_list** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.company_id`: untyped_or_empty
   - `properties.query.properties.event_type`: untyped_or_empty
-- **api_v1_templates_render_preview** (2 issues)
+- **api_v1_templates_render_preview** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.template_id`: missing_description
-- **api_v1_templates_retrieve** (2 issues)
+- **api_v1_templates_retrieve** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.template_id`: missing_description
-- **api_v1_templates_send_test** (2 issues)
+- **api_v1_templates_send_test** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.template_id`: missing_description
 
-### hosting (56 issues)
-- **api_v1_actions_deliveries_list** (9 issues)
+### hosting (120 issues)
+- **api_v1_actions_deliveries_list** (11 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.action_rule_id`: untyped_or_empty
   - `properties.query.properties.company_id`: untyped_or_empty
   - `properties.query.properties.created_after`: untyped_or_empty
@@ -471,13 +637,19 @@ five audited services (identity, storage, hosting, email, ai gateway).
   - `properties.query.properties.page_size`: untyped_or_empty
   - `properties.query.properties.scheduled_job_run_id`: untyped_or_empty
   - `properties.query.properties.status`: untyped_or_empty
-- **api_v1_actions_deliveries_requeue** (2 issues)
+- **api_v1_actions_deliveries_requeue** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.delivery_id`: missing_description
-- **api_v1_actions_deliveries_retrieve** (2 issues)
+- **api_v1_actions_deliveries_retrieve** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.delivery_id`: missing_description
-- **api_v1_actions_event_log_list** (8 issues)
+- **api_v1_actions_event_log_list** (10 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.company_id`: untyped_or_empty
   - `properties.query.properties.created_after`: untyped_or_empty
   - `properties.query.properties.created_before`: untyped_or_empty
@@ -486,63 +658,129 @@ five audited services (identity, storage, hosting, email, ai gateway).
   - `properties.query.properties.page_size`: untyped_or_empty
   - `properties.query.properties.user`: untyped_or_empty
   - `properties.query.properties.user_id`: untyped_or_empty
-- **api_v1_actions_event_log_retention_retrieve** (1 issues)
+- **api_v1_actions_event_log_retention_retrieve** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.company_id`: untyped_or_empty
-- **api_v1_actions_event_log_retrieve** (2 issues)
+- **api_v1_actions_event_log_retrieve** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.id`: missing_description
-- **api_v1_actions_event_log_types_list** (1 issues)
+- **api_v1_actions_event_log_types_list** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.company_id`: untyped_or_empty
-- **api_v1_actions_events_list** (1 issues)
+- **api_v1_actions_events_list** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.company_id`: untyped_or_empty
-- **api_v1_actions_rules_create** (1 issues)
+- **api_v1_actions_rules_create** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.company_id`: untyped_or_empty
-- **api_v1_actions_rules_destroy** (2 issues)
+- **api_v1_actions_rules_destroy** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.id`: missing_description
-- **api_v1_actions_rules_list** (1 issues)
+- **api_v1_actions_rules_list** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.company_id`: untyped_or_empty
-- **api_v1_actions_rules_partial_update** (2 issues)
+- **api_v1_actions_rules_partial_update** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.id`: missing_description
-- **api_v1_actions_rules_retrieve** (2 issues)
+- **api_v1_actions_rules_retrieve** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.id`: missing_description
-- **api_v1_actions_rules_rotate_secret** (2 issues)
+- **api_v1_actions_rules_rotate_secret** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.id`: missing_description
-- **api_v1_actions_rules_send_test** (2 issues)
+- **api_v1_actions_rules_send_test** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.id`: missing_description
-- **hosting_v1_apps_deployments_create** (2 issues)
+- **hosting_v1_access_request_create** (2 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
+- **hosting_v1_apps_create** (2 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
+- **hosting_v1_apps_deployments_create** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.app_ref`: missing_description
-- **hosting_v1_apps_deployments_finalize_create** (3 issues)
+- **hosting_v1_apps_deployments_finalize_create** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.app_ref`: missing_description
   - `properties.path_params.properties.deployment_id`: missing_description
-- **hosting_v1_apps_deployments_list** (2 issues)
+- **hosting_v1_apps_deployments_list** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.app_ref`: missing_description
-- **hosting_v1_apps_deployments_rollback_create** (3 issues)
+- **hosting_v1_apps_deployments_rollback_create** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.app_ref`: missing_description
   - `properties.path_params.properties.deployment_id`: missing_description
-- **hosting_v1_apps_destroy** (2 issues)
+- **hosting_v1_apps_destroy** (6 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.app_ref`: missing_description
-- **hosting_v1_apps_renew_expiry_create** (2 issues)
+- **hosting_v1_apps_list** (2 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
+- **hosting_v1_apps_renew_expiry_create** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.app_ref`: missing_description
-- **hosting_v1_apps_retrieve** (2 issues)
+- **hosting_v1_apps_retrieve** (6 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.app_ref`: missing_description
-- **hosting_v1_deploy_tokens_revoke_create** (2 issues)
+- **hosting_v1_deploy_tokens_retrieve** (2 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
+- **hosting_v1_deploy_tokens_revoke_create** (6 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.token_id`: missing_description
+- **hosting_v1_preview_create** (2 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
+- **hosting_v1_stats_retrieve** (2 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
 
-### identity (154 issues)
-- **api_v1_actions_deliveries_list** (9 issues)
+### identity (320 issues)
+- **api_v1_actions_deliveries_list** (13 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
   - `properties.query.properties.action_rule_id`: untyped_or_empty
   - `properties.query.properties.created_after`: untyped_or_empty
   - `properties.query.properties.created_before`: untyped_or_empty
@@ -552,61 +790,109 @@ five audited services (identity, storage, hosting, email, ai gateway).
   - `properties.query.properties.page_size`: untyped_or_empty
   - `properties.query.properties.scheduled_job_run_id`: untyped_or_empty
   - `properties.query.properties.status`: untyped_or_empty
-- **api_v1_actions_deliveries_requeue** (3 issues)
+- **api_v1_actions_deliveries_requeue** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.format`: untyped_or_empty
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.delivery_id`: missing_description
-- **api_v1_actions_deliveries_retrieve** (3 issues)
+- **api_v1_actions_deliveries_retrieve** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.format`: untyped_or_empty
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.delivery_id`: missing_description
-- **api_v1_actions_events_list** (1 issues)
+- **api_v1_actions_events_list** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.format`: untyped_or_empty
-- **api_v1_actions_rules_create** (1 issues)
+- **api_v1_actions_rules_create** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.format`: untyped_or_empty
-- **api_v1_actions_rules_destroy** (3 issues)
-  - `properties.query.properties.format`: untyped_or_empty
-  - `properties.path_params`: missing_description
-  - `properties.path_params.properties.id`: missing_description
-- **api_v1_actions_rules_list** (1 issues)
-  - `properties.query.properties.format`: untyped_or_empty
-- **api_v1_actions_rules_partial_update** (3 issues)
-  - `properties.query.properties.format`: untyped_or_empty
-  - `properties.path_params`: missing_description
-  - `properties.path_params.properties.id`: missing_description
-- **api_v1_actions_rules_retrieve** (3 issues)
+- **api_v1_actions_rules_destroy** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.format`: untyped_or_empty
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.id`: missing_description
-- **api_v1_actions_rules_rotate_secret** (3 issues)
+- **api_v1_actions_rules_list** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
+  - `properties.query.properties.format`: untyped_or_empty
+- **api_v1_actions_rules_partial_update** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.format`: untyped_or_empty
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.id`: missing_description
-- **api_v1_actions_rules_send_test** (3 issues)
+- **api_v1_actions_rules_retrieve** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.format`: untyped_or_empty
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.id`: missing_description
-- **api_v1_auth_methods_partial_update** (1 issues)
-  - `properties.query.properties.format`: untyped_or_empty
-- **api_v1_auth_methods_retrieve** (1 issues)
-  - `properties.query.properties.format`: untyped_or_empty
-- **api_v1_auth_methods_update** (1 issues)
-  - `properties.query.properties.format`: untyped_or_empty
-- **api_v1_companies_list** (1 issues)
-  - `properties.query.properties.format`: untyped_or_empty
-- **api_v1_companies_partial_update** (3 issues)
+- **api_v1_actions_rules_rotate_secret** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.format`: untyped_or_empty
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.id`: missing_description
-- **api_v1_companies_retrieve** (3 issues)
+- **api_v1_actions_rules_send_test** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.format`: untyped_or_empty
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.id`: missing_description
-- **api_v1_companies_update** (3 issues)
+- **api_v1_auth_methods_partial_update** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
+  - `properties.query.properties.format`: untyped_or_empty
+- **api_v1_auth_methods_retrieve** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
+  - `properties.query.properties.format`: untyped_or_empty
+- **api_v1_auth_methods_update** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
+  - `properties.query.properties.format`: untyped_or_empty
+- **api_v1_companies_list** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
+  - `properties.query.properties.format`: untyped_or_empty
+- **api_v1_companies_partial_update** (7 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
   - `properties.query.properties.format`: untyped_or_empty
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.id`: missing_description
-- **api_v1_events_list** (9 issues)
+- **api_v1_companies_retrieve** (7 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
+  - `properties.query.properties.format`: untyped_or_empty
+  - `properties.path_params`: missing_description
+  - `properties.path_params.properties.id`: missing_description
+- **api_v1_companies_update** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
+  - `properties.query.properties.format`: untyped_or_empty
+  - `properties.path_params`: missing_description
+  - `properties.path_params.properties.id`: missing_description
+- **api_v1_events_list** (13 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
   - `properties.query.properties.created_after`: untyped_or_empty
   - `properties.query.properties.created_before`: untyped_or_empty
   - `properties.query.properties.event_type`: untyped_or_empty
@@ -616,119 +902,219 @@ five audited services (identity, storage, hosting, email, ai gateway).
   - `properties.query.properties.scope`: untyped_or_empty
   - `properties.query.properties.user`: untyped_or_empty
   - `properties.query.properties.user_id`: untyped_or_empty
-- **api_v1_events_retention_retrieve** (1 issues)
+- **api_v1_events_retention_retrieve** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.format`: untyped_or_empty
-- **api_v1_events_retrieve** (4 issues)
+- **api_v1_events_retrieve** (8 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
   - `properties.query.properties.format`: untyped_or_empty
   - `properties.query.properties.scope`: untyped_or_empty
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.id`: missing_description
-- **api_v1_events_types_list** (1 issues)
+- **api_v1_events_types_list** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
   - `properties.query.properties.format`: untyped_or_empty
-- **api_v1_groups_create** (1 issues)
+- **api_v1_groups_create** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
   - `properties.query.properties.format`: untyped_or_empty
-- **api_v1_groups_destroy** (3 issues)
-  - `properties.query.properties.format`: untyped_or_empty
-  - `properties.path_params`: missing_description
-  - `properties.path_params.properties.id`: missing_description
-- **api_v1_groups_list** (1 issues)
-  - `properties.query.properties.format`: untyped_or_empty
-- **api_v1_groups_partial_update** (3 issues)
-  - `properties.query.properties.format`: untyped_or_empty
-  - `properties.path_params`: missing_description
-  - `properties.path_params.properties.id`: missing_description
-- **api_v1_groups_retrieve** (3 issues)
-  - `properties.query.properties.format`: untyped_or_empty
-  - `properties.path_params`: missing_description
-  - `properties.path_params.properties.id`: missing_description
-- **api_v1_groups_update** (3 issues)
+- **api_v1_groups_destroy** (7 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
   - `properties.query.properties.format`: untyped_or_empty
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.id`: missing_description
-- **api_v1_hosting_oauth_redirects_destroy** (1 issues)
+- **api_v1_groups_list** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
   - `properties.query.properties.format`: untyped_or_empty
-- **api_v1_hosting_oauth_redirects_update** (1 issues)
-  - `properties.query.properties.format`: untyped_or_empty
-- **api_v1_invitations_create** (1 issues)
-  - `properties.query.properties.format`: untyped_or_empty
-- **api_v1_invitations_destroy** (3 issues)
-  - `properties.query.properties.format`: untyped_or_empty
-  - `properties.path_params`: missing_description
-  - `properties.path_params.properties.id`: missing_description
-- **api_v1_invitations_list** (1 issues)
-  - `properties.query.properties.format`: untyped_or_empty
-- **api_v1_invitations_revoke** (3 issues)
+- **api_v1_groups_partial_update** (7 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
   - `properties.query.properties.format`: untyped_or_empty
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.id`: missing_description
-- **api_v1_mcp_services_list** (1 issues)
-  - `properties.query.properties.format`: untyped_or_empty
-- **api_v1_oauth_clients_create** (1 issues)
-  - `properties.query.properties.format`: untyped_or_empty
-- **api_v1_oauth_clients_destroy** (3 issues)
-  - `properties.query.properties.format`: untyped_or_empty
-  - `properties.path_params`: missing_description
-  - `properties.path_params.properties.id`: missing_description
-- **api_v1_oauth_clients_list** (1 issues)
-  - `properties.query.properties.format`: untyped_or_empty
-- **api_v1_oauth_clients_retrieve** (3 issues)
+- **api_v1_groups_retrieve** (7 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
   - `properties.query.properties.format`: untyped_or_empty
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.id`: missing_description
-- **api_v1_oauth_clients_update** (3 issues)
+- **api_v1_groups_update** (7 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
   - `properties.query.properties.format`: untyped_or_empty
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.id`: missing_description
-- **api_v1_oauth_provider_catalog_retrieve** (2 issues)
+- **api_v1_hosting_oauth_redirects_destroy** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
+  - `properties.query.properties.format`: untyped_or_empty
+- **api_v1_hosting_oauth_redirects_update** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
+  - `properties.query.properties.format`: untyped_or_empty
+- **api_v1_invitations_create** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
+  - `properties.query.properties.format`: untyped_or_empty
+- **api_v1_invitations_destroy** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
+  - `properties.query.properties.format`: untyped_or_empty
+  - `properties.path_params`: missing_description
+  - `properties.path_params.properties.id`: missing_description
+- **api_v1_invitations_list** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
+  - `properties.query.properties.format`: untyped_or_empty
+- **api_v1_invitations_revoke** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
+  - `properties.query.properties.format`: untyped_or_empty
+  - `properties.path_params`: missing_description
+  - `properties.path_params.properties.id`: missing_description
+- **api_v1_mcp_services_list** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
+  - `properties.query.properties.format`: untyped_or_empty
+- **api_v1_oauth_clients_create** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
+  - `properties.query.properties.format`: untyped_or_empty
+- **api_v1_oauth_clients_destroy** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
+  - `properties.query.properties.format`: untyped_or_empty
+  - `properties.path_params`: missing_description
+  - `properties.path_params.properties.id`: missing_description
+- **api_v1_oauth_clients_list** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
+  - `properties.query.properties.format`: untyped_or_empty
+- **api_v1_oauth_clients_retrieve** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
+  - `properties.query.properties.format`: untyped_or_empty
+  - `properties.path_params`: missing_description
+  - `properties.path_params.properties.id`: missing_description
+- **api_v1_oauth_clients_update** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
+  - `properties.query.properties.format`: untyped_or_empty
+  - `properties.path_params`: missing_description
+  - `properties.path_params.properties.id`: missing_description
+- **api_v1_oauth_provider_catalog_retrieve** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.format`: untyped_or_empty
   - `properties.query.properties.include_legacy`: untyped_or_empty
-- **api_v1_oauth_redirects_create** (1 issues)
+- **api_v1_oauth_redirects_create** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.format`: untyped_or_empty
-- **api_v1_oauth_redirects_destroy** (3 issues)
-  - `properties.query.properties.format`: untyped_or_empty
-  - `properties.path_params`: missing_description
-  - `properties.path_params.properties.id`: missing_description
-- **api_v1_oauth_redirects_list** (1 issues)
-  - `properties.query.properties.format`: untyped_or_empty
-- **api_v1_oauth_redirects_partial_update** (3 issues)
+- **api_v1_oauth_redirects_destroy** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.format`: untyped_or_empty
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.id`: missing_description
-- **api_v1_oauth_redirects_retrieve** (3 issues)
+- **api_v1_oauth_redirects_list** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
+  - `properties.query.properties.format`: untyped_or_empty
+- **api_v1_oauth_redirects_partial_update** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.format`: untyped_or_empty
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.id`: missing_description
-- **api_v1_oauth_social_apps_create** (1 issues)
-  - `properties.query.properties.format`: untyped_or_empty
-- **api_v1_oauth_social_apps_destroy** (3 issues)
-  - `properties.query.properties.format`: untyped_or_empty
-  - `properties.path_params`: missing_description
-  - `properties.path_params.properties.id`: missing_description
-- **api_v1_oauth_social_apps_list** (1 issues)
-  - `properties.query.properties.format`: untyped_or_empty
-- **api_v1_oauth_social_apps_update** (3 issues)
+- **api_v1_oauth_redirects_retrieve** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.format`: untyped_or_empty
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.id`: missing_description
-- **api_v1_personal_access_tokens_create** (1 issues)
+- **api_v1_oauth_social_apps_create** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.format`: untyped_or_empty
-- **api_v1_personal_access_tokens_list** (1 issues)
+- **api_v1_oauth_social_apps_destroy** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.format`: untyped_or_empty
-- **api_v1_personal_access_tokens_revoke** (3 issues)
+  - `properties.path_params`: missing_description
+  - `properties.path_params.properties.id`: missing_description
+- **api_v1_oauth_social_apps_list** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
+  - `properties.query.properties.format`: untyped_or_empty
+- **api_v1_oauth_social_apps_update** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
+  - `properties.query.properties.format`: untyped_or_empty
+  - `properties.path_params`: missing_description
+  - `properties.path_params.properties.id`: missing_description
+- **api_v1_personal_access_tokens_create** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
+  - `properties.query.properties.format`: untyped_or_empty
+- **api_v1_personal_access_tokens_list** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
+  - `properties.query.properties.format`: untyped_or_empty
+- **api_v1_personal_access_tokens_revoke** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.format`: untyped_or_empty
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.key_id`: missing_description
-- **api_v1_scim_status** (1 issues)
+- **api_v1_scim_status** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.format`: untyped_or_empty
-- **api_v1_scim_tokens_create** (1 issues)
+- **api_v1_scim_tokens_create** (3 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.format`: untyped_or_empty
-- **api_v1_scim_tokens_list** (1 issues)
+- **api_v1_scim_tokens_list** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
   - `properties.query.properties.format`: untyped_or_empty
-- **api_v1_scim_tokens_revoke** (3 issues)
+- **api_v1_scim_tokens_revoke** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.format`: untyped_or_empty
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.token_id`: missing_description
-- **api_v1_users_audience** (12 issues)
+- **api_v1_users_audience** (14 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.access`: untyped_or_empty
   - `properties.query.properties.count_only`: untyped_or_empty
   - `properties.query.properties.format`: untyped_or_empty
@@ -741,28 +1127,44 @@ five audited services (identity, storage, hosting, email, ai gateway).
   - `properties.query.properties.seen_after`: untyped_or_empty
   - `properties.query.properties.seen_before`: untyped_or_empty
   - `properties.query.properties.user_ids`: untyped_or_empty
-- **api_v1_users_destroy** (3 issues)
+- **api_v1_users_destroy** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.format`: untyped_or_empty
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.id`: missing_description
-- **api_v1_users_list** (4 issues)
+- **api_v1_users_list** (8 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
   - `properties.query.properties.format`: untyped_or_empty
   - `properties.query.properties.page`: untyped_or_empty
   - `properties.query.properties.page_size`: untyped_or_empty
   - `properties.query.properties.q`: untyped_or_empty
-- **api_v1_users_retrieve** (3 issues)
+- **api_v1_users_retrieve** (7 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
   - `properties.query.properties.format`: untyped_or_empty
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.id`: missing_description
-- **api_v1_users_update** (3 issues)
+- **api_v1_users_update** (7 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
   - `properties.query.properties.format`: untyped_or_empty
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.id`: missing_description
 
 ### saas (0 issues)
 
-### storage (96 issues)
-- **api_v1_actions_deliveries_list** (9 issues)
+### storage (222 issues)
+- **api_v1_actions_deliveries_list** (11 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.action_rule_id`: untyped_or_empty
   - `properties.query.properties.company_id`: untyped_or_empty
   - `properties.query.properties.created_after`: untyped_or_empty
@@ -772,13 +1174,19 @@ five audited services (identity, storage, hosting, email, ai gateway).
   - `properties.query.properties.page_size`: untyped_or_empty
   - `properties.query.properties.scheduled_job_run_id`: untyped_or_empty
   - `properties.query.properties.status`: untyped_or_empty
-- **api_v1_actions_deliveries_requeue** (2 issues)
+- **api_v1_actions_deliveries_requeue** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.delivery_id`: missing_description
-- **api_v1_actions_deliveries_retrieve** (2 issues)
+- **api_v1_actions_deliveries_retrieve** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.delivery_id`: missing_description
-- **api_v1_actions_event_log_list** (8 issues)
+- **api_v1_actions_event_log_list** (10 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.created_after`: untyped_or_empty
   - `properties.query.properties.created_before`: untyped_or_empty
   - `properties.query.properties.event_type`: untyped_or_empty
@@ -787,110 +1195,238 @@ five audited services (identity, storage, hosting, email, ai gateway).
   - `properties.query.properties.scope`: untyped_or_empty
   - `properties.query.properties.user`: untyped_or_empty
   - `properties.query.properties.user_id`: untyped_or_empty
-- **api_v1_actions_event_log_retrieve** (3 issues)
+- **api_v1_actions_event_log_retention_retrieve** (2 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
+- **api_v1_actions_event_log_retrieve** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.scope`: untyped_or_empty
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.id`: missing_description
-- **api_v1_actions_rules_destroy** (2 issues)
+- **api_v1_actions_event_log_types_list** (2 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
+- **api_v1_actions_events_list** (2 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
+- **api_v1_actions_rules_create** (2 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
+- **api_v1_actions_rules_destroy** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.id`: missing_description
-- **api_v1_actions_rules_partial_update** (2 issues)
+- **api_v1_actions_rules_list** (2 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
+- **api_v1_actions_rules_partial_update** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.id`: missing_description
-- **api_v1_actions_rules_retrieve** (2 issues)
+- **api_v1_actions_rules_retrieve** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.id`: missing_description
-- **api_v1_actions_rules_rotate_secret** (2 issues)
+- **api_v1_actions_rules_rotate_secret** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.id`: missing_description
-- **api_v1_actions_rules_send_test** (2 issues)
+- **api_v1_actions_rules_send_test** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.id`: missing_description
-- **storage_v1_access_grant_destroy** (2 issues)
+- **storage_v1_access_grant_create** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
+- **storage_v1_access_grant_destroy** (6 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.grant_id`: missing_description
-- **storage_v1_access_grant_list** (4 issues)
+- **storage_v1_access_grant_list** (8 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
   - `properties.query.properties.bucket`: untyped_or_empty
   - `properties.query.properties.include_effective`: untyped_or_empty
   - `properties.query.properties.resource_id`: untyped_or_empty
   - `properties.query.properties.resource_type`: untyped_or_empty
-- **storage_v1_bucket_empty_create** (2 issues)
+- **storage_v1_bucket_empty_create** (6 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.bucket_id`: missing_description
-- **storage_v1_bucket_retrieve** (2 issues)
+- **storage_v1_bucket_list** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
+- **storage_v1_bucket_retrieve** (6 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.bucket_id`: missing_description
-- **storage_v1_object_authenticated_retrieve** (4 issues)
+- **storage_v1_object_authenticated_retrieve** (6 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.download`: untyped_or_empty
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.bucket_id`: missing_description
   - `properties.path_params.properties.object_path`: missing_description
-- **storage_v1_object_create** (3 issues)
+- **storage_v1_object_copy_create** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
+- **storage_v1_object_create** (7 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.bucket_id`: missing_description
   - `properties.path_params.properties.object_path`: missing_description
-- **storage_v1_object_delete_many** (2 issues)
+- **storage_v1_object_delete_many** (6 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.bucket_id`: missing_description
-- **storage_v1_object_destroy** (3 issues)
+- **storage_v1_object_destroy** (7 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.bucket_id`: missing_description
   - `properties.path_params.properties.object_path`: missing_description
-- **storage_v1_object_id_retrieve** (2 issues)
+- **storage_v1_object_id_retrieve** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.object_id`: missing_description
-- **storage_v1_object_info_authenticated_retrieve** (3 issues)
+- **storage_v1_object_info_authenticated_retrieve** (7 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.bucket_id`: missing_description
   - `properties.path_params.properties.object_path`: missing_description
-- **storage_v1_object_list_create** (2 issues)
+- **storage_v1_object_list_create** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.bucket_id`: missing_description
-- **storage_v1_object_prefix_create** (2 issues)
+- **storage_v1_object_move_create** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
+- **storage_v1_object_prefix_create** (6 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.bucket_id`: missing_description
-- **storage_v1_object_prefix_destroy** (2 issues)
+- **storage_v1_object_prefix_destroy** (6 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.bucket_id`: missing_description
-- **storage_v1_object_prefix_retrieve** (3 issues)
+- **storage_v1_object_prefix_retrieve** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.query.properties.prefix`: untyped_or_empty
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.bucket_id`: missing_description
-- **storage_v1_object_retrieve** (4 issues)
+- **storage_v1_object_retrieve** (8 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
   - `properties.query.properties.download`: untyped_or_empty
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.bucket_id`: missing_description
   - `properties.path_params.properties.object_path`: missing_description
-- **storage_v1_object_sign_create** (2 issues)
+- **storage_v1_object_sign_create** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.bucket_id`: missing_description
-- **storage_v1_object_sign_path_create** (3 issues)
+- **storage_v1_object_sign_path_create** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.bucket_id`: missing_description
   - `properties.path_params.properties.object_path`: missing_description
-- **storage_v1_object_update** (3 issues)
+- **storage_v1_object_update** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.bucket_id`: missing_description
   - `properties.path_params.properties.object_path`: missing_description
-- **storage_v1_quota_company_update** (2 issues)
+- **storage_v1_quota_company_update** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.company_id`: missing_description
-- **storage_v1_quota_company_user_update** (3 issues)
+- **storage_v1_quota_company_user_update** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.company_id`: missing_description
   - `properties.path_params.properties.user_id`: missing_description
-- **storage_v1_share_create** (3 issues)
+- **storage_v1_quota_retrieve** (4 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
+- **storage_v1_share_create** (7 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.bucket_id`: missing_description
   - `properties.path_params.properties.object_path`: missing_description
-- **storage_v1_share_link_destroy** (2 issues)
+- **storage_v1_share_link_destroy** (6 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.token`: missing_description
-- **storage_v1_share_list** (3 issues)
+- **storage_v1_share_list** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.annotations`: missing_annotations
   - `properties.path_params`: missing_description
   - `properties.path_params.properties.bucket_id`: missing_description
   - `properties.path_params.properties.object_path`: missing_description
-- **storage_v1_stats_retrieve** (1 issues)
+- **storage_v1_stats_retrieve** (5 issues)
+  - `_tool.title`: missing_title
+  - `_tool.description`: missing_description
+  - `_tool.annotations`: missing_annotations
+  - `_tool.description`: vague_tool_metadata
   - `properties.query.properties.days`: untyped_or_empty
 
 ## Remaining exceptions

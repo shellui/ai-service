@@ -10,14 +10,34 @@
         "gateway_tool_name": "list_services"
       }
     ],
-    "before": [],
+    "before": [
+      {
+        "service": "ai",
+        "tool": "api_v1_mcp_services_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "ai",
+        "tool": "api_v1_mcp_services_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      }
+    ],
     "after_source": [],
     "after_gateway": [],
     "before_summary": {
-      "total_issues": 0,
-      "tools_with_issues": 0,
-      "by_category": {},
-      "by_service": {}
+      "total_issues": 2,
+      "tools_with_issues": 1,
+      "by_category": {
+        "missing_annotations": 1,
+        "missing_title": 1
+      },
+      "by_service": {
+        "ai": 2
+      }
     },
     "after_source_summary": {
       "total_issues": 0,
@@ -30,6 +50,24 @@
       "tools_with_issues": 0,
       "by_category": {},
       "by_service": {}
+    },
+    "presentation_before": {
+      "tools": 1,
+      "with_title": 0,
+      "with_description": 1,
+      "with_annotations": 0,
+      "with_output_schema": 0,
+      "input_properties": 2,
+      "input_properties_with_description": 0
+    },
+    "presentation_after": {
+      "tools": 1,
+      "with_title": 1,
+      "with_description": 1,
+      "with_annotations": 1,
+      "with_output_schema": 0,
+      "input_properties": 2,
+      "input_properties_with_description": 2
     }
   },
   {
@@ -413,6 +451,34 @@
       {
         "service": "identity",
         "tool": "api_v1_actions_deliveries_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_deliveries_list",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_deliveries_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_deliveries_list",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_deliveries_list",
         "path": "properties.query.properties.action_rule_id",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
@@ -476,6 +542,20 @@
       {
         "service": "identity",
         "tool": "api_v1_actions_deliveries_requeue",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_deliveries_requeue",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_deliveries_requeue",
         "path": "properties.query.properties.format",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
@@ -493,6 +573,20 @@
         "path": "properties.path_params.properties.delivery_id",
         "category": "missing_description",
         "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_deliveries_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_deliveries_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "identity",
@@ -518,6 +612,20 @@
       {
         "service": "identity",
         "tool": "api_v1_actions_events_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_events_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_events_list",
         "path": "properties.query.properties.format",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
@@ -525,9 +633,37 @@
       {
         "service": "identity",
         "tool": "api_v1_actions_rules_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_rules_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_rules_create",
         "path": "properties.query.properties.format",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_rules_destroy",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_rules_destroy",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "identity",
@@ -553,9 +689,37 @@
       {
         "service": "identity",
         "tool": "api_v1_actions_rules_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_rules_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_rules_list",
         "path": "properties.query.properties.format",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_rules_partial_update",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_rules_partial_update",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "identity",
@@ -581,6 +745,20 @@
       {
         "service": "identity",
         "tool": "api_v1_actions_rules_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_rules_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_rules_retrieve",
         "path": "properties.query.properties.format",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
@@ -602,6 +780,20 @@
       {
         "service": "identity",
         "tool": "api_v1_actions_rules_rotate_secret",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_rules_rotate_secret",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_rules_rotate_secret",
         "path": "properties.query.properties.format",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
@@ -619,6 +811,20 @@
         "path": "properties.path_params.properties.id",
         "category": "missing_description",
         "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_rules_send_test",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_actions_rules_send_test",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "identity",
@@ -644,9 +850,51 @@
       {
         "service": "identity",
         "tool": "api_v1_auth_methods_partial_update",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_auth_methods_partial_update",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_auth_methods_partial_update",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_auth_methods_partial_update",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_auth_methods_partial_update",
         "path": "properties.query.properties.format",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_auth_methods_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_auth_methods_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "identity",
@@ -658,9 +906,65 @@
       {
         "service": "identity",
         "tool": "api_v1_auth_methods_update",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_auth_methods_update",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_auth_methods_update",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_auth_methods_update",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_auth_methods_update",
         "path": "properties.query.properties.format",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_companies_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_companies_list",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_companies_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_companies_list",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
       },
       {
         "service": "identity",
@@ -672,6 +976,34 @@
       {
         "service": "identity",
         "tool": "api_v1_companies_partial_update",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_companies_partial_update",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_companies_partial_update",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_companies_partial_update",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_companies_partial_update",
         "path": "properties.query.properties.format",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
@@ -693,6 +1025,34 @@
       {
         "service": "identity",
         "tool": "api_v1_companies_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_companies_retrieve",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_companies_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_companies_retrieve",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_companies_retrieve",
         "path": "properties.query.properties.format",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
@@ -714,6 +1074,20 @@
       {
         "service": "identity",
         "tool": "api_v1_companies_update",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_companies_update",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_companies_update",
         "path": "properties.query.properties.format",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
@@ -731,6 +1105,34 @@
         "path": "properties.path_params.properties.id",
         "category": "missing_description",
         "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_events_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_events_list",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_events_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_events_list",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
       },
       {
         "service": "identity",
@@ -798,9 +1200,51 @@
       {
         "service": "identity",
         "tool": "api_v1_events_retention_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_events_retention_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_events_retention_retrieve",
         "path": "properties.query.properties.format",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_events_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_events_retrieve",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_events_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_events_retrieve",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
       },
       {
         "service": "identity",
@@ -833,6 +1277,34 @@
       {
         "service": "identity",
         "tool": "api_v1_events_types_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_events_types_list",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_events_types_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_events_types_list",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_events_types_list",
         "path": "properties.query.properties.format",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
@@ -840,9 +1312,65 @@
       {
         "service": "identity",
         "tool": "api_v1_groups_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_groups_create",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_groups_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_groups_create",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_groups_create",
         "path": "properties.query.properties.format",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_groups_destroy",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_groups_destroy",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_groups_destroy",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_groups_destroy",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
       },
       {
         "service": "identity",
@@ -868,9 +1396,65 @@
       {
         "service": "identity",
         "tool": "api_v1_groups_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_groups_list",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_groups_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_groups_list",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_groups_list",
         "path": "properties.query.properties.format",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_groups_partial_update",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_groups_partial_update",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_groups_partial_update",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_groups_partial_update",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
       },
       {
         "service": "identity",
@@ -896,6 +1480,34 @@
       {
         "service": "identity",
         "tool": "api_v1_groups_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_groups_retrieve",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_groups_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_groups_retrieve",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_groups_retrieve",
         "path": "properties.query.properties.format",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
@@ -913,6 +1525,34 @@
         "path": "properties.path_params.properties.id",
         "category": "missing_description",
         "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_groups_update",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_groups_update",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_groups_update",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_groups_update",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
       },
       {
         "service": "identity",
@@ -938,9 +1578,37 @@
       {
         "service": "identity",
         "tool": "api_v1_hosting_oauth_redirects_destroy",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_hosting_oauth_redirects_destroy",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_hosting_oauth_redirects_destroy",
         "path": "properties.query.properties.format",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_hosting_oauth_redirects_update",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_hosting_oauth_redirects_update",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "identity",
@@ -952,9 +1620,51 @@
       {
         "service": "identity",
         "tool": "api_v1_invitations_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_invitations_create",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_invitations_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_invitations_create",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_invitations_create",
         "path": "properties.query.properties.format",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_invitations_destroy",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_invitations_destroy",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "identity",
@@ -980,9 +1690,51 @@
       {
         "service": "identity",
         "tool": "api_v1_invitations_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_invitations_list",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_invitations_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_invitations_list",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_invitations_list",
         "path": "properties.query.properties.format",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_invitations_revoke",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_invitations_revoke",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "identity",
@@ -1008,6 +1760,20 @@
       {
         "service": "identity",
         "tool": "api_v1_mcp_services_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_mcp_services_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_mcp_services_list",
         "path": "properties.query.properties.format",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
@@ -1015,9 +1781,37 @@
       {
         "service": "identity",
         "tool": "api_v1_oauth_clients_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_clients_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_clients_create",
         "path": "properties.query.properties.format",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_clients_destroy",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_clients_destroy",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "identity",
@@ -1043,9 +1837,37 @@
       {
         "service": "identity",
         "tool": "api_v1_oauth_clients_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_clients_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_clients_list",
         "path": "properties.query.properties.format",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_clients_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_clients_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "identity",
@@ -1071,6 +1893,20 @@
       {
         "service": "identity",
         "tool": "api_v1_oauth_clients_update",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_clients_update",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_clients_update",
         "path": "properties.query.properties.format",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
@@ -1088,6 +1924,20 @@
         "path": "properties.path_params.properties.id",
         "category": "missing_description",
         "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_provider_catalog_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_provider_catalog_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "identity",
@@ -1106,9 +1956,37 @@
       {
         "service": "identity",
         "tool": "api_v1_oauth_redirects_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_redirects_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_redirects_create",
         "path": "properties.query.properties.format",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_redirects_destroy",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_redirects_destroy",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "identity",
@@ -1134,9 +2012,37 @@
       {
         "service": "identity",
         "tool": "api_v1_oauth_redirects_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_redirects_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_redirects_list",
         "path": "properties.query.properties.format",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_redirects_partial_update",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_redirects_partial_update",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "identity",
@@ -1158,6 +2064,20 @@
         "path": "properties.path_params.properties.id",
         "category": "missing_description",
         "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_redirects_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_redirects_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "identity",
@@ -1183,9 +2103,37 @@
       {
         "service": "identity",
         "tool": "api_v1_oauth_social_apps_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_social_apps_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_social_apps_create",
         "path": "properties.query.properties.format",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_social_apps_destroy",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_social_apps_destroy",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "identity",
@@ -1211,9 +2159,37 @@
       {
         "service": "identity",
         "tool": "api_v1_oauth_social_apps_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_social_apps_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_social_apps_list",
         "path": "properties.query.properties.format",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_social_apps_update",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_oauth_social_apps_update",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "identity",
@@ -1239,6 +2215,20 @@
       {
         "service": "identity",
         "tool": "api_v1_personal_access_tokens_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_personal_access_tokens_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_personal_access_tokens_create",
         "path": "properties.query.properties.format",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
@@ -1246,9 +2236,37 @@
       {
         "service": "identity",
         "tool": "api_v1_personal_access_tokens_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_personal_access_tokens_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_personal_access_tokens_list",
         "path": "properties.query.properties.format",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_personal_access_tokens_revoke",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_personal_access_tokens_revoke",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "identity",
@@ -1274,9 +2292,37 @@
       {
         "service": "identity",
         "tool": "api_v1_scim_status",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_scim_status",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_scim_status",
         "path": "properties.query.properties.format",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_scim_tokens_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_scim_tokens_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "identity",
@@ -1288,9 +2334,51 @@
       {
         "service": "identity",
         "tool": "api_v1_scim_tokens_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_scim_tokens_list",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_scim_tokens_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_scim_tokens_list",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_scim_tokens_list",
         "path": "properties.query.properties.format",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_scim_tokens_revoke",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_scim_tokens_revoke",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "identity",
@@ -1312,6 +2400,20 @@
         "path": "properties.path_params.properties.token_id",
         "category": "missing_description",
         "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_audience",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_audience",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "identity",
@@ -1400,6 +2502,20 @@
       {
         "service": "identity",
         "tool": "api_v1_users_destroy",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_destroy",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_destroy",
         "path": "properties.query.properties.format",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
@@ -1417,6 +2533,34 @@
         "path": "properties.path_params.properties.id",
         "category": "missing_description",
         "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_list",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_list",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
       },
       {
         "service": "identity",
@@ -1449,6 +2593,34 @@
       {
         "service": "identity",
         "tool": "api_v1_users_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_retrieve",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_retrieve",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_retrieve",
         "path": "properties.query.properties.format",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
@@ -1466,6 +2638,34 @@
         "path": "properties.path_params.properties.id",
         "category": "missing_description",
         "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_update",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_update",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_update",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "identity",
+        "tool": "api_v1_users_update",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
       },
       {
         "service": "identity",
@@ -1492,14 +2692,17 @@
     "after_source": [],
     "after_gateway": [],
     "before_summary": {
-      "total_issues": 154,
+      "total_issues": 320,
       "tools_with_issues": 62,
       "by_category": {
-        "missing_description": 60,
-        "untyped_or_empty": 94
+        "missing_annotations": 62,
+        "missing_description": 81,
+        "missing_title": 62,
+        "untyped_or_empty": 94,
+        "vague_tool_metadata": 21
       },
       "by_service": {
-        "identity": 154
+        "identity": 320
       }
     },
     "after_source_summary": {
@@ -1513,6 +2716,24 @@
       "tools_with_issues": 0,
       "by_category": {},
       "by_service": {}
+    },
+    "presentation_before": {
+      "tools": 62,
+      "with_title": 0,
+      "with_description": 41,
+      "with_annotations": 0,
+      "with_output_schema": 0,
+      "input_properties": 278,
+      "input_properties_with_description": 0
+    },
+    "presentation_after": {
+      "tools": 62,
+      "with_title": 62,
+      "with_description": 62,
+      "with_annotations": 62,
+      "with_output_schema": 4,
+      "input_properties": 346,
+      "input_properties_with_description": 346
     }
   },
   {
@@ -1788,6 +3009,20 @@
       {
         "service": "storage",
         "tool": "api_v1_actions_deliveries_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_deliveries_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_deliveries_list",
         "path": "properties.query.properties.action_rule_id",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
@@ -1851,6 +3086,20 @@
       {
         "service": "storage",
         "tool": "api_v1_actions_deliveries_requeue",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_deliveries_requeue",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_deliveries_requeue",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -1865,6 +3114,20 @@
       {
         "service": "storage",
         "tool": "api_v1_actions_deliveries_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_deliveries_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_deliveries_retrieve",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -1875,6 +3138,20 @@
         "path": "properties.path_params.properties.delivery_id",
         "category": "missing_description",
         "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_event_log_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_event_log_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "storage",
@@ -1934,6 +3211,34 @@
       },
       {
         "service": "storage",
+        "tool": "api_v1_actions_event_log_retention_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_event_log_retention_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_event_log_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_event_log_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
         "tool": "api_v1_actions_event_log_retrieve",
         "path": "properties.query.properties.scope",
         "category": "untyped_or_empty",
@@ -1955,6 +3260,62 @@
       },
       {
         "service": "storage",
+        "tool": "api_v1_actions_event_log_types_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_event_log_types_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_events_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_events_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_rules_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_rules_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_rules_destroy",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_rules_destroy",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
         "tool": "api_v1_actions_rules_destroy",
         "path": "properties.path_params",
         "category": "missing_description",
@@ -1966,6 +3327,34 @@
         "path": "properties.path_params.properties.id",
         "category": "missing_description",
         "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_rules_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_rules_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_rules_partial_update",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_rules_partial_update",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "storage",
@@ -1984,6 +3373,20 @@
       {
         "service": "storage",
         "tool": "api_v1_actions_rules_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_rules_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_rules_retrieve",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -1998,6 +3401,20 @@
       {
         "service": "storage",
         "tool": "api_v1_actions_rules_rotate_secret",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_rules_rotate_secret",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_rules_rotate_secret",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -2012,6 +3429,20 @@
       {
         "service": "storage",
         "tool": "api_v1_actions_rules_send_test",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_rules_send_test",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "api_v1_actions_rules_send_test",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -2022,6 +3453,62 @@
         "path": "properties.path_params.properties.id",
         "category": "missing_description",
         "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_access_grant_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_access_grant_create",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_access_grant_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_access_grant_create",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_access_grant_destroy",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_access_grant_destroy",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_access_grant_destroy",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_access_grant_destroy",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
       },
       {
         "service": "storage",
@@ -2036,6 +3523,34 @@
         "path": "properties.path_params.properties.grant_id",
         "category": "missing_description",
         "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_access_grant_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_access_grant_list",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_access_grant_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_access_grant_list",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
       },
       {
         "service": "storage",
@@ -2068,6 +3583,34 @@
       {
         "service": "storage",
         "tool": "storage_v1_bucket_empty_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_bucket_empty_create",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_bucket_empty_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_bucket_empty_create",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_bucket_empty_create",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -2081,6 +3624,62 @@
       },
       {
         "service": "storage",
+        "tool": "storage_v1_bucket_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_bucket_list",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_bucket_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_bucket_list",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_bucket_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_bucket_retrieve",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_bucket_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_bucket_retrieve",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
+      },
+      {
+        "service": "storage",
         "tool": "storage_v1_bucket_retrieve",
         "path": "properties.path_params",
         "category": "missing_description",
@@ -2092,6 +3691,20 @@
         "path": "properties.path_params.properties.bucket_id",
         "category": "missing_description",
         "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_authenticated_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_authenticated_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "storage",
@@ -2123,6 +3736,62 @@
       },
       {
         "service": "storage",
+        "tool": "storage_v1_object_copy_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_copy_create",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_copy_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_copy_create",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_create",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_create",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
+      },
+      {
+        "service": "storage",
         "tool": "storage_v1_object_create",
         "path": "properties.path_params",
         "category": "missing_description",
@@ -2145,6 +3814,34 @@
       {
         "service": "storage",
         "tool": "storage_v1_object_delete_many",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_delete_many",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_delete_many",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_delete_many",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_delete_many",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -2155,6 +3852,34 @@
         "path": "properties.path_params.properties.bucket_id",
         "category": "missing_description",
         "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_destroy",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_destroy",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_destroy",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_destroy",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
       },
       {
         "service": "storage",
@@ -2176,6 +3901,20 @@
         "path": "properties.path_params.properties.object_path",
         "category": "missing_description",
         "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_id_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_id_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "storage",
@@ -2194,6 +3933,34 @@
       {
         "service": "storage",
         "tool": "storage_v1_object_info_authenticated_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_info_authenticated_retrieve",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_info_authenticated_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_info_authenticated_retrieve",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_info_authenticated_retrieve",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -2215,6 +3982,20 @@
       {
         "service": "storage",
         "tool": "storage_v1_object_list_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_list_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_list_create",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -2228,6 +4009,62 @@
       },
       {
         "service": "storage",
+        "tool": "storage_v1_object_move_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_move_create",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_move_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_move_create",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_prefix_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_prefix_create",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_prefix_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_prefix_create",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
+      },
+      {
+        "service": "storage",
         "tool": "storage_v1_object_prefix_create",
         "path": "properties.path_params",
         "category": "missing_description",
@@ -2243,6 +4080,34 @@
       {
         "service": "storage",
         "tool": "storage_v1_object_prefix_destroy",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_prefix_destroy",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_prefix_destroy",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_prefix_destroy",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_prefix_destroy",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -2253,6 +4118,20 @@
         "path": "properties.path_params.properties.bucket_id",
         "category": "missing_description",
         "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_prefix_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_prefix_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "storage",
@@ -2278,6 +4157,34 @@
       {
         "service": "storage",
         "tool": "storage_v1_object_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_retrieve",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_retrieve",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_retrieve",
         "path": "properties.query.properties.download",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
@@ -2306,6 +4213,20 @@
       {
         "service": "storage",
         "tool": "storage_v1_object_sign_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_sign_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_sign_create",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -2320,6 +4241,20 @@
       {
         "service": "storage",
         "tool": "storage_v1_object_sign_path_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_sign_path_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_sign_path_create",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -2341,6 +4276,20 @@
       {
         "service": "storage",
         "tool": "storage_v1_object_update",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_update",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_object_update",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -2358,6 +4307,20 @@
         "path": "properties.path_params.properties.object_path",
         "category": "missing_description",
         "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_quota_company_update",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_quota_company_update",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "storage",
@@ -2372,6 +4335,20 @@
         "path": "properties.path_params.properties.company_id",
         "category": "missing_description",
         "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_quota_company_user_update",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_quota_company_user_update",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "storage",
@@ -2396,6 +4373,62 @@
       },
       {
         "service": "storage",
+        "tool": "storage_v1_quota_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_quota_retrieve",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_quota_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_quota_retrieve",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_share_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_share_create",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_share_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_share_create",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
+      },
+      {
+        "service": "storage",
         "tool": "storage_v1_share_create",
         "path": "properties.path_params",
         "category": "missing_description",
@@ -2418,6 +4451,34 @@
       {
         "service": "storage",
         "tool": "storage_v1_share_link_destroy",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_share_link_destroy",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_share_link_destroy",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_share_link_destroy",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_share_link_destroy",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -2428,6 +4489,20 @@
         "path": "properties.path_params.properties.token",
         "category": "missing_description",
         "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_share_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_share_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "storage",
@@ -2453,6 +4528,34 @@
       {
         "service": "storage",
         "tool": "storage_v1_stats_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_stats_retrieve",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_stats_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_stats_retrieve",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_stats_retrieve",
         "path": "properties.query.properties.days",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
@@ -2461,14 +4564,17 @@
     "after_source": [],
     "after_gateway": [],
     "before_summary": {
-      "total_issues": 96,
-      "tools_with_issues": 34,
+      "total_issues": 222,
+      "tools_with_issues": 44,
       "by_category": {
-        "missing_description": 70,
-        "untyped_or_empty": 26
+        "missing_annotations": 44,
+        "missing_description": 89,
+        "missing_title": 44,
+        "untyped_or_empty": 26,
+        "vague_tool_metadata": 19
       },
       "by_service": {
-        "storage": 96
+        "storage": 222
       }
     },
     "after_source_summary": {
@@ -2482,6 +4588,24 @@
       "tools_with_issues": 0,
       "by_category": {},
       "by_service": {}
+    },
+    "presentation_before": {
+      "tools": 44,
+      "with_title": 0,
+      "with_description": 25,
+      "with_annotations": 0,
+      "with_output_schema": 0,
+      "input_properties": 184,
+      "input_properties_with_description": 0
+    },
+    "presentation_after": {
+      "tools": 44,
+      "with_title": 44,
+      "with_description": 44,
+      "with_annotations": 44,
+      "with_output_schema": 28,
+      "input_properties": 238,
+      "input_properties_with_description": 238
     }
   },
   {
@@ -2667,6 +4791,20 @@
       {
         "service": "hosting",
         "tool": "api_v1_actions_deliveries_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_deliveries_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_deliveries_list",
         "path": "properties.query.properties.action_rule_id",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
@@ -2730,6 +4868,20 @@
       {
         "service": "hosting",
         "tool": "api_v1_actions_deliveries_requeue",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_deliveries_requeue",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_deliveries_requeue",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -2744,6 +4896,20 @@
       {
         "service": "hosting",
         "tool": "api_v1_actions_deliveries_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_deliveries_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_deliveries_retrieve",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -2754,6 +4920,20 @@
         "path": "properties.path_params.properties.delivery_id",
         "category": "missing_description",
         "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_event_log_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_event_log_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "hosting",
@@ -2814,9 +4994,37 @@
       {
         "service": "hosting",
         "tool": "api_v1_actions_event_log_retention_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_event_log_retention_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_event_log_retention_retrieve",
         "path": "properties.query.properties.company_id",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_event_log_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_event_log_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "hosting",
@@ -2835,9 +5043,37 @@
       {
         "service": "hosting",
         "tool": "api_v1_actions_event_log_types_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_event_log_types_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_event_log_types_list",
         "path": "properties.query.properties.company_id",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_events_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_events_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "hosting",
@@ -2849,9 +5085,37 @@
       {
         "service": "hosting",
         "tool": "api_v1_actions_rules_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_rules_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_rules_create",
         "path": "properties.query.properties.company_id",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_rules_destroy",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_rules_destroy",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "hosting",
@@ -2870,6 +5134,20 @@
       {
         "service": "hosting",
         "tool": "api_v1_actions_rules_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_rules_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_rules_list",
         "path": "properties.query.properties.company_id",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
@@ -2877,6 +5155,20 @@
       {
         "service": "hosting",
         "tool": "api_v1_actions_rules_partial_update",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_rules_partial_update",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_rules_partial_update",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -2891,6 +5183,20 @@
       {
         "service": "hosting",
         "tool": "api_v1_actions_rules_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_rules_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_rules_retrieve",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -2905,6 +5211,20 @@
       {
         "service": "hosting",
         "tool": "api_v1_actions_rules_rotate_secret",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_rules_rotate_secret",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_rules_rotate_secret",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -2919,6 +5239,20 @@
       {
         "service": "hosting",
         "tool": "api_v1_actions_rules_send_test",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_rules_send_test",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "hosting",
+        "tool": "api_v1_actions_rules_send_test",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -2932,6 +5266,48 @@
       },
       {
         "service": "hosting",
+        "tool": "hosting_v1_access_request_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_access_request_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_deployments_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_deployments_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "hosting",
         "tool": "hosting_v1_apps_deployments_create",
         "path": "properties.path_params",
         "category": "missing_description",
@@ -2943,6 +5319,20 @@
         "path": "properties.path_params.properties.app_ref",
         "category": "missing_description",
         "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_deployments_finalize_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_deployments_finalize_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "hosting",
@@ -2968,6 +5358,20 @@
       {
         "service": "hosting",
         "tool": "hosting_v1_apps_deployments_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_deployments_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_deployments_list",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -2978,6 +5382,20 @@
         "path": "properties.path_params.properties.app_ref",
         "category": "missing_description",
         "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_deployments_rollback_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_deployments_rollback_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "hosting",
@@ -3003,6 +5421,34 @@
       {
         "service": "hosting",
         "tool": "hosting_v1_apps_destroy",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_destroy",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_destroy",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_destroy",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_destroy",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -3016,6 +5462,34 @@
       },
       {
         "service": "hosting",
+        "tool": "hosting_v1_apps_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_renew_expiry_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_renew_expiry_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "hosting",
         "tool": "hosting_v1_apps_renew_expiry_create",
         "path": "properties.path_params",
         "category": "missing_description",
@@ -3031,6 +5505,34 @@
       {
         "service": "hosting",
         "tool": "hosting_v1_apps_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_retrieve",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_retrieve",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_retrieve",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -3041,6 +5543,48 @@
         "path": "properties.path_params.properties.app_ref",
         "category": "missing_description",
         "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_deploy_tokens_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_deploy_tokens_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_deploy_tokens_revoke_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_deploy_tokens_revoke_create",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_deploy_tokens_revoke_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_deploy_tokens_revoke_create",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
       },
       {
         "service": "hosting",
@@ -3055,19 +5599,50 @@
         "path": "properties.path_params.properties.token_id",
         "category": "missing_description",
         "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_preview_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_preview_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_stats_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_stats_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       }
     ],
     "after_source": [],
     "after_gateway": [],
     "before_summary": {
-      "total_issues": 56,
-      "tools_with_issues": 23,
+      "total_issues": 120,
+      "tools_with_issues": 29,
       "by_category": {
-        "missing_description": 34,
-        "untyped_or_empty": 22
+        "missing_annotations": 29,
+        "missing_description": 37,
+        "missing_title": 29,
+        "untyped_or_empty": 22,
+        "vague_tool_metadata": 3
       },
       "by_service": {
-        "hosting": 56
+        "hosting": 120
       }
     },
     "after_source_summary": {
@@ -3081,6 +5656,24 @@
       "tools_with_issues": 0,
       "by_category": {},
       "by_service": {}
+    },
+    "presentation_before": {
+      "tools": 29,
+      "with_title": 0,
+      "with_description": 26,
+      "with_annotations": 0,
+      "with_output_schema": 0,
+      "input_properties": 114,
+      "input_properties_with_description": 0
+    },
+    "presentation_after": {
+      "tools": 29,
+      "with_title": 29,
+      "with_description": 29,
+      "with_annotations": 29,
+      "with_output_schema": 27,
+      "input_properties": 139,
+      "input_properties_with_description": 139
     }
   },
   {
@@ -3482,9 +6075,37 @@
       {
         "service": "email",
         "tool": "api_v1_actions_deliveries_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_deliveries_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_deliveries_list",
         "path": "properties.query.properties.company_id",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_deliveries_requeue",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_deliveries_requeue",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "email",
@@ -3499,6 +6120,20 @@
         "path": "properties.path_params.properties.delivery_id",
         "category": "missing_description",
         "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_deliveries_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_deliveries_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "email",
@@ -3517,6 +6152,20 @@
       {
         "service": "email",
         "tool": "api_v1_actions_event_log_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_event_log_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_event_log_list",
         "path": "properties.query.properties.company_id",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
@@ -3524,9 +6173,37 @@
       {
         "service": "email",
         "tool": "api_v1_actions_event_log_retention_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_event_log_retention_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_event_log_retention_retrieve",
         "path": "properties.query.properties.company_id",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_event_log_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_event_log_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "email",
@@ -3545,9 +6222,37 @@
       {
         "service": "email",
         "tool": "api_v1_actions_event_log_types_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_event_log_types_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_event_log_types_list",
         "path": "properties.query.properties.company_id",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_events_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_events_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "email",
@@ -3559,9 +6264,37 @@
       {
         "service": "email",
         "tool": "api_v1_actions_rules_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_rules_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_rules_create",
         "path": "properties.query.properties.company_id",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_rules_destroy",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_rules_destroy",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "email",
@@ -3580,6 +6313,20 @@
       {
         "service": "email",
         "tool": "api_v1_actions_rules_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_rules_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_rules_list",
         "path": "properties.query.properties.company_id",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
@@ -3587,6 +6334,20 @@
       {
         "service": "email",
         "tool": "api_v1_actions_rules_partial_update",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_rules_partial_update",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_rules_partial_update",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -3601,6 +6362,20 @@
       {
         "service": "email",
         "tool": "api_v1_actions_rules_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_rules_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_rules_retrieve",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -3615,6 +6390,20 @@
       {
         "service": "email",
         "tool": "api_v1_actions_rules_rotate_secret",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_rules_rotate_secret",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_rules_rotate_secret",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -3625,6 +6414,20 @@
         "path": "properties.path_params.properties.id",
         "category": "missing_description",
         "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_rules_send_test",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_actions_rules_send_test",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "email",
@@ -3643,9 +6446,37 @@
       {
         "service": "email",
         "tool": "api_v1_auth_link_hosts_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_auth_link_hosts_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_auth_link_hosts_retrieve",
         "path": "properties.query.properties.company_id",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_auth_link_hosts_update",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_auth_link_hosts_update",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "email",
@@ -3657,9 +6488,37 @@
       {
         "service": "email",
         "tool": "api_v1_broadcasts_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_broadcasts_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_broadcasts_create",
         "path": "properties.query.properties.company_id",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_broadcasts_destroy",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_broadcasts_destroy",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "email",
@@ -3678,6 +6537,20 @@
       {
         "service": "email",
         "tool": "api_v1_broadcasts_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_broadcasts_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_broadcasts_list",
         "path": "properties.query.properties.company_id",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
@@ -3685,6 +6558,20 @@
       {
         "service": "email",
         "tool": "api_v1_broadcasts_partial_update",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_broadcasts_partial_update",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_broadcasts_partial_update",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -3699,6 +6586,20 @@
       {
         "service": "email",
         "tool": "api_v1_broadcasts_preview",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_broadcasts_preview",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_broadcasts_preview",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -3713,6 +6614,34 @@
       {
         "service": "email",
         "tool": "api_v1_broadcasts_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_broadcasts_retrieve",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_broadcasts_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_broadcasts_retrieve",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_broadcasts_retrieve",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -3727,6 +6656,34 @@
       {
         "service": "email",
         "tool": "api_v1_broadcasts_send",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_broadcasts_send",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_broadcasts_send",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_broadcasts_send",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_broadcasts_send",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -3737,6 +6694,34 @@
         "path": "properties.path_params.properties.broadcast_id",
         "category": "missing_description",
         "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_catalog_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_catalog_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_library_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_library_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "email",
@@ -3744,6 +6729,20 @@
         "path": "properties.query.properties.company_id",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_library_destroy",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_library_destroy",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "email",
@@ -3769,9 +6768,51 @@
       {
         "service": "email",
         "tool": "api_v1_library_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_library_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_library_list",
         "path": "properties.query.properties.company_id",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_library_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_library_retrieve",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_library_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_library_retrieve",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
       },
       {
         "service": "email",
@@ -3797,6 +6838,20 @@
       {
         "service": "email",
         "tool": "api_v1_library_update",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_library_update",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_library_update",
         "path": "properties.query.properties.company_id",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
@@ -3814,6 +6869,34 @@
         "path": "properties.path_params.properties.library_id",
         "category": "missing_description",
         "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_messages_cancel",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_messages_cancel",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_messages_cancel",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_messages_cancel",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
       },
       {
         "service": "email",
@@ -3828,6 +6911,20 @@
         "path": "properties.path_params.properties.message_id",
         "category": "missing_description",
         "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_messages_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_messages_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "email",
@@ -3867,6 +6964,20 @@
       {
         "service": "email",
         "tool": "api_v1_messages_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_messages_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_messages_retrieve",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -3881,9 +6992,37 @@
       {
         "service": "email",
         "tool": "api_v1_newsletters_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_create",
         "path": "properties.query.properties.company_id",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_destroy",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_destroy",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "email",
@@ -3902,6 +7041,34 @@
       {
         "service": "email",
         "tool": "api_v1_newsletters_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_list",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_list",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_list",
         "path": "properties.query.properties.company_id",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
@@ -3909,6 +7076,20 @@
       {
         "service": "email",
         "tool": "api_v1_newsletters_partial_update",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_partial_update",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_partial_update",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -3923,6 +7104,20 @@
       {
         "service": "email",
         "tool": "api_v1_newsletters_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_retrieve",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -3937,6 +7132,20 @@
       {
         "service": "email",
         "tool": "api_v1_newsletters_rotate_key",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_rotate_key",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_rotate_key",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -3951,6 +7160,20 @@
       {
         "service": "email",
         "tool": "api_v1_newsletters_subscribers_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_subscribers_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_subscribers_create",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -3961,6 +7184,20 @@
         "path": "properties.path_params.properties.newsletter_id",
         "category": "missing_description",
         "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_subscribers_destroy",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_subscribers_destroy",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "email",
@@ -3986,6 +7223,20 @@
       {
         "service": "email",
         "tool": "api_v1_newsletters_subscribers_export",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_subscribers_export",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_subscribers_export",
         "path": "properties.query.properties.status",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
@@ -4007,6 +7258,20 @@
       {
         "service": "email",
         "tool": "api_v1_newsletters_subscribers_import",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_subscribers_import",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_subscribers_import",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -4017,6 +7282,20 @@
         "path": "properties.path_params.properties.newsletter_id",
         "category": "missing_description",
         "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_subscribers_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_newsletters_subscribers_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "email",
@@ -4056,9 +7335,37 @@
       {
         "service": "email",
         "tool": "api_v1_provider_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_provider_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_provider_retrieve",
         "path": "properties.query.properties.company_id",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_provider_test_send",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_provider_test_send",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "email",
@@ -4070,6 +7377,20 @@
       {
         "service": "email",
         "tool": "api_v1_provider_update",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_provider_update",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_provider_update",
         "path": "properties.query.properties.company_id",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
@@ -4077,9 +7398,37 @@
       {
         "service": "email",
         "tool": "api_v1_rules_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_rules_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_rules_create",
         "path": "properties.query.properties.company_id",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_rules_destroy",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_rules_destroy",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "email",
@@ -4101,6 +7450,20 @@
         "path": "properties.path_params.properties.rule_id",
         "category": "missing_description",
         "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_rules_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_rules_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "email",
@@ -4119,6 +7482,20 @@
       {
         "service": "email",
         "tool": "api_v1_rules_partial_update",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_rules_partial_update",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_rules_partial_update",
         "path": "properties.query.properties.company_id",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
@@ -4140,6 +7517,34 @@
       {
         "service": "email",
         "tool": "api_v1_rules_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_rules_retrieve",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_rules_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_rules_retrieve",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_rules_retrieve",
         "path": "properties.query.properties.company_id",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
@@ -4157,6 +7562,20 @@
         "path": "properties.path_params.properties.rule_id",
         "category": "missing_description",
         "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_stats_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_stats_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "email",
@@ -4196,9 +7615,65 @@
       {
         "service": "email",
         "tool": "api_v1_suppressions_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_suppressions_create",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_suppressions_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_suppressions_create",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_suppressions_create",
         "path": "properties.query.properties.company_id",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_suppressions_destroy",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_suppressions_destroy",
+        "path": "_tool.description",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_suppressions_destroy",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_suppressions_destroy",
+        "path": "_tool.description",
+        "category": "vague_tool_metadata",
+        "detail": "vague tool metadata"
       },
       {
         "service": "email",
@@ -4217,6 +7692,20 @@
       {
         "service": "email",
         "tool": "api_v1_suppressions_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_suppressions_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_suppressions_list",
         "path": "properties.query.properties.company_id",
         "category": "untyped_or_empty",
         "detail": "untyped or empty"
@@ -4224,6 +7713,20 @@
       {
         "service": "email",
         "tool": "api_v1_template_versions_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_template_versions_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_template_versions_create",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -4238,6 +7741,20 @@
       {
         "service": "email",
         "tool": "api_v1_template_versions_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_template_versions_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_template_versions_list",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -4252,6 +7769,20 @@
       {
         "service": "email",
         "tool": "api_v1_template_versions_publish",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_template_versions_publish",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_template_versions_publish",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -4269,6 +7800,20 @@
         "path": "properties.path_params.properties.number",
         "category": "missing_description",
         "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_template_versions_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_template_versions_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "email",
@@ -4294,6 +7839,20 @@
       {
         "service": "email",
         "tool": "api_v1_templates_destroy",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_templates_destroy",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_templates_destroy",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -4304,6 +7863,20 @@
         "path": "properties.path_params.properties.template_id",
         "category": "missing_description",
         "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_templates_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_templates_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "email",
@@ -4322,6 +7895,20 @@
       {
         "service": "email",
         "tool": "api_v1_templates_render_preview",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_templates_render_preview",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_templates_render_preview",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -4336,6 +7923,20 @@
       {
         "service": "email",
         "tool": "api_v1_templates_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_templates_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_templates_retrieve",
         "path": "properties.path_params",
         "category": "missing_description",
         "detail": "missing description"
@@ -4346,6 +7947,20 @@
         "path": "properties.path_params.properties.template_id",
         "category": "missing_description",
         "detail": "missing description"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_templates_send_test",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "email",
+        "tool": "api_v1_templates_send_test",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
       },
       {
         "service": "email",
@@ -4365,14 +7980,17 @@
     "after_source": [],
     "after_gateway": [],
     "before_summary": {
-      "total_issues": 126,
-      "tools_with_issues": 64,
+      "total_issues": 272,
+      "tools_with_issues": 65,
       "by_category": {
-        "missing_description": 81,
-        "untyped_or_empty": 45
+        "missing_annotations": 65,
+        "missing_description": 89,
+        "missing_title": 65,
+        "untyped_or_empty": 45,
+        "vague_tool_metadata": 8
       },
       "by_service": {
-        "email": 126
+        "email": 272
       }
     },
     "after_source_summary": {
@@ -4386,6 +8004,24 @@
       "tools_with_issues": 0,
       "by_category": {},
       "by_service": {}
+    },
+    "presentation_before": {
+      "tools": 65,
+      "with_title": 0,
+      "with_description": 57,
+      "with_annotations": 0,
+      "with_output_schema": 0,
+      "input_properties": 256,
+      "input_properties_with_description": 0
+    },
+    "presentation_after": {
+      "tools": 65,
+      "with_title": 65,
+      "with_description": 65,
+      "with_annotations": 65,
+      "with_output_schema": 56,
+      "input_properties": 349,
+      "input_properties_with_description": 349
     }
   },
   {
