@@ -99,7 +99,9 @@ async function connectWithOAuth(client) {
       pendingAuthUrl = redirectUrl.toString();
     },
   );
-  const transport = new StreamableHTTPClientTransport(new URL(MCP_URL), { authProvider: oauthProvider });
+  const makeTransport = () =>
+    new StreamableHTTPClientTransport(new URL(MCP_URL), { authProvider: oauthProvider });
+  let transport = makeTransport();
   try {
     await client.connect(transport);
   } catch (error) {
@@ -107,6 +109,7 @@ async function connectWithOAuth(client) {
     if (!pendingAuthUrl) fail('OAuth redirect URL missing');
     const code = runHeadless(pendingAuthUrl);
     await transport.finishAuth(code);
+    transport = makeTransport();
     await client.connect(transport);
   }
   return { transport, oauthProvider };
