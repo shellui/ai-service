@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import os
-import re
+import subprocess
 import sys
 import time
 from urllib.parse import urlencode
@@ -20,6 +20,7 @@ ISSUER = IDENTITY_ORIGIN
 AUD = MCP_URL
 SECRET = os.environ['E2E_IDENTITY_SECRET_KEY']
 MCP_ACCEPT = 'application/json, text/event-stream'
+COMPOSE_FILE = os.environ.get('MCP_E2E_COMPOSE_FILE', '')
 
 
 def _rpc(method: str, **params):
@@ -106,38 +107,43 @@ def main() -> int:
     r = requests.get(f'{IDENTITY_ORIGIN}/oauth/mcp/authorize?{q_no_pkce}', timeout=15, allow_redirects=False)
     check('missing PKCE rejected', r.status_code == 400, r.text[:200])
 
-    # Staff user refused at authorize (seed_dev admin/admin is staff)
-    sess = requests.Session()
-    login_page = sess.get(f'{IDENTITY_ORIGIN}/admin/login/', timeout=15)
-    csrf_match = re.search(r'name="csrfmiddlewaretoken" value="([^"]+)"', login_page.text)
-    csrf = csrf_match.group(1) if csrf_match else sess.cookies.get('csrftoken', '')
-    login = sess.post(
-        f'{IDENTITY_ORIGIN}/admin/login/',
-        data={'username': 'admin', 'password': 'admin', 'csrfmiddlewaretoken': csrf, 'next': '/admin/'},
-        headers={'Referer': f'{IDENTITY_ORIGIN}/admin/login/'},
-        timeout=15,
-        allow_redirects=False,
+    # Staff user refused at authorize (identity oauth_views; in-container Django client)
+    if not COMPOSE_FILE:
+        check('staff MCP OAuth refused', False, 'MCP_E2E_COMPOSE_FILE not set')
+    staff_script = f"""
+from django.contrib.auth import get_user_model
+from django.test import Client
+from urllib.parse import urlencode
+User = get_user_model()
+client = Client()
+client.force_login(User.objects.get(username='admin'))
+q = urlencode(
+    {{
+        'response_type': 'code',
+        'client_id': {client_id!r},
+        'redirect_uri': 'http://127.0.0.1:8765/callback',
+        'code_challenge': {'y' * 43!r},
+        'code_challenge_method': 'S256',
+        'resource': {MCP_URL!r},
+    }}
+)
+response = client.get('/oauth/mcp/authorize?' + q)
+if response.status_code != 403:
+    raise SystemExit(response.status_code)
+body = response.content.decode(errors='replace')
+if 'staff_refused' not in body and "Staff accounts can't connect MCP clients" not in body:
+    raise SystemExit('missing staff_refused copy')
+"""
+    proc = subprocess.run(
+        ['docker', 'compose', '-f', COMPOSE_FILE, 'exec', '-T', 'identity', 'python', 'manage.py', 'shell', '-c', staff_script],
+        capture_output=True,
+        text=True,
+        timeout=60,
     )
-    if login.status_code not in (302, 303) or 'sessionid' not in sess.cookies:
-        check('staff MCP OAuth refused', False, f'admin login failed: HTTP {login.status_code}')
-    q_staff = urlencode(
-        {
-            'response_type': 'code',
-            'client_id': client_id,
-            'redirect_uri': 'http://127.0.0.1:8765/callback',
-            'code_challenge': 'y' * 43,
-            'code_challenge_method': 'S256',
-            'resource': MCP_URL,
-        }
-    )
-    authorize_url = f'{IDENTITY_ORIGIN}/oauth/mcp/authorize?{q_staff}'
-    sess.get(authorize_url, timeout=15, allow_redirects=True)
-    r = sess.get(authorize_url, timeout=15, allow_redirects=False)
-    staff_markers = ('staff_refused', "Staff accounts can't connect MCP clients", 'data-error-code="staff_refused"')
     check(
         'staff MCP OAuth refused',
-        r.status_code == 403 and any(m in r.text for m in staff_markers),
-        f'HTTP {r.status_code} {r.text[:200]}',
+        proc.returncode == 0,
+        (proc.stderr or proc.stdout or f'exit {proc.returncode}').strip()[:300],
     )
 
     print('[negatives] all checks passed')
