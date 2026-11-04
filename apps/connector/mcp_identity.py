@@ -28,8 +28,13 @@ def _identity_origin() -> str:
     return (getattr(settings, 'IDENTITY_SERVICE_URL', '') or settings.IDENTITY_ISSUER or '').rstrip('/')
 
 
+def _identity_audience(origin: str) -> str:
+    """Identity checks internal assertions against its public issuer, not the internal URL we call."""
+    return (settings.IDENTITY_ISSUER or origin).rstrip('/')
+
+
 def _revocation_headers(origin: str) -> dict[str, str]:
-    assertion = build_mcp_revocation_assertion(audience_url=origin)
+    assertion = build_mcp_revocation_assertion(audience_url=_identity_audience(origin))
     return {'Authorization': f'Bearer {assertion}'}
 
 
@@ -155,7 +160,7 @@ def forward_call_log(entry: dict) -> None:
     if not origin:
         return
     url = f'{origin}/api/v1/mcp/internal/mcp-call-logs'
-    assertion = build_mcp_call_log_assertion(audience_url=origin)
+    assertion = build_mcp_call_log_assertion(audience_url=_identity_audience(origin))
     body = {
         'agent_id': entry.get('agent_id'),
         'company_id': entry.get('company_id'),
