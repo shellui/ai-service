@@ -12,4 +12,6 @@ When the gateway calls a downstream service `/mcp`, it asks identity to mint a s
 - Publish the public key at `GET /.well-known/jwks.json`.
 - Generate keys: `python manage.py generate_signing_key` (or `--shell` for eval-friendly exports).
 
+The same key signs internal assertions to identity (revocation polling and call logs, `shellui-django` 0.4.0+). Identity trusts them only from the issuer in its `AI_SERVICE_ISSUER` and verifies them with this JWKS. Without a signing key, revocation polling fails closed (every agent is treated as revoked) and call logs are skipped.
+
 Identity endpoint: `POST /api/v1/mcp/internal/mcp-downstream-access-token`. It validates the bearer JWT using ai-service JWKS and `AI_SERVICE_ISSUER`, then returns `{ "access_token": "…" }`.
