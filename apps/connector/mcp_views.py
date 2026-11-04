@@ -123,19 +123,47 @@ class PrefixingMcpServer(AggregatingMcpServer):
         finally:
             gw.tools_from_schema, srv.tools_from_schema = orig_gw, orig_srv
 
-    def _maybe_forward_tool_call(self, request, req_id, params, agent_claims):
+    def _maybe_forward_tool_call(self, request: HttpRequest, req_id, params, agent_claims):
         call_params = dict(params or {})
         local_name = self._local_tool_export_name(str(call_params.get('name') or ''))
         if local_name is not None:
             call_params['name'] = local_name
+            return self._tools_call(request, req_id, call_params, agent_claims)
 
-        return self._using_connector_tool_catalog(
+        response = self._using_connector_tool_catalog(
             lambda *args: super(PrefixingMcpServer, self)._maybe_forward_tool_call(*args),
             request,
             req_id,
             call_params,
             agent_claims,
         )
+        if response is None or not self.on_call:
+            return response
+        tool_name = str(params.get('name') or '')
+        route = self._lookup_route(tool_name)
+        if route is None:
+            return response
+        is_error = False
+        try:
+            body = json.loads(response.content)
+            result = body.get('result') if isinstance(body, dict) else None
+            if isinstance(result, dict):
+                is_error = bool(result.get('isError'))
+        except (ValueError, TypeError, AttributeError):
+            is_error = response.status_code >= 400
+        self.on_call(
+            {
+                'agent_id': agent_claims.get('agent_id'),
+                'company_id': agent_claims.get('company_id'),
+                'service': route['service_id'],
+                'tool': tool_name,
+                'method': 'POST',
+                'path': f"/mcp (forward {route['service_id']})",
+                'status': response.status_code,
+                'is_error': is_error,
+            }
+        )
+        return response
 
     def _tools_call(self, request, req_id, params, agent_claims):
         call_params = dict(params or {})
@@ -175,36 +203,6 @@ class PrefixingMcpServer(AggregatingMcpServer):
         tools = [normalize_mcp_tool(tool) for tool in tools]
         page = paginate_tools(tools, params or {})
         return JsonResponse(self._result(req_id, page))
-
-    def _maybe_forward_tool_call(self, request: HttpRequest, req_id, params, agent_claims):
-        response = super()._maybe_forward_tool_call(request, req_id, params, agent_claims)
-        if response is None or not self.on_call:
-            return response
-        tool_name = str(params.get('name') or '')
-        route = self._lookup_route(tool_name)
-        if route is None:
-            return response
-        is_error = False
-        try:
-            body = json.loads(response.content)
-            result = body.get('result') if isinstance(body, dict) else None
-            if isinstance(result, dict):
-                is_error = bool(result.get('isError'))
-        except (ValueError, TypeError, AttributeError):
-            is_error = response.status_code >= 400
-        self.on_call(
-            {
-                'agent_id': agent_claims.get('agent_id'),
-                'company_id': agent_claims.get('company_id'),
-                'service': route['service_id'],
-                'tool': tool_name,
-                'method': 'POST',
-                'path': f"/mcp (forward {route['service_id']})",
-                'status': response.status_code,
-                'is_error': is_error,
-            }
-        )
-        return response
 
 
 def _schema() -> dict:
