@@ -125,6 +125,14 @@ from django.utils import timezone
 from apps.agents.models import Agent
 Agent.objects.filter(company_id=1).update(revoked_at=timezone.now())
 PY
+docker compose -f "${COMPOSE_FILE}" exec -T ai python manage.py shell <<'PY'
+from django.core.cache import cache
+from apps.connector.mcp_identity import _refresh_revocations
+cache.delete('mcp:revoked_trusted_payload')
+cache.delete('mcp:revoked_list_trusted')
+if not _refresh_revocations():
+    raise SystemExit('revocation poll failed after agent revoke (check identity /api/v1/mcp/internal/mcp-revocations)')
+PY
 code="$(curl -s -o /dev/null -w '%{http_code}' -X POST "${MCP_URL}" \
   -H "Authorization: Bearer ${INSPECTOR_TOKEN}" \
   -H 'Accept: application/json, text/event-stream' \
