@@ -111,9 +111,13 @@ def main() -> int:
     if not COMPOSE_FILE:
         check('staff MCP OAuth refused', False, 'MCP_E2E_COMPOSE_FILE not set')
     staff_script = f"""
+import base64
+import hashlib
 from django.contrib.auth import get_user_model
 from django.test import Client
 from urllib.parse import urlencode
+verifier = 'y' * 43
+challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip('=')
 User = get_user_model()
 client = Client(HTTP_HOST='localhost')
 client.force_login(User.objects.get(username='admin'))
@@ -122,7 +126,7 @@ q = urlencode(
         'response_type': 'code',
         'client_id': {client_id!r},
         'redirect_uri': 'http://127.0.0.1:8765/callback',
-        'code_challenge': {repr('y' * 43)},
+        'code_challenge': challenge,
         'code_challenge_method': 'S256',
         'resource': {MCP_URL!r},
     }}
