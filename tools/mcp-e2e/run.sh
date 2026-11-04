@@ -63,8 +63,8 @@ docker compose -f "${COMPOSE_FILE}" build identity ai
 IDENTITY_JWT_ENV="${SECRETS_DIR}/identity-jwt.env"
 if [[ ! -f "${IDENTITY_JWT_ENV}" ]]; then
   log 'Generating ephemeral identity JWT keys (RS256; MCP revocation assertions)'
-  docker compose -f "${COMPOSE_FILE}" run --rm --no-deps -T identity \
-    python manage.py generate_jwt_keys --shell | sed 's/^export //' >"${IDENTITY_JWT_ENV}"
+  docker compose -f "${COMPOSE_FILE}" run --rm --no-deps --entrypoint python -T identity \
+    manage.py generate_jwt_keys --shell | sed 's/^export //' >"${IDENTITY_JWT_ENV}"
 fi
 export MCP_E2E_IDENTITY_JWT_ENV="${IDENTITY_JWT_ENV}"
 
