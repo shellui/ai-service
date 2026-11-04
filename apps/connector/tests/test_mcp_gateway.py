@@ -15,6 +15,7 @@ from django.test import Client, TestCase, override_settings
 AI_MCP = 'https://ai.test/c/10/mcp'
 STORAGE_MCP = 'https://storage.test/mcp'
 IDENTITY_MCP = 'https://identity.test/mcp'
+MCP_ACCEPT = 'application/json, text/event-stream'
 
 
 def _rpc(method: str, **params):
@@ -78,7 +79,7 @@ class McpGatewayTests(TestCase):
         self.issuer = 'https://identity.test'
 
     def _auth(self, token: str) -> dict:
-        return {'HTTP_AUTHORIZATION': f'Bearer {token}'}
+        return {'HTTP_AUTHORIZATION': f'Bearer {token}', 'HTTP_ACCEPT': MCP_ACCEPT}
 
     def test_auth_required(self, _rev_ok):
         response = self.client.post('/c/10/mcp', data=_rpc('tools/list'), content_type='application/json')

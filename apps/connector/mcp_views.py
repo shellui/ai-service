@@ -11,6 +11,7 @@ from shellui_django.mcp.gateway import AggregatingMcpServer, McpGatewayConfig, p
 from shellui_django.mcp.openapi_tools import tools_from_schema
 
 from apps.authapi.agent_tokens import authenticate_agent_bearer
+from apps.connector.mcp_protocol import handle_mcp_gateway_request, paginate_tools
 from apps.connector.agent_record import AgentRecord
 from apps.connector.downstream_tokens import DownstreamTokenError, mint_downstream_access_token
 from apps.connector.mcp_identity import agent_is_revoked, forward_call_log, identity_revocation_unavailable
@@ -72,7 +73,10 @@ class PrefixingMcpServer(AggregatingMcpServer):
             return None
         return {'service_id': service_id, 'downstream_name': downstream_name}
 
-    def _aggregated_tools_list(self, req_id, agent_claims):
+    def handle(self, request: HttpRequest, *, agent_claims: dict | None):
+        return handle_mcp_gateway_request(self, request, agent_claims=agent_claims)
+
+    def _aggregated_tools_list(self, req_id, agent_claims, params=None):
         agent = self._gateway.resolve_agent(agent_claims)
         if agent is None:
             return JsonResponse(self._error(req_id, -32603, 'Forbidden'))
@@ -88,7 +92,8 @@ class PrefixingMcpServer(AggregatingMcpServer):
             if tools is not None:
                 remote[service_id] = tools
         tools = prefixed_tool_catalog(local, remote)
-        return JsonResponse(self._result(req_id, {'tools': tools}))
+        page = paginate_tools(tools, params or {})
+        return JsonResponse(self._result(req_id, page))
 
 
 def _schema() -> dict:
@@ -164,6 +169,8 @@ def _unauthorized(request: HttpRequest, company_id: int) -> JsonResponse:
 def mcp_endpoint(request: HttpRequest, company_id: int):
     if int(company_id) < 1:
         return JsonResponse({'error': 'not_found'}, status=404)
+    if request.method == 'GET':
+        return JsonResponse({'error': 'method_not_allowed'}, status=405)
     claims = _agent_claims(request, company_id)
     if claims is None and request.method == 'POST':
         return _unauthorized(request, company_id)
