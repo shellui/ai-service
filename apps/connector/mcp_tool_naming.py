@@ -223,18 +223,32 @@ def _canonicalize_numeric_suffix(name: str) -> str:
 
 def service_local_tool_name(tool: dict[str, Any], *, service_id: str | None = None) -> str:
     """Resolve the service-local MCP tool name before the gateway adds a service prefix."""
+    raw = str(tool.get('name') or '')
+    raw_local = _sanitize_token(raw)
+    if service_id:
+        sid = _sanitize_token(service_id)
+        if raw_local.startswith(f'{sid}_'):
+            raw_local = raw_local[len(sid) + 1 :]
+    had_numeric_suffix = bool(re.search(r'_\d+$', raw_local))
+
     meta = tool.get('_meta') if isinstance(tool.get('_meta'), dict) else {}
     operation_id = meta.get('operationId') or tool.get('operationId')
     path = meta.get('path')
     method = str(meta.get('method') or 'get').lower()
+    if had_numeric_suffix and raw_local.startswith('update_'):
+        base = re.sub(r'_\d+$', '', raw_local)
+        return clamp_tool_name(f'replace_{base[7:]}')
     if operation_id and path:
         operation: dict[str, Any] = {'operationId': operation_id}
         x_mcp = meta.get('x-mcp')
         if isinstance(x_mcp, dict):
             operation['x-mcp'] = x_mcp
-        return resolve_mcp_tool_name(operation, method, str(path))
-    raw = str(tool.get('name') or '')
-    return canonical_downstream_tool_name(raw, service_id=service_id)
+        name = resolve_mcp_tool_name(operation, method, str(path))
+    else:
+        name = canonical_downstream_tool_name(raw, service_id=service_id)
+    if had_numeric_suffix:
+        name = _canonicalize_numeric_suffix(name)
+    return clamp_tool_name(name)
 
 
 def canonical_downstream_tool_name(name: str, *, service_id: str | None = None) -> str:

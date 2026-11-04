@@ -6,6 +6,7 @@ from apps.connector.mcp_tool_naming import (
     legacy_slug_tool_name,
     resolve_mcp_tool_name,
     select_newest_api_version_operations,
+    service_local_tool_name,
     validate_tool_name,
     clamp_tool_name,
 )
@@ -63,7 +64,7 @@ class McpToolNamingTests(SimpleTestCase):
     def test_canonical_legacy_downstream_name(self):
         self.assertEqual(
             canonical_downstream_tool_name('api_v1_actions_deliveries_list'),
-            'list_actions_deliveries',
+            'list_deliveries',
         )
         self.assertEqual(
             canonical_downstream_tool_name('identity_api_v1_users_list', service_id='identity'),
@@ -71,6 +72,20 @@ class McpToolNamingTests(SimpleTestCase):
         )
         self.assertEqual(
             canonical_downstream_tool_name('update_auth_methods_2', service_id='identity'),
+            'replace_auth_methods',
+        )
+        self.assertEqual(
+            service_local_tool_name(
+                {
+                    'name': 'update_auth_methods_2',
+                    '_meta': {
+                        'operationId': 'api_v1_auth_methods_update',
+                        'path': '/api/v1/auth/methods/',
+                        'method': 'PUT',
+                    },
+                },
+                service_id='identity',
+            ),
             'replace_auth_methods',
         )
 
