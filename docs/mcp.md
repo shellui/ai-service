@@ -29,3 +29,5 @@ Identity endpoint: `POST /api/v1/mcp/internal/mcp-downstream-access-token`. It v
 ## Client conformance
 
 Official MCP clients (TypeScript SDK, Python SDK, MCP Inspector CLI) are exercised end-to-end in CI. See [MCP client conformance (e2e)](./mcp-e2e-conformance.md) and run `./tools/mcp-e2e/run.sh` locally.
+
+Cross-service tool `inputSchema` audit (201 tools, Inspector-aligned): [mcp-tool-schema-audit.md](./mcp-tool-schema-audit.md).
