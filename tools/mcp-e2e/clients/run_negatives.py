@@ -3,8 +3,8 @@
 
 from __future__ import annotations
 
-import json
 import os
+import re
 import sys
 import time
 from urllib.parse import urlencode
@@ -106,16 +106,20 @@ def main() -> int:
     r = requests.get(f'{IDENTITY_ORIGIN}/oauth/mcp/authorize?{q_no_pkce}', timeout=15, allow_redirects=False)
     check('missing PKCE rejected', r.status_code == 400, r.text[:200])
 
-    # Staff user refused at authorize (session via admin password from seed_dev)
+    # Staff user refused at authorize (seed_dev admin/admin is staff)
     sess = requests.Session()
     login_page = sess.get(f'{IDENTITY_ORIGIN}/admin/login/', timeout=15)
-    csrf = login_page.cookies.get('csrftoken') or ''
-    sess.post(
+    csrf_match = re.search(r'name="csrfmiddlewaretoken" value="([^"]+)"', login_page.text)
+    csrf = csrf_match.group(1) if csrf_match else sess.cookies.get('csrftoken', '')
+    login = sess.post(
         f'{IDENTITY_ORIGIN}/admin/login/',
         data={'username': 'admin', 'password': 'admin', 'csrfmiddlewaretoken': csrf, 'next': '/admin/'},
         headers={'Referer': f'{IDENTITY_ORIGIN}/admin/login/'},
         timeout=15,
+        allow_redirects=False,
     )
+    if login.status_code not in (302, 303) or 'sessionid' not in sess.cookies:
+        check('staff MCP OAuth refused', False, f'admin login failed: HTTP {login.status_code}')
     q_staff = urlencode(
         {
             'response_type': 'code',
@@ -126,8 +130,15 @@ def main() -> int:
             'resource': MCP_URL,
         }
     )
-    r = sess.get(f'{IDENTITY_ORIGIN}/oauth/mcp/authorize?{q_staff}', timeout=15, allow_redirects=False)
-    check('staff MCP OAuth refused', r.status_code == 403, r.text[:200])
+    authorize_url = f'{IDENTITY_ORIGIN}/oauth/mcp/authorize?{q_staff}'
+    sess.get(authorize_url, timeout=15, allow_redirects=True)
+    r = sess.get(authorize_url, timeout=15, allow_redirects=False)
+    staff_markers = ('staff_refused', "Staff accounts can't connect MCP clients", 'data-error-code="staff_refused"')
+    check(
+        'staff MCP OAuth refused',
+        r.status_code == 403 and any(m in r.text for m in staff_markers),
+        f'HTTP {r.status_code} {r.text[:200]}',
+    )
 
     print('[negatives] all checks passed')
     return 0
