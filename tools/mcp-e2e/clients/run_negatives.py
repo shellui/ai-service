@@ -135,8 +135,8 @@ response = client.get('/oauth/mcp/authorize?' + q)
 if response.status_code != 403:
     raise SystemExit(response.status_code)
 body = response.content.decode(errors='replace')
-if 'staff_refused' not in body and "Staff accounts can't connect MCP clients" not in body:
-    raise SystemExit('missing staff_refused copy')
+if 'Staff accounts' not in body and 'connect MCP clients' not in body:
+    raise SystemExit('missing staff_refused copy: ' + body[:200])
 """
     proc = subprocess.run(
         ['docker', 'compose', '-f', COMPOSE_FILE, 'exec', '-T', 'identity', 'python', 'manage.py', 'shell', '-c', staff_script],
