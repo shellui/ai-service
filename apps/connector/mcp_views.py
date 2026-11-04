@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import contextvars
+import json
+
 from django.conf import settings
 from django.http import HttpRequest, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -16,6 +19,7 @@ from apps.authapi.agent_tokens import authenticate_agent_bearer
 from apps.connector.mcp_protocol import handle_mcp_gateway_request, paginate_tools
 from apps.connector.agent_record import AgentRecord
 from apps.connector.downstream_tokens import DownstreamTokenError, mint_downstream_access_token
+from apps.connector.mcp_call_log import client_ip_from_request, mcp_call_result
 from apps.connector.mcp_identity import agent_is_revoked, forward_call_log, identity_revocation_unavailable
 from apps.connector.mcp_urls import (
     PLAIN_MCP_MESSAGE,
@@ -26,6 +30,19 @@ from apps.connector.mcp_urls import (
 from apps.connector.services import configured_service_urls, downstream_resource_for
 
 _server: AggregatingMcpServer | None = None
+_mcp_http_request: contextvars.ContextVar[HttpRequest | None] = contextvars.ContextVar(
+    'mcp_http_request', default=None
+)
+
+
+def _record_mcp_call(entry: dict) -> None:
+    request = _mcp_http_request.get()
+    entry['client_ip'] = client_ip_from_request(request)
+    status_code = int(entry.get('status') or 0)
+    is_error = entry.pop('is_error', None)
+    entry['result'] = mcp_call_result(status_code=status_code, is_error=is_error)
+    entry.pop('arguments', None)
+    forward_call_log(entry)
 
 
 def prefixed_tool_catalog(
@@ -159,6 +176,36 @@ class PrefixingMcpServer(AggregatingMcpServer):
         page = paginate_tools(tools, params or {})
         return JsonResponse(self._result(req_id, page))
 
+    def _maybe_forward_tool_call(self, request: HttpRequest, req_id, params, agent_claims):
+        response = super()._maybe_forward_tool_call(request, req_id, params, agent_claims)
+        if response is None or not self.on_call:
+            return response
+        tool_name = str(params.get('name') or '')
+        route = self._lookup_route(tool_name)
+        if route is None:
+            return response
+        is_error = False
+        try:
+            body = json.loads(response.content)
+            result = body.get('result') if isinstance(body, dict) else None
+            if isinstance(result, dict):
+                is_error = bool(result.get('isError'))
+        except (ValueError, TypeError, AttributeError):
+            is_error = response.status_code >= 400
+        self.on_call(
+            {
+                'agent_id': agent_claims.get('agent_id'),
+                'company_id': agent_claims.get('company_id'),
+                'service': route['service_id'],
+                'tool': tool_name,
+                'method': 'POST',
+                'path': f"/mcp (forward {route['service_id']})",
+                'status': response.status_code,
+                'is_error': is_error,
+            }
+        )
+        return response
+
 
 def _schema() -> dict:
     generator = SchemaGenerator()
@@ -192,7 +239,7 @@ def _get_server() -> AggregatingMcpServer:
             urlconf=settings.ROOT_URLCONF,
             service_name='ai',
             identity_revocation_check=lambda agent_id, company_id: agent_is_revoked(agent_id, company_id),
-            on_call=lambda entry: forward_call_log(entry),
+            on_call=_record_mcp_call,
         )
     return _server
 
@@ -240,10 +287,13 @@ def mcp_endpoint(request: HttpRequest, company_id: int):
         return _unauthorized(request, company_id)
     if claims is not None and identity_revocation_unavailable():
         return JsonResponse({'error': 'identity_unavailable'}, status=503)
+    token = _mcp_http_request.set(request)
     try:
         return _get_server().handle(request, agent_claims=claims)
     except DownstreamTokenError:
         return JsonResponse({'error': 'downstream_token_unavailable'}, status=503)
+    finally:
+        _mcp_http_request.reset(token)
 
 
 @csrf_exempt

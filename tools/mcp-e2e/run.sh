@@ -98,6 +98,9 @@ log 'Installing e2e runner dependencies'
 
 export MCP_E2E_PYTHON="${E2E_DIR}/.venv/bin/python"
 
+log 'SaaS OAuth hint + personal agent tokens'
+"${MCP_E2E_PYTHON}" "${E2E_DIR}/clients/run_personal_saas.py"
+
 log 'Negative OAuth / MCP checks'
 "${MCP_E2E_PYTHON}" "${E2E_DIR}/clients/run_negatives.py"
 

@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import jwt
 from django.conf import settings
-from django.http import HttpRequest
-
 from apps.authapi.jwks_client import get_jwks_client
-from apps.connector.mcp_urls import company_audience_matches, normalize_company_resource
+from apps.connector.mcp_identity import personal_agent_bearer_valid
+from apps.connector.mcp_urls import company_audience_matches, company_id_from_resource, normalize_company_resource
 
 from .principal import StoragePrincipal
 
@@ -18,7 +17,7 @@ def _decode_agent_claims(raw_token: str, *, expected_resource: str) -> dict | No
         return None
     algorithms = list(getattr(settings, 'JWT_ALGORITHMS', ['RS256']))
     options = {
-        'require': ['exp', 'sub', 'agent_id', 'aud'],
+        'require': ['exp', 'sub', 'agent_id', 'aud', 'company_id'],
         'verify_aud': True,
         'verify_iss': bool(settings.IDENTITY_ISSUER),
     }
@@ -30,8 +29,10 @@ def _decode_agent_claims(raw_token: str, *, expected_resource: str) -> dict | No
         signing_key = get_jwks_client().get_signing_key(raw_token)
         if signing_key is not None:
             payload = jwt.decode(raw_token, key=signing_key.key, **decode_kwargs)
-            if str(payload.get('sub', '')).startswith('agent:') and company_audience_matches(
-                payload, expected
+            if (
+                str(payload.get('sub', '')).startswith('agent:')
+                and company_audience_matches(payload, expected)
+                and _company_id_matches_resource(payload, expected)
             ):
                 return payload
     except jwt.InvalidTokenError:
@@ -53,13 +54,25 @@ def _decode_agent_claims(raw_token: str, *, expected_resource: str) -> dict | No
                 issuer=settings.IDENTITY_ISSUER or None,
                 options=options,
             )
-            if str(payload.get('sub', '')).startswith('agent:') and company_audience_matches(
-                payload, expected
+            if (
+                str(payload.get('sub', '')).startswith('agent:')
+                and company_audience_matches(payload, expected)
+                and _company_id_matches_resource(payload, expected)
             ):
                 return payload
         except jwt.InvalidTokenError:
             pass
     return None
+
+
+def _company_id_matches_resource(claims: dict, expected_resource: str) -> bool:
+    expected_company = company_id_from_resource(expected_resource)
+    if expected_company is None:
+        return False
+    try:
+        return int(claims.get('company_id')) == int(expected_company)
+    except (TypeError, ValueError):
+        return False
 
 
 def agent_scope_allows_ai(claims: dict) -> bool:
@@ -108,6 +121,8 @@ def authenticate_agent_bearer(
     if _agent_staff_refused(claims):
         return None
     if not agent_scope_allows_ai(claims):
+        return None
+    if not personal_agent_bearer_valid(claims):
         return None
     principal = principal_from_agent_claims(claims)
     return principal, claims

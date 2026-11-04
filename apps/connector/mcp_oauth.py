@@ -8,6 +8,7 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
 from rest_framework.views import APIView
 
+from apps.connector.mcp_authorize import protected_resource_authorize_extensions
 from apps.connector.mcp_urls import PLAIN_MCP_MESSAGE, company_mcp_resource, public_origin
 
 
@@ -30,10 +31,10 @@ class OAuthProtectedResourceMetadataView(APIView):
         ).rstrip('/')
         if not auth_server:
             auth_server = public_origin(request)
-        return JsonResponse(
-            {
-                'resource': company_mcp_resource(request, company_id),
-                'authorization_servers': [auth_server],
-                'bearer_methods_supported': ['header'],
-            }
-        )
+        metadata = {
+            'resource': company_mcp_resource(request, company_id),
+            'authorization_servers': [auth_server],
+            'bearer_methods_supported': ['header'],
+        }
+        metadata.update(protected_resource_authorize_extensions())
+        return JsonResponse(metadata)

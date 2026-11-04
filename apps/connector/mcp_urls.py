@@ -50,5 +50,20 @@ def company_mcp_resource(request: HttpRequest, company_id: int) -> str:
     return normalize_company_resource(f'{public_origin(request)}/c/{int(company_id)}/mcp') or ''
 
 
+def company_id_from_resource(resource: str | None) -> int | None:
+    """Parse ``company_id`` from a canonical per-company MCP resource URL."""
+    url = normalize_company_resource(resource)
+    if not url:
+        return None
+    parts = urlsplit(url).path.strip('/').split('/')
+    if len(parts) != 3 or parts[0] != 'c' or parts[2] != 'mcp':
+        return None
+    try:
+        company_id = int(parts[1])
+    except ValueError:
+        return None
+    return company_id if company_id >= 1 else None
+
+
 def company_metadata_url(request: HttpRequest, company_id: int) -> str:
     return f'{public_origin(request)}/.well-known/oauth-protected-resource/c/{int(company_id)}/mcp'

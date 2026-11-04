@@ -170,6 +170,14 @@ def identity_revocation_unavailable() -> bool:
         return not _refresh_revocations()
 
 
+def personal_agent_bearer_valid(claims: dict) -> bool:
+    """Personal agent JWTs must carry ``personal_token_id`` and ``jti``; OAuth agents pass through."""
+    personal_token_id = str(claims.get('personal_token_id') or '').strip()
+    if not personal_token_id:
+        return True
+    return bool(str(claims.get('jti') or '').strip())
+
+
 def forward_call_log(entry: dict) -> None:
     origin = _identity_origin()
     if not origin:
@@ -185,10 +193,11 @@ def forward_call_log(entry: dict) -> None:
         'company_id': entry.get('company_id'),
         'service': entry.get('service') or 'ai',
         'tool': entry.get('tool') or '',
-        'http_method': entry.get('method') or '',
+        'method': entry.get('method') or '',
         'path': entry.get('path') or '',
-        'status_code': int(entry.get('status') or 0),
-        'arguments_redacted': entry.get('arguments') or {},
+        'status': int(entry.get('status') or 0),
+        'client_ip': str(entry.get('client_ip') or '')[:45],
+        'result': str(entry.get('result') or '')[:32],
     }
     try:
         requests.post(
