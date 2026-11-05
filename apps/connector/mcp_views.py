@@ -24,6 +24,12 @@ from apps.authapi.agent_tokens import authenticate_agent_bearer
 from apps.connector.mcp_protocol import handle_mcp_gateway_request, paginate_tools
 from apps.connector.agent_record import AgentRecord
 from apps.connector.downstream_tokens import DownstreamTokenError, mint_downstream_access_token
+from apps.connector.mcp_approval_gate import (
+    bypass_shellui_write_gate,
+    enforce_tool_call_approval,
+    patched_decide_write,
+    reset_shellui_write_gate,
+)
 from apps.connector.mcp_call_log import apply_duration_ms, client_ip_from_request, mcp_call_result
 from apps.connector.mcp_identity import agent_is_revoked, forward_call_log, identity_revocation_unavailable
 from apps.connector.mcp_urls import (
@@ -52,7 +58,12 @@ def _record_mcp_call(entry: dict) -> None:
     entry['client_ip'] = client_ip_from_request(request)
     status_code = int(entry.get('status') or 0)
     is_error = entry.pop('is_error', None)
-    entry['result'] = mcp_call_result(status_code=status_code, is_error=is_error)
+    log_result = entry.pop('log_result', None)
+    entry['result'] = mcp_call_result(
+        status_code=status_code,
+        is_error=is_error,
+        log_result=str(log_result) if log_result else None,
+    )
     entry.pop('arguments', None)
     forward_call_log(entry)
 
@@ -265,6 +276,61 @@ class PrefixingMcpServer(AggregatingMcpServer):
         finally:
             gw.tools_from_schema, srv.tools_from_schema = orig_gw, orig_srv
 
+    def _cached_export_tool(self, export_name: str) -> dict | None:
+        local_name = self._local_tool_export_name(export_name)
+        if local_name is not None:
+            for tool in tools_from_schema(self.schema_provider()):
+                if str(tool.get('name') or '') == local_name:
+                    return normalize_mcp_tool(tool)
+        service_id = self._service_id_from_export_name(export_name)
+        if service_id is None:
+            return None
+        mcp_url = self._gateway.get_service_urls().get(service_id)
+        if not mcp_url:
+            return None
+        tools = self._cache().get(f'{_TOOLS_LIST_CACHE_PREFIX}{mcp_url}')
+        if not isinstance(tools, list):
+            return None
+        enriched = [normalize_mcp_tool(tool) if isinstance(tool, dict) else tool for tool in tools]
+        for name, exported, _route in iter_gateway_remote_exports(enriched, service_id=service_id):
+            if name == export_name:
+                return exported
+        return None
+
+    def _gate_tool_call(
+        self,
+        request: HttpRequest,
+        req_id,
+        params: dict | None,
+        agent_claims: dict,
+        *,
+        export_name: str,
+        service_id: str,
+        arguments: dict,
+    ) -> JsonResponse | None:
+        tool = self._cached_export_tool(export_name)
+        meta = tool.get('_meta') if isinstance(tool, dict) else {}
+        meta = meta if isinstance(meta, dict) else {}
+        method = str((arguments or {}).get('method') or meta.get('method') or 'GET').upper()
+        path = str((arguments or {}).get('path') or meta.get('path') or f'/mcp (forward {service_id})')
+        outcome = enforce_tool_call_approval(
+            request,
+            req_id,
+            params=params or {},
+            agent_claims=agent_claims,
+            export_name=export_name,
+            service_id=service_id,
+            tool=tool if isinstance(tool, dict) else None,
+            method=method,
+            path=path,
+            arguments=arguments if isinstance(arguments, dict) else {},
+        )
+        if outcome.log and self.on_call:
+            self.on_call(outcome.log)
+        if not outcome.proceed:
+            return outcome.response
+        return None
+
     def _maybe_forward_tool_call(self, request: HttpRequest, req_id, params, agent_claims):
         call_params, error = self._prepare_tool_call_params(params, agent_claims, req_id)
         if error is not None:
@@ -275,6 +341,20 @@ class PrefixingMcpServer(AggregatingMcpServer):
             return self._tools_call(request, req_id, call_params, agent_claims)
 
         self._ensure_routes_for_export(export_name, agent_claims)
+        route = self._lookup_route(export_name)
+        if route is not None:
+            arguments = call_params.get('arguments') if isinstance(call_params.get('arguments'), dict) else {}
+            blocked = self._gate_tool_call(
+                request,
+                req_id,
+                params,
+                agent_claims,
+                export_name=export_name,
+                service_id=str(route['service_id']),
+                arguments=arguments,
+            )
+            if blocked is not None:
+                return blocked
 
         response = self._using_connector_tool_catalog(
             lambda *args: super(PrefixingMcpServer, self)._maybe_forward_tool_call(*args),
@@ -315,14 +395,37 @@ class PrefixingMcpServer(AggregatingMcpServer):
         call_params, error = self._prepare_tool_call_params(params, agent_claims, req_id)
         if error is not None:
             return error
-
-        return self._using_connector_tool_catalog(
-            lambda *args: super(PrefixingMcpServer, self)._tools_call(*args),
+        export_name = str((params or {}).get('name') or '')
+        local_name = str(call_params.get('name') or '')
+        arguments = call_params.get('arguments') if isinstance(call_params.get('arguments'), dict) else {}
+        blocked = self._gate_tool_call(
             request,
             req_id,
-            call_params,
+            params,
             agent_claims,
+            export_name=export_name or f'{self._gateway.local_service_id}_{local_name}',
+            service_id=self._gateway.local_service_id,
+            arguments=arguments,
         )
+        if blocked is not None:
+            return blocked
+
+        import shellui_django.mcp.server as mcp_server_module
+
+        bypass = bypass_shellui_write_gate()
+        orig_decide = mcp_server_module.decide_write
+        mcp_server_module.decide_write = patched_decide_write
+        try:
+            return self._using_connector_tool_catalog(
+                lambda *args: super(PrefixingMcpServer, self)._tools_call(*args),
+                request,
+                req_id,
+                call_params,
+                agent_claims,
+            )
+        finally:
+            mcp_server_module.decide_write = orig_decide
+            reset_shellui_write_gate(bypass)
 
     def _aggregated_tools_list(self, req_id, agent_claims, params=None):
         agent = self._gateway.resolve_agent(agent_claims)

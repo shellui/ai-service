@@ -47,7 +47,14 @@ def client_ip_from_request(request: HttpRequest | None) -> str:
     return remote[:45]
 
 
-def mcp_call_result(*, status_code: int | None, is_error: bool | None = None) -> str:
+def mcp_call_result(
+    *,
+    status_code: int | None,
+    is_error: bool | None = None,
+    log_result: str | None = None,
+) -> str:
+    if log_result:
+        return str(log_result)[:32]
     if is_error is True:
         return 'error'
     if is_error is False:
