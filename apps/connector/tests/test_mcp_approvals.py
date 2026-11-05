@@ -56,7 +56,7 @@ def _agent_token(*, secret: str, issuer: str, mcp_access: str = 'ask') -> str:
 
 @override_settings(
     DEBUG=True,
-    JWT_HS256_FALLBACK_SECRET='test-hs256-secret-for-mcp-gateway-tests-only',
+    JWT_HS256_FALLBACK_SECRET='test-hs256-secret-for-mcp-gateway-tests-only',  # gitleaks:allow
     IDENTITY_ISSUER='https://identity.test',
     IDENTITY_SERVICE_URL='https://identity.test',
     AI_SERVICE_SIGNING_KEY=_SIGNING,
@@ -77,7 +77,7 @@ class McpApprovalGatewayTests(TestCase):
     def setUp(self):
         cache.clear()
         self.client = Client()
-        self.secret = 'test-hs256-secret-for-mcp-gateway-tests-only'
+        self.secret = 'test-hs256-secret-for-mcp-gateway-tests-only'  # gitleaks:allow
         self.issuer = 'https://identity.test'
 
     def _auth(self, token: str, *, session_id: str | None = None) -> dict:
