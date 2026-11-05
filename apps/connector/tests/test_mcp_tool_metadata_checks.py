@@ -13,7 +13,7 @@ class McpToolMetadataChecksTests(SimpleTestCase):
     def test_tool_metadata(self):
         tool = {
             'name': 'storage_list_buckets',
-            'title': 'List buckets',
+            'title': 'Storage: List buckets',
             'description': 'Lists storage buckets for the company.',
             'annotations': {
                 'readOnlyHint': True,
@@ -23,3 +23,19 @@ class McpToolMetadataChecksTests(SimpleTestCase):
             },
         }
         self.assertEqual(validate_tool_metadata(tool), [])
+
+    def test_rejects_api_version_in_title(self):
+        tool = {
+            'name': 'identity_list_users',
+            'title': 'API V1 List users',
+            'description': 'Lists users for the company workspace.',
+            'annotations': {
+                'readOnlyHint': True,
+                'destructiveHint': False,
+                'idempotentHint': True,
+                'openWorldHint': False,
+            },
+        }
+        errors = validate_tool_metadata(tool)
+        self.assertTrue(any('API version' in line for line in errors))
+        self.assertTrue(any('service name' in line for line in errors))

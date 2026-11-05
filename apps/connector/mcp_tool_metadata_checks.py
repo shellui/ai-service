@@ -6,6 +6,7 @@ import re
 
 SERVICE_IDS = frozenset({'ai', 'identity', 'storage', 'hosting', 'email', 'saas'})
 ANNOTATION_KEYS = ('readOnlyHint', 'destructiveHint', 'idempotentHint', 'openWorldHint')
+_API_VERSION_IN_COPY = re.compile(r'\b(?:api\s*)?v\s*\d+\b|\bapi\s+v\s*\d+\b|/api/v\d+/|api_v\d+', re.I)
 
 # ``{service}_{verb}_{noun...}`` snake_case; no version segments or numeric collision suffixes.
 GATEWAY_TOOL_NAME_RE = re.compile(
@@ -47,9 +48,21 @@ def validate_tool_metadata(tool: dict) -> list[str]:
     title = str(tool.get('title') or '').strip()
     if len(title) < 3:
         errors.append(f'{name}: missing title')
+    elif _API_VERSION_IN_COPY.search(title):
+        errors.append(f'{name}: title must not include API version noise')
     desc = str(tool.get('description') or '').strip()
     if len(desc) < 20:
         errors.append(f'{name}: description too short')
+    elif _API_VERSION_IN_COPY.search(desc):
+        errors.append(f'{name}: description must not include API version noise')
+    service = name.split('_', 1)[0] if '_' in name else ''
+    if service in SERVICE_IDS:
+        from apps.connector.mcp_service_display import mcp_service_display_name
+
+        label = mcp_service_display_name(service)
+        lower = title.lower()
+        if not (lower.startswith(f'{label.lower()}:') or lower.startswith(f'{label.lower()} ')):
+            errors.append(f'{name}: title must start with service name ({label})')
     ann = tool.get('annotations')
     if not isinstance(ann, dict):
         errors.append(f'{name}: missing annotations')

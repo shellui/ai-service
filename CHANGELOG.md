@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### 🛠 Improvements
 
 - MCP gateway exports stable ``service_verb_noun`` tool names with titles, descriptions, field help, and MCP annotations on every ``tools/list`` entry.
+- MCP ``tools/list`` titles and descriptions drop ``API V1`` / ``/api/v1/`` noise, lead with the Shellui service name (``Storage: …``, ``Email: …``), and show the connected company by display name (from the agent token or identity lookup) instead of a numeric id.
 
 ### 🐛 Bug Fixes
 

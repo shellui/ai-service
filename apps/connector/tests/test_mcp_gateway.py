@@ -30,6 +30,7 @@ def _agent_token(
     agent_id: str = 'agent-a',
     company_id: int = 10,
     scope: str = 'ai storage',
+    company_name: str | None = None,
 ) -> str:
     now = int(time.time())
     claims = {
@@ -46,6 +47,8 @@ def _agent_token(
         'iat': now,
         'exp': now + 3600,
     }
+    if company_name:
+        claims['company_name'] = company_name
     return jwt.encode(claims, secret, algorithm='HS256')
 
 
@@ -374,7 +377,12 @@ class McpGatewayTests(TestCase):
             return resp
 
         post.side_effect = side_effect
-        token = _agent_token(secret=self.secret, issuer=self.issuer, scope='ai email')
+        token = _agent_token(
+            secret=self.secret,
+            issuer=self.issuer,
+            scope='ai email',
+            company_name='Acme',
+        )
         list_response = self.client.post(
             '/c/10/mcp',
             data=_rpc('tools/list'),
@@ -387,8 +395,10 @@ class McpGatewayTests(TestCase):
         query_props = email_tool['inputSchema']['properties']['query']['properties']
         self.assertNotIn('company_id', query_props)
         self.assertIn('mailbox', query_props)
-        self.assertIn('(Company 10)', email_tool['title'])
-        self.assertIn('company Company 10', email_tool['description'])
+        self.assertIn('(Acme)', email_tool['title'])
+        self.assertTrue(email_tool['title'].startswith('Email:'))
+        self.assertNotIn('API V1', email_tool['title'])
+        self.assertIn('company Acme', email_tool['description'])
 
         call_response = self.client.post(
             '/c/10/mcp',
