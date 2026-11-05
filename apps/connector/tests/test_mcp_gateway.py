@@ -49,6 +49,34 @@ def _agent_token(
     return jwt.encode(claims, secret, algorithm='HS256')
 
 
+EMAIL_LEGACY_TOOLS = {
+    'jsonrpc': '2.0',
+    'id': 1,
+    'result': {
+        'tools': [
+            {
+                'name': 'api_v1_messages_list',
+                'description': 'List messages',
+                '_meta': {
+                    'operationId': 'api_v1_messages_list',
+                    'path': '/api/v1/messages/',
+                    'method': 'get',
+                },
+            },
+            {
+                'name': 'api_v1_actions_event_log_retrieve',
+                'description': 'Event log',
+                '_meta': {
+                    'operationId': 'api_v1_actions_event_log_retrieve',
+                    'path': '/api/v1/actions/event_log/',
+                    'method': 'get',
+                },
+            },
+        ],
+    },
+}
+
+
 @override_settings(
     DEBUG=True,
     JWT_HS256_FALLBACK_SECRET='test-hs256-secret-for-mcp-gateway-tests-only',
@@ -57,6 +85,8 @@ def _agent_token(
     IDENTITY_JWKS_URL='http://localhost:8000/.well-known/jwks.json',
     STORAGE_SERVICE_URL='https://storage.test',
     IDENTITY_SERVICE_URL='https://identity.test',
+    EMAIL_SERVICE_URL='https://email.test',
+    EMAIL_SERVICE_API_KEY='esk_test_gateway_route_cache',  # gitleaks:allow
     AI_PUBLIC_URL='https://ai.test',
     AUTH_RATE_LIMIT_ENABLED=False,
     CACHES={
@@ -238,9 +268,13 @@ class McpGatewayTests(TestCase):
         body = response.json()
         self.assertNotIn('error', body.get('result') or body)
 
-    def test_route_comes_from_prefix_only(self, _rev_ok):
+    def test_route_resolves_from_tools_catalog_without_route_cache(self, _rev_ok):
         from apps.connector.mcp_views import _get_server
 
+        cache.set(
+            'mcp_gateway:tools:https://storage.test/mcp',
+            [{'name': 'list_buckets', 'description': 'List'}],
+        )
         server = _get_server()
         self.assertEqual(
             server._lookup_route('storage_list_buckets'),
@@ -250,6 +284,58 @@ class McpGatewayTests(TestCase):
         self.assertIsNone(server._lookup_route('unknown_tool'))
         self.assertIsNone(server._lookup_route('ai_list_services'))
         self.assertIsNone(server._lookup_route('list_services'))
+
+    @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
+    @patch('shellui_django.mcp.gateway.requests.post')
+    def test_legacy_downstream_name_forwarded_after_route_cache_cleared(self, post, _mint, _rev_ok):
+        forwarded: dict[str, str] = {}
+
+        def side_effect(url, **kwargs):
+            resp = Mock()
+            resp.status_code = 200
+            payload = kwargs.get('json') or {}
+            if payload.get('method') == 'tools/call':
+                forwarded['name'] = payload.get('params', {}).get('name')
+                resp.json.return_value = {'jsonrpc': '2.0', 'id': 1, 'result': {'content': []}}
+            else:
+                resp.json.return_value = EMAIL_LEGACY_TOOLS
+            return resp
+
+        post.side_effect = side_effect
+        token = _agent_token(secret=self.secret, issuer=self.issuer, scope='ai email')
+        list_response = self.client.post(
+            '/c/10/mcp',
+            data=_rpc('tools/list'),
+            content_type='application/json',
+            **self._auth(token),
+        )
+        self.assertEqual(list_response.status_code, 200, list_response.content)
+        names = {t['name'] for t in list_response.json()['result']['tools']}
+        self.assertIn('email_list_messages', names)
+        self.assertIn('email_get_event_log', names)
+
+        cache.delete('mcp_gateway:route:email_list_messages')
+        cache.delete('mcp_gateway:route:email_get_event_log')
+
+        call_response = self.client.post(
+            '/c/10/mcp',
+            data=_rpc('tools/call', name='email_list_messages', arguments={}),
+            content_type='application/json',
+            **self._auth(token),
+        )
+        self.assertEqual(call_response.status_code, 200, call_response.content)
+        self.assertEqual(forwarded['name'], 'api_v1_messages_list')
+
+        cache.delete('mcp_gateway:route:email_get_event_log')
+        cache.delete('mcp_gateway:tools:https://email.test/mcp')
+
+        self.client.post(
+            '/c/10/mcp',
+            data=_rpc('tools/call', name='email_get_event_log', arguments={}),
+            content_type='application/json',
+            **self._auth(token),
+        )
+        self.assertEqual(forwarded['name'], 'api_v1_actions_event_log_retrieve')
 
     @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
     @patch('shellui_django.mcp.gateway.requests.post')
