@@ -24,7 +24,7 @@ from apps.authapi.agent_tokens import authenticate_agent_bearer
 from apps.connector.mcp_protocol import handle_mcp_gateway_request, paginate_tools
 from apps.connector.agent_record import AgentRecord
 from apps.connector.downstream_tokens import DownstreamTokenError, mint_downstream_access_token
-from apps.connector.mcp_call_log import client_ip_from_request, mcp_call_result
+from apps.connector.mcp_call_log import apply_duration_ms, client_ip_from_request, mcp_call_result
 from apps.connector.mcp_identity import agent_is_revoked, forward_call_log, identity_revocation_unavailable
 from apps.connector.mcp_urls import (
     PLAIN_MCP_MESSAGE,
@@ -47,6 +47,7 @@ _mcp_http_request: contextvars.ContextVar[HttpRequest | None] = contextvars.Cont
 
 
 def _record_mcp_call(entry: dict) -> None:
+    apply_duration_ms(entry)
     request = _mcp_http_request.get()
     entry['client_ip'] = client_ip_from_request(request)
     status_code = int(entry.get('status') or 0)

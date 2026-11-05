@@ -2,7 +2,39 @@
 
 from __future__ import annotations
 
+import contextvars
+import time
+
 from django.http import HttpRequest
+
+_mcp_tool_call_started_at: contextvars.ContextVar[float | None] = contextvars.ContextVar(
+    'mcp_tool_call_started_at',
+    default=None,
+)
+
+
+def begin_mcp_tool_call_timer() -> contextvars.Token:
+    return _mcp_tool_call_started_at.set(time.monotonic())
+
+
+def reset_mcp_tool_call_timer(token: contextvars.Token) -> None:
+    _mcp_tool_call_started_at.reset(token)
+
+
+def mcp_tool_call_duration_ms() -> int | None:
+    started = _mcp_tool_call_started_at.get()
+    if started is None:
+        return None
+    return max(0, int((time.monotonic() - started) * 1000))
+
+
+def apply_duration_ms(entry: dict) -> None:
+    if isinstance(entry.get('duration_ms'), (int, float)):
+        entry['duration_ms'] = max(0, int(entry['duration_ms']))
+        return
+    elapsed = mcp_tool_call_duration_ms()
+    if elapsed is not None:
+        entry['duration_ms'] = elapsed
 
 
 def client_ip_from_request(request: HttpRequest | None) -> str:

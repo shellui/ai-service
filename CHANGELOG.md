@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased] - 2026-11-04
 
+### 🐛 Bug Fixes
+
+- MCP gateway call logs forwarded to identity include measured ``duration_ms`` for each ``tools/call`` (local and downstream).
+
 ### 🛠 Improvements
 
 - MCP gateway exports stable ``service_verb_noun`` tool names with titles, descriptions, field help, and MCP annotations on every ``tools/list`` entry.
