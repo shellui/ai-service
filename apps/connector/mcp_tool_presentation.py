@@ -12,6 +12,22 @@ from apps.connector.mcp_tool_schema import openapi_schema_to_json_schema
 _SENTENCE_END = re.compile(r'(?<=[.!?])\s+')
 _EM_EN_DASH = re.compile(r'[\u2013\u2014\u2012]')
 _SHELLUI_WORD = re.compile(r'\bshellui\b', re.I)
+_API_PATH_SNIPPET = re.compile(r'/api/v\d+/', re.I)
+_API_VERSION_PHRASE = re.compile(r'\b(?:api\s*)?v\s*\d+\b|\bapi\s+v\s*\d+\b', re.I)
+_API_V1_UNDERSCORE = re.compile(r'\bapi_v\d+_?', re.I)
+_COMPANY_SUFFIX_RE = re.compile(r' \([^()]+\)$')
+
+
+def strip_presentation_noise(text: str) -> str:
+    """Remove API version paths and ``API V1``-style phrases from titles and descriptions."""
+    out = sanitize_shellui_copy(str(text or ''))
+    if not out:
+        return ''
+    out = _API_PATH_SNIPPET.sub('', out)
+    out = _API_V1_UNDERSCORE.sub('', out)
+    out = _API_VERSION_PHRASE.sub('', out)
+    out = re.sub(r'\s+', ' ', out).strip(' ,:-')
+    return sanitize_shellui_copy(out)
 
 
 def sanitize_shellui_copy(text: str) -> str:
@@ -46,8 +62,10 @@ def human_title_from_tool_name(name: str) -> str:
 def tool_title(operation: dict[str, Any], tool_name: str) -> str:
     summary = str(operation.get('summary') or '').strip()
     if summary:
-        return _first_sentences(summary, max_sentences=1) or human_title_from_tool_name(tool_name)
-    return human_title_from_tool_name(tool_name)
+        title = _first_sentences(summary, max_sentences=1) or human_title_from_tool_name(tool_name)
+    else:
+        title = human_title_from_tool_name(tool_name)
+    return strip_presentation_noise(title)
 
 
 def _strip_openapi_noise(text: str) -> str:
@@ -78,12 +96,12 @@ def tool_description(operation: dict[str, Any], *, method: str, access: dict[str
             parts.append(detail)
     if not parts:
         parts.append(f'Calls the {method.upper()} endpoint for this Shellui API operation.')
-    text = ' '.join(parts)
+    text = strip_presentation_noise(' '.join(parts))
     if access.get('destructive'):
         text = f'{text} This operation can delete or irreversibly change data.'
     elif not access.get('read_only') and method.upper() in {'POST', 'PUT', 'PATCH', 'DELETE'}:
         text = f'{text} This operation can change company data.'
-    return sanitize_shellui_copy(text)
+    return strip_presentation_noise(text)
 
 
 def tool_annotations(operation: dict[str, Any], *, method: str, access: dict[str, bool]) -> dict[str, bool]:
@@ -239,6 +257,55 @@ def apply_tool_presentation(
         )
     tool['_meta'] = meta
     return tool
+
+
+def _gateway_service_id(tool_name: str) -> str:
+    name = str(tool_name or '').strip()
+    if '_' not in name:
+        return ''
+    return name.split('_', 1)[0].lower()
+
+
+def _title_has_service_prefix(title: str, service_label: str) -> bool:
+    lower = title.lower()
+    label = service_label.lower()
+    return lower.startswith(f'{label}:') or lower.startswith(f'{label} ') or lower == label
+
+
+def ensure_service_first_title(title: str, *, tool_name: str) -> str:
+    """Prefix titles with the Shellui service name (``Storage: …``, ``Email: …``)."""
+    from apps.connector.services import mcp_service_display_name
+
+    service_id = _gateway_service_id(tool_name)
+    service_label = mcp_service_display_name(service_id) if service_id else ''
+    raw = str(title or '').strip()
+    if not raw:
+        raw = human_title_from_tool_name(tool_name)
+    suffix = ''
+    match = _COMPANY_SUFFIX_RE.search(raw)
+    if match:
+        suffix = match.group(0)
+        raw = raw[: match.start()].rstrip()
+    cleaned = strip_presentation_noise(raw)
+    if not service_label:
+        return sanitize_shellui_copy(f'{cleaned}{suffix}'.strip())
+    if _title_has_service_prefix(cleaned, service_label):
+        return sanitize_shellui_copy(f'{cleaned}{suffix}'.strip())
+    return sanitize_shellui_copy(f'{service_label}: {cleaned}{suffix}'.strip())
+
+
+def apply_gateway_tool_presentation(tool: dict[str, Any], *, company_label: str) -> dict[str, Any]:
+    """Final gateway ``tools/list`` copy: service-first title, no API version noise, company scope."""
+    from copy import deepcopy
+
+    out = deepcopy(tool)
+    name = str(out.get('name') or '')
+    title = ensure_service_first_title(str(out.get('title') or ''), tool_name=name)
+    out['title'] = title
+    desc = strip_presentation_noise(str(out.get('description') or ''))
+    if desc:
+        out['description'] = desc
+    return apply_company_scope_to_tool(out, company_label=company_label)
 
 
 def apply_company_scope_to_tool(tool: dict[str, Any], *, company_label: str) -> dict[str, Any]:

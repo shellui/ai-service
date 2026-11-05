@@ -2,9 +2,12 @@ from django.test import SimpleTestCase
 
 from apps.connector.mcp_tool_presentation import (
     apply_company_scope_to_tool,
+    apply_gateway_tool_presentation,
     apply_tool_presentation,
+    ensure_service_first_title,
     sanitize_shellui_copy,
     shellui_gateway_instructions,
+    strip_presentation_noise,
     tool_annotations,
 )
 
@@ -12,6 +15,38 @@ from apps.connector.mcp_tool_presentation import (
 class McpToolPresentationTests(SimpleTestCase):
     def test_sanitize_shellui_copy(self):
         self.assertEqual(sanitize_shellui_copy('shellui — test'), 'Shellui, test')
+
+    def test_strip_presentation_noise(self):
+        self.assertEqual(strip_presentation_noise('API V1 List users'), 'List users')
+        self.assertEqual(strip_presentation_noise('Api v1 companies list'), 'companies list')
+
+    def test_ensure_service_first_title(self):
+        self.assertEqual(
+            ensure_service_first_title('List buckets', tool_name='storage_list_buckets'),
+            'Storage: List buckets',
+        )
+        self.assertEqual(
+            ensure_service_first_title('Storage: List buckets', tool_name='storage_list_buckets'),
+            'Storage: List buckets',
+        )
+        self.assertEqual(
+            ensure_service_first_title('List users (Acme)', tool_name='identity_list_users'),
+            'Identity: List users (Acme)',
+        )
+
+    def test_apply_gateway_tool_presentation(self):
+        tool = apply_gateway_tool_presentation(
+            {
+                'name': 'email_list_messages',
+                'title': 'API V1 List messages',
+                'description': 'API V1 mailbox listing for /api/v1/messages/.',
+            },
+            company_label='Acme',
+        )
+        self.assertEqual(tool['title'], 'Email: List messages (Acme)')
+        self.assertNotIn('API V1', tool['title'])
+        self.assertNotIn('/api/v1/', tool['description'])
+        self.assertIn('company Acme', tool['description'])
 
     def test_annotations_from_method(self):
         op = {'operationId': 'api_v1_templates_list', 'x-mcp': {'read_only': True}}
@@ -65,3 +100,19 @@ class McpToolPresentationTests(SimpleTestCase):
         self.assertEqual(scoped['title'], 'List users (Acme)')
         self.assertIn('company Acme', scoped['description'])
         self.assertIn('not from tool arguments', scoped['description'])
+
+    def test_apply_tool_presentation_strips_api_version_from_title(self):
+        operation = {
+            'summary': 'API V1 List templates',
+            'description': 'Returns template rows.',
+            'x-mcp': {'read_only': True},
+            'responses': {'200': {'description': 'ok'}},
+        }
+        tool = apply_tool_presentation(
+            {'name': 'list_templates', 'inputSchema': {'type': 'object', 'properties': {}}},
+            operation=operation,
+            method='get',
+            path='/api/v1/templates/',
+            root={'components': {'schemas': {}}},
+        )
+        self.assertEqual(tool['title'], 'List templates')
