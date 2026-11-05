@@ -30,3 +30,21 @@ class ApiDocsPagesTests(TestCase):
             'swagger-ui-dist/swagger-ui-standalone-preset.js',
             'swagger-ui-dist/swagger-ui.css',
         )
+
+    def test_redoc_does_not_block_on_shellui_init(self):
+        response = self.client.get(reverse('redoc'))
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        redoc_init = body.find('Redoc.init')
+        await_init = body.find('await init()')
+        self.assertNotEqual(redoc_init, -1, 'Redoc.init should be present')
+        self.assertEqual(await_init, -1, 'ReDoc must not await Shellui SDK init before rendering')
+        self.assertIn('renderRedoc(null)', body)
+        self.assertIn('Promise.race', body)
+
+    def test_swagger_does_not_block_on_shellui_init(self):
+        response = self.client.get(reverse('swagger-ui'))
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        self.assertEqual(body.find('await init()'), -1)
+        self.assertIn('Promise.race', body)

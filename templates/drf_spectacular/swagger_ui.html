@@ -33,12 +33,25 @@
         window.__applyShellUIAccessToken?.(token);
       };
 
-      await init();
-      applyDocsColorMode(shellui.initialSettings?.appearance ?? null);
-      window.__shelluiAccessToken = shellui.initialSettings?.accessToken ?? null;
-      window.__applyShellUIAccessToken?.(window.__shelluiAccessToken);
-      shellui.addMessageListener("SHELLUI_SETTINGS", handleSettingsMessage);
-      shellui.addMessageListener("SHELLUI_SETTINGS_UPDATED", handleSettingsMessage);
+      const bindShelluiSettings = () => {
+        applyDocsColorMode(shellui.initialSettings?.appearance ?? null);
+        window.__shelluiAccessToken = shellui.initialSettings?.accessToken ?? null;
+        window.__applyShellUIAccessToken?.(window.__shelluiAccessToken);
+        shellui.addMessageListener("SHELLUI_SETTINGS", handleSettingsMessage);
+        shellui.addMessageListener("SHELLUI_SETTINGS_UPDATED", handleSettingsMessage);
+      };
+
+      applyDocsColorMode(null);
+
+      const SHELLUI_INIT_TIMEOUT_MS = 5000;
+      Promise.race([
+        init(),
+        new Promise((resolve) => setTimeout(resolve, SHELLUI_INIT_TIMEOUT_MS)),
+      ])
+        .then(bindShelluiSettings)
+        .catch(() => {
+          /* keep default light appearance */
+        });
     </script>
     <script src="{{ swagger_ui_bundle }}"></script>
     <script src="{{ swagger_ui_standalone }}"></script>
