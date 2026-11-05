@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from django.conf import settings
 
+from apps.connector.mcp_service_display import MCP_SERVICE_DISPLAY_NAMES, mcp_service_display_name
+
+__all__ = ['MCP_SERVICE_DISPLAY_NAMES', 'mcp_service_display_name', 'configured_service_urls', 'downstream_resource_for', 'list_mcp_services']
+
 
 def _origin(url: str) -> str:
     return str(url or '').strip().rstrip('/')

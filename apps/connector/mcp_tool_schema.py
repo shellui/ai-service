@@ -331,11 +331,13 @@ def normalize_mcp_tool(tool: dict[str, Any], root: dict[str, Any] | None = None)
         if tenant_binding or meta:
             out['_meta'] = apply_tenant_meta_from_binding(meta, tenant_binding)
     name = str(out.get('name') or 'tool')
-    if not str(out.get('title') or '').strip():
-        from apps.connector.mcp_tool_presentation import human_title_from_tool_name
+    from apps.connector.mcp_tool_presentation import human_title_from_tool_name, strip_presentation_noise
 
+    if not str(out.get('title') or '').strip():
         out['title'] = human_title_from_tool_name(name)
-    desc = sanitize_shellui_copy(str(out.get('description') or '').strip())
+    else:
+        out['title'] = strip_presentation_noise(str(out.get('title') or ''))
+    desc = strip_presentation_noise(str(out.get('description') or '').strip())
     if len(desc) < 24:
         from apps.connector.mcp_tool_presentation import human_title_from_tool_name
 
