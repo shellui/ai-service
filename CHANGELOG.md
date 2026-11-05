@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### 🔒 Security
 
-- MCP ``tools/list`` no longer exposes ``company_id`` / ``companyId`` on tool inputs; ``tools/call`` binds tenant company from the agent token and rejects cross-company overrides.
+- MCP ``tools/list`` no longer exposes ``company_id`` / ``companyId`` on tool inputs; ``tools/call`` binds tenant company from the agent token and rejects cross-company overrides. Every tool title and description names the connected company (display name when the token includes it) so multi-company MCP clients can tell connectors apart.
 
 ### ✨ Feature
 

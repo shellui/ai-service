@@ -230,6 +230,28 @@ def apply_tenant_meta_from_binding(meta: dict[str, Any], binding: dict[str, list
     return out
 
 
+def company_label_from_claims(claims: dict[str, Any]) -> str:
+    """Human-readable company label for MCP tool copy (display name when present)."""
+    company_id = agent_company_id(claims)
+    for key in ('company_name', 'company_display_name', 'company_label'):
+        raw = claims.get(key)
+        if isinstance(raw, str) and raw.strip():
+            return raw.strip()
+    nested = claims.get('company')
+    if isinstance(nested, dict):
+        for key in ('display_name', 'name', 'slug'):
+            raw = nested.get(key)
+            if isinstance(raw, str) and raw.strip():
+                return raw.strip()
+    user_meta = claims.get('user_metadata')
+    if isinstance(user_meta, dict):
+        for key in ('company_name', 'company_display_name'):
+            raw = user_meta.get(key)
+            if isinstance(raw, str) and raw.strip():
+                return raw.strip()
+    return f'Company {company_id}'
+
+
 def input_schema_has_tenant_fields(input_schema: dict[str, Any]) -> list[str]:
     """Return JSON paths where tenant fields still appear (for tests and audits)."""
     paths: list[str] = []

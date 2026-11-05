@@ -32,7 +32,8 @@ from apps.connector.mcp_urls import (
     company_mcp_resource,
     company_metadata_url,
 )
-from apps.connector.mcp_tenant import apply_tenant_to_arguments, tenant_binding_from_meta
+from apps.connector.mcp_tenant import apply_tenant_to_arguments, company_label_from_claims, tenant_binding_from_meta
+from apps.connector.mcp_tool_presentation import apply_company_scope_to_tool
 from apps.connector.services import configured_service_urls, downstream_resource_for
 from shellui_django.mcp.routing import McpToolArgumentError
 
@@ -351,6 +352,8 @@ class PrefixingMcpServer(AggregatingMcpServer):
             local_service_id=local_id,
             remember_route=remember,
         )
+        company_label = company_label_from_claims(agent_claims)
+        tools = [apply_company_scope_to_tool(tool, company_label=company_label) for tool in tools]
         page = paginate_tools(tools, params or {})
         return JsonResponse(self._result(req_id, page))
 

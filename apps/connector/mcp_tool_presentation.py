@@ -241,6 +241,28 @@ def apply_tool_presentation(
     return tool
 
 
+def apply_company_scope_to_tool(tool: dict[str, Any], *, company_label: str) -> dict[str, Any]:
+    """Make multi-company MCP connections distinguishable in clients (title + description)."""
+    from copy import deepcopy
+
+    label = sanitize_shellui_copy(str(company_label or '').strip())
+    if not label:
+        return tool
+    out = deepcopy(tool)
+    suffix = f' ({label})'
+    title = str(out.get('title') or '').strip()
+    if title and not title.endswith(suffix):
+        out['title'] = sanitize_shellui_copy(f'{title}{suffix}')
+    scope_line = sanitize_shellui_copy(
+        f'This call applies to company {label}. '
+        'Company scope comes from your MCP connection and agent token, not from tool arguments.'
+    )
+    desc = str(out.get('description') or '').strip()
+    if label not in desc:
+        out['description'] = sanitize_shellui_copy(f'{scope_line} {desc}'.strip()) if desc else scope_line
+    return out
+
+
 def shellui_gateway_instructions(
     *,
     title: str,

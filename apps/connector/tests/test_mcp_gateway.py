@@ -387,6 +387,8 @@ class McpGatewayTests(TestCase):
         query_props = email_tool['inputSchema']['properties']['query']['properties']
         self.assertNotIn('company_id', query_props)
         self.assertIn('mailbox', query_props)
+        self.assertIn('(Company 10)', email_tool['title'])
+        self.assertIn('company Company 10', email_tool['description'])
 
         call_response = self.client.post(
             '/c/10/mcp',

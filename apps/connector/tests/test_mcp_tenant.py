@@ -7,6 +7,7 @@ from django.test import TestCase
 from apps.connector.mcp_openapi_tools import tools_from_schema
 from apps.connector.mcp_tenant import (
     apply_tenant_to_arguments,
+    company_label_from_claims,
     input_schema_has_tenant_fields,
     strip_tenant_fields_from_input_schema,
 )
@@ -83,6 +84,13 @@ class McpTenantTests(TestCase):
         meta = {'tenant_query_fields': ['company_id']}
         with self.assertRaises(McpToolArgumentError):
             apply_tenant_to_arguments({'query': {'company_id': 99}}, {'company_id': 10}, meta)
+
+    def test_company_label_prefers_display_name_from_claims(self):
+        self.assertEqual(
+            company_label_from_claims({'company_id': 3, 'company_name': 'Acme'}),
+            'Acme',
+        )
+        self.assertEqual(company_label_from_claims({'company_id': 3}), 'Company 3')
 
     def test_strip_tenant_fields_returns_binding(self):
         schema = {
