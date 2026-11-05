@@ -274,7 +274,7 @@ def _title_has_service_prefix(title: str, service_label: str) -> bool:
 
 def ensure_service_first_title(title: str, *, tool_name: str) -> str:
     """Prefix titles with the Shellui service name (``Storage: …``, ``Email: …``)."""
-    from apps.connector.services import mcp_service_display_name
+    from apps.connector.mcp_service_display import mcp_service_display_name
 
     service_id = _gateway_service_id(tool_name)
     service_label = mcp_service_display_name(service_id) if service_id else ''

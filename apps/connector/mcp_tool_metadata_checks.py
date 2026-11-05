@@ -57,7 +57,7 @@ def validate_tool_metadata(tool: dict) -> list[str]:
         errors.append(f'{name}: description must not include API version noise')
     service = name.split('_', 1)[0] if '_' in name else ''
     if service in SERVICE_IDS:
-        from apps.connector.services import mcp_service_display_name
+        from apps.connector.mcp_service_display import mcp_service_display_name
 
         label = mcp_service_display_name(service)
         lower = title.lower()

@@ -4,19 +4,9 @@ from __future__ import annotations
 
 from django.conf import settings
 
-MCP_SERVICE_DISPLAY_NAMES: dict[str, str] = {
-    'ai': 'AI',
-    'identity': 'Identity',
-    'storage': 'Storage',
-    'hosting': 'Hosting',
-    'email': 'Email',
-    'saas': 'SaaS',
-}
+from apps.connector.mcp_service_display import MCP_SERVICE_DISPLAY_NAMES, mcp_service_display_name
 
-
-def mcp_service_display_name(service_id: str) -> str:
-    key = str(service_id or '').strip().lower()
-    return MCP_SERVICE_DISPLAY_NAMES.get(key, key.capitalize() if key else 'Shellui')
+__all__ = ['MCP_SERVICE_DISPLAY_NAMES', 'mcp_service_display_name', 'configured_service_urls', 'downstream_resource_for', 'list_mcp_services']
 
 
 def _origin(url: str) -> str:
