@@ -57,10 +57,30 @@ EMAIL_LEGACY_TOOLS = {
             {
                 'name': 'api_v1_messages_list',
                 'description': 'List messages',
+                'inputSchema': {
+                    'type': 'object',
+                    'properties': {
+                        'path': {'type': 'string', 'const': '/api/v1/messages/'},
+                        'method': {'type': 'string', 'enum': ['GET']},
+                        'query': {
+                            'type': 'object',
+                            'additionalProperties': False,
+                            'properties': {
+                                'company_id': {'type': 'integer'},
+                                'mailbox': {'type': 'string'},
+                            },
+                            'required': ['company_id'],
+                        },
+                    },
+                    'required': ['path', 'method'],
+                    'additionalProperties': False,
+                },
                 '_meta': {
                     'operationId': 'api_v1_messages_list',
                     'path': '/api/v1/messages/',
                     'method': 'get',
+                    'query_fields': ['company_id', 'mailbox'],
+                    'query_required': ['company_id'],
                 },
             },
             {
@@ -232,8 +252,8 @@ class McpGatewayTests(TestCase):
 
         routes: dict[str, tuple[str, str]] = {}
 
-        def remember(export_name: str, sid: str, downstream: str) -> None:
-            routes[export_name] = (sid, downstream)
+        def remember(export_name: str, route: dict) -> None:
+            routes[export_name] = (route['service_id'], route['downstream_name'])
 
         remote = {
             'identity': [{'name': 'api_v1_users_list', 'description': 'List users'}],
@@ -336,6 +356,60 @@ class McpGatewayTests(TestCase):
             **self._auth(token),
         )
         self.assertEqual(forwarded['name'], 'api_v1_actions_event_log_retrieve')
+
+    @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
+    @patch('shellui_django.mcp.gateway.requests.post')
+    def test_gateway_tools_list_hides_company_id_and_call_injects_from_token(self, post, _mint, _rev_ok):
+        forwarded_args: dict = {}
+
+        def side_effect(url, **kwargs):
+            resp = Mock()
+            resp.status_code = 200
+            payload = kwargs.get('json') or {}
+            if payload.get('method') == 'tools/call':
+                forwarded_args.update(payload.get('params', {}).get('arguments') or {})
+                resp.json.return_value = {'jsonrpc': '2.0', 'id': 1, 'result': {'content': []}}
+            else:
+                resp.json.return_value = EMAIL_LEGACY_TOOLS
+            return resp
+
+        post.side_effect = side_effect
+        token = _agent_token(secret=self.secret, issuer=self.issuer, scope='ai email')
+        list_response = self.client.post(
+            '/c/10/mcp',
+            data=_rpc('tools/list'),
+            content_type='application/json',
+            **self._auth(token),
+        )
+        self.assertEqual(list_response.status_code, 200, list_response.content)
+        tools = list_response.json()['result']['tools']
+        email_tool = next(t for t in tools if t['name'] == 'email_list_messages')
+        query_props = email_tool['inputSchema']['properties']['query']['properties']
+        self.assertNotIn('company_id', query_props)
+        self.assertIn('mailbox', query_props)
+
+        call_response = self.client.post(
+            '/c/10/mcp',
+            data=_rpc('tools/call', name='email_list_messages', arguments={'query': {'mailbox': 'inbox'}}),
+            content_type='application/json',
+            **self._auth(token),
+        )
+        self.assertEqual(call_response.status_code, 200, call_response.content)
+        self.assertEqual(forwarded_args.get('query', {}).get('company_id'), '10')
+        self.assertEqual(forwarded_args.get('query', {}).get('mailbox'), 'inbox')
+
+        bad = self.client.post(
+            '/c/10/mcp',
+            data=_rpc(
+                'tools/call',
+                name='email_list_messages',
+                arguments={'query': {'company_id': 99, 'mailbox': 'inbox'}},
+            ),
+            content_type='application/json',
+            **self._auth(token),
+        )
+        self.assertEqual(bad.status_code, 200)
+        self.assertIn('error', bad.json())
 
     @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
     @patch('shellui_django.mcp.gateway.requests.post')

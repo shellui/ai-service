@@ -6,6 +6,7 @@ from django.test import TestCase, override_settings
 from drf_spectacular.generators import SchemaGenerator
 
 from apps.connector.mcp_openapi_tools import tools_from_schema
+from apps.connector.mcp_tenant import input_schema_has_tenant_fields
 from apps.connector.mcp_tool_schema import audit_tool_input_schemas, normalize_mcp_tool
 
 
@@ -52,3 +53,13 @@ class McpToolSchemaAuditTests(TestCase):
         self.assertEqual(query_props['format']['type'], 'string')
         self.assertEqual(query_props['scope']['type'], 'string')
         self.assertEqual(audit_tool_input_schemas([fixed]), [])
+
+    def test_openapi_tools_never_expose_company_id(self):
+        schema = SchemaGenerator().get_schema(request=None, public=True)
+        tools = tools_from_schema(schema)
+        violations: list[str] = []
+        for tool in tools:
+            paths = input_schema_has_tenant_fields(tool.get('inputSchema') or {})
+            for path in paths:
+                violations.append(f"{tool.get('name')} {path}")
+        self.assertEqual(violations, [])

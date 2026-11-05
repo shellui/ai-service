@@ -13,7 +13,6 @@ from rest_framework.request import Request
 from shellui_django.mcp.gateway import (
     AggregatingMcpServer,
     McpGatewayConfig,
-    public_mcp_tools,
     scope_service_ids,
     service_allowed,
 )
@@ -33,7 +32,9 @@ from apps.connector.mcp_urls import (
     company_mcp_resource,
     company_metadata_url,
 )
+from apps.connector.mcp_tenant import apply_tenant_to_arguments, tenant_binding_from_meta
 from apps.connector.services import configured_service_urls, downstream_resource_for
+from shellui_django.mcp.routing import McpToolArgumentError
 
 _TOOLS_LIST_CACHE_PREFIX = 'mcp_gateway:tools:'
 
@@ -68,6 +69,10 @@ def iter_gateway_remote_exports(
         canonical = service_local_tool_name(tool, service_id=service_id)
         export_name = gateway_export_name(service_id, canonical, taken=taken)
         route = {'service_id': service_id, 'downstream_name': downstream_name}
+        meta = tool.get('_meta') if isinstance(tool.get('_meta'), dict) else {}
+        tenant = tenant_binding_from_meta(meta)
+        if tenant:
+            route['tenant'] = tenant
         rows.append((export_name, {**tool, 'name': export_name}, route))
     return rows
 
@@ -88,17 +93,77 @@ def prefixed_tool_catalog(
             continue
         export_name = gateway_export_name(local_service_id, name, taken=taken)
         taken.add(export_name)
-        merged.append({**tool, 'name': export_name})
+        exported = {**tool, 'name': export_name}
+        merged.append({k: v for k, v in exported.items() if not str(k).startswith('_')})
     for service_id, tools in remote_by_service.items():
         for export_name, exported, route in iter_gateway_remote_exports(tools, service_id=service_id):
             if remember_route is not None:
-                remember_route(export_name, route['service_id'], route['downstream_name'])
-            merged.append(exported)
+                remember_route(export_name, route)
+            merged.append({k: v for k, v in exported.items() if not str(k).startswith('_')})
     return merged
 
 
 class PrefixingMcpServer(AggregatingMcpServer):
     """Same gateway, with an unambiguous service prefix on every downstream tool."""
+
+    def _remember_route(
+        self,
+        export_name: str,
+        service_id: str,
+        downstream_name: str,
+        *,
+        tenant: dict[str, list[str]] | None = None,
+    ) -> None:
+        payload: dict[str, object] = {'service_id': service_id, 'downstream_name': downstream_name}
+        if tenant:
+            payload['tenant'] = tenant
+        self._cache().set(
+            f'mcp_gateway:route:{export_name}',
+            payload,
+            self._gateway.tools_cache_ttl_seconds,
+        )
+
+    def _meta_for_export_tool(self, export_name: str) -> dict:
+        local_name = self._local_tool_export_name(export_name)
+        if local_name is not None:
+            for tool in tools_from_schema(self.schema_provider()):
+                if str(tool.get('name') or '') == local_name:
+                    return tool.get('_meta') if isinstance(tool.get('_meta'), dict) else {}
+        route = self._lookup_route(export_name)
+        if isinstance(route, dict) and isinstance(route.get('tenant'), dict):
+            tenant = route['tenant']
+            meta: dict = {}
+            if tenant.get('path_params'):
+                meta['tenant_path_params'] = tenant['path_params']
+            if tenant.get('query'):
+                meta['tenant_query_fields'] = tenant['query']
+            if tenant.get('body'):
+                meta['tenant_body_fields'] = tenant['body']
+            return meta
+        return {}
+
+    def _inject_tool_call_arguments(
+        self,
+        export_name: str,
+        arguments: dict,
+        agent_claims: dict,
+    ) -> dict:
+        meta = self._meta_for_export_tool(export_name)
+        return apply_tenant_to_arguments(arguments, agent_claims, meta)
+
+    def _prepare_tool_call_params(self, params: dict | None, agent_claims: dict, req_id) -> tuple[dict, JsonResponse | None]:
+        call_params = dict(params or {})
+        export_name = str(call_params.get('name') or '')
+        local_name = self._local_tool_export_name(export_name)
+        if local_name is not None:
+            call_params['name'] = local_name
+        arguments = call_params.get('arguments')
+        if isinstance(arguments, dict):
+            try:
+                call_params['arguments'] = self._inject_tool_call_arguments(export_name, arguments, agent_claims)
+            except McpToolArgumentError as exc:
+                return call_params, JsonResponse(self._error(req_id, -32602, str(exc)))
+        return call_params, None
 
     def _service_id_from_export_name(self, export_name: str) -> str | None:
         service_id, sep, rest = str(export_name or '').partition('_')
@@ -118,14 +183,20 @@ class PrefixingMcpServer(AggregatingMcpServer):
         tools = self._cache().get(f'{_TOOLS_LIST_CACHE_PREFIX}{mcp_url}')
         if not isinstance(tools, list):
             return None
-        for name, _tool, route in iter_gateway_remote_exports(tools, service_id=service_id):
+        enriched = [normalize_mcp_tool(tool) if isinstance(tool, dict) else tool for tool in tools]
+        for name, _tool, route in iter_gateway_remote_exports(enriched, service_id=service_id):
             if name == export_name:
                 return route
         return None
 
     def _remember_routes_for_service_tools(self, service_id: str, tools: list[dict]) -> None:
         for export_name, _tool, route in iter_gateway_remote_exports(tools, service_id=service_id):
-            self._remember_route(export_name, route['service_id'], route['downstream_name'])
+            self._remember_route(
+                export_name,
+                route['service_id'],
+                route['downstream_name'],
+                tenant=route.get('tenant'),
+            )
 
     def _ensure_routes_for_export(self, export_name: str, agent_claims: dict) -> None:
         if self._lookup_route(export_name) is not None:
@@ -150,13 +221,19 @@ class PrefixingMcpServer(AggregatingMcpServer):
             self._remember_routes_for_service_tools(service_id, tools)
 
     def _lookup_route(self, tool_name: str) -> dict[str, str] | None:
-        cached = super()._lookup_route(tool_name)
-        if cached is not None:
-            return cached
+        meta = self._cache().get(f'mcp_gateway:route:{tool_name}')
+        if isinstance(meta, dict) and meta.get('service_id') and meta.get('downstream_name'):
+            return meta
         route = self._route_from_cached_tools_list(tool_name)
         if route is not None:
-            self._remember_route(tool_name, route['service_id'], route['downstream_name'])
-        return route
+            self._remember_route(
+                tool_name,
+                route['service_id'],
+                route['downstream_name'],
+                tenant=route.get('tenant') if isinstance(route.get('tenant'), dict) else None,
+            )
+            return self._cache().get(f'mcp_gateway:route:{tool_name}')
+        return None
 
     def _local_tool_export_name(self, export_name: str) -> str | None:
         """Map ``ai_<tool>`` back to the local OpenAPI tool name for ``tools/call``."""
@@ -186,11 +263,12 @@ class PrefixingMcpServer(AggregatingMcpServer):
             gw.tools_from_schema, srv.tools_from_schema = orig_gw, orig_srv
 
     def _maybe_forward_tool_call(self, request: HttpRequest, req_id, params, agent_claims):
-        call_params = dict(params or {})
-        export_name = str(call_params.get('name') or '')
+        call_params, error = self._prepare_tool_call_params(params, agent_claims, req_id)
+        if error is not None:
+            return error
+        export_name = str((params or {}).get('name') or '')
         local_name = self._local_tool_export_name(export_name)
         if local_name is not None:
-            call_params['name'] = local_name
             return self._tools_call(request, req_id, call_params, agent_claims)
 
         self._ensure_routes_for_export(export_name, agent_claims)
@@ -231,10 +309,9 @@ class PrefixingMcpServer(AggregatingMcpServer):
         return response
 
     def _tools_call(self, request, req_id, params, agent_claims):
-        call_params = dict(params or {})
-        local_name = self._local_tool_export_name(str(call_params.get('name') or ''))
-        if local_name is not None:
-            call_params['name'] = local_name
+        call_params, error = self._prepare_tool_call_params(params, agent_claims, req_id)
+        if error is not None:
+            return error
 
         return self._using_connector_tool_catalog(
             lambda *args: super(PrefixingMcpServer, self)._tools_call(*args),
@@ -249,7 +326,7 @@ class PrefixingMcpServer(AggregatingMcpServer):
         if agent is None:
             return JsonResponse(self._error(req_id, -32603, 'Forbidden'))
         allowed = scope_service_ids(agent_claims) & set(agent.services_allowed or [])
-        local = public_mcp_tools(tools_from_schema(self.schema_provider()))
+        local = [normalize_mcp_tool(tool) for tool in tools_from_schema(self.schema_provider())]
         local_id = self._gateway.local_service_id
         remote: dict[str, list[dict]] = {}
         for service_id, mcp_url in self._gateway.get_service_urls().items():
@@ -258,14 +335,22 @@ class PrefixingMcpServer(AggregatingMcpServer):
             token = self._gateway.mint_downstream_token(agent, mcp_url)
             tools = self._fetch_remote_tools_list(mcp_url=mcp_url, bearer_token=token)
             if tools is not None:
-                remote[service_id] = tools
+                remote[service_id] = [normalize_mcp_tool(tool) for tool in tools]
+
+        def remember(export_name: str, route: dict) -> None:
+            self._remember_route(
+                export_name,
+                str(route['service_id']),
+                str(route['downstream_name']),
+                tenant=route.get('tenant') if isinstance(route.get('tenant'), dict) else None,
+            )
+
         tools = prefixed_tool_catalog(
             local,
             remote,
             local_service_id=local_id,
-            remember_route=self._remember_route,
+            remember_route=remember,
         )
-        tools = [normalize_mcp_tool(tool) for tool in tools]
         page = paginate_tools(tools, params or {})
         return JsonResponse(self._result(req_id, page))
 

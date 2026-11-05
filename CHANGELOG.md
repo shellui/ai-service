@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - MCP gateway ``tools/call`` rebuilds export→downstream routes from cached or refetched ``tools/list`` when the route cache expires, so legacy downstream tool names (e.g. ``api_v1_*``) are forwarded correctly.
 
+### 🔒 Security
+
+- MCP ``tools/list`` no longer exposes ``company_id`` / ``companyId`` on tool inputs; ``tools/call`` binds tenant company from the agent token and rejects cross-company overrides.
+
 ### ✨ Feature
 
 - MCP OAuth protected-resource metadata advertises `shellui_mcp_authorize_query` (`saas_offered=1`) when SaaS tools are forwarded; e2e OAuth clients append it on authorize.
