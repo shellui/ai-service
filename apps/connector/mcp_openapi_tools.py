@@ -13,6 +13,7 @@ from apps.connector.mcp_tool_naming import (
     select_newest_api_version_operations,
 )
 
+from apps.connector.mcp_tenant import is_tenant_field, partition_field_names
 from apps.connector.mcp_tool_presentation import apply_tool_presentation
 from apps.connector.mcp_tool_schema import normalize_tool_input_schema, openapi_schema_to_json_schema
 
@@ -71,6 +72,13 @@ def tools_from_schema(schema: dict[str, Any]) -> list[dict[str, Any]]:
         path_params = path_parameter_names(path)
         query_props, query_required = _parameter_schemas(operation, schema, location='query')
         body_props, body_required = _body_schemas(operation, schema)
+        agent_path_params, tenant_path_params = partition_field_names(path_params)
+        agent_query_props = {k: v for k, v in query_props.items() if not is_tenant_field(str(k))}
+        tenant_query_fields = [str(k) for k in query_props if is_tenant_field(str(k))]
+        agent_query_required = [k for k in query_required if k in agent_query_props]
+        agent_body_props = {k: v for k, v in body_props.items() if not is_tenant_field(str(k))}
+        tenant_body_fields = [str(k) for k in body_props if is_tenant_field(str(k))]
+        agent_body_required = [k for k in body_required if k in agent_body_props]
         properties: dict[str, Any] = {
             'path': {'type': 'string', 'const': path, 'description': 'OpenAPI path for this MCP proxy call.'},
             'method': {
@@ -81,22 +89,22 @@ def tools_from_schema(schema: dict[str, Any]) -> list[dict[str, Any]]:
             'query': {
                 'type': 'object',
                 'additionalProperties': False,
-                'properties': query_props,
+                'properties': agent_query_props,
                 'description': 'Query string fields for this API operation.',
             },
             'body': {
                 'type': 'object',
                 'additionalProperties': False,
-                'properties': body_props,
+                'properties': agent_body_props,
                 'description': 'JSON body fields for this API operation.',
             },
         }
-        if query_required:
-            properties['query']['required'] = query_required
-        if body_required:
-            properties['body']['required'] = body_required
+        if agent_query_required:
+            properties['query']['required'] = agent_query_required
+        if agent_body_required:
+            properties['body']['required'] = agent_body_required
         required = ['path', 'method']
-        if path_params:
+        if agent_path_params:
             properties['path_params'] = {
                 'type': 'object',
                 'additionalProperties': False,
@@ -105,9 +113,9 @@ def tools_from_schema(schema: dict[str, Any]) -> list[dict[str, Any]]:
                         'type': 'string',
                         'description': f'Path parameter `{param}`.',
                     }
-                    for param in path_params
+                    for param in agent_path_params
                 },
-                'required': path_params,
+                'required': agent_path_params,
             }
             required.append('path_params')
         access = tool_access_flags(operation)
@@ -131,10 +139,13 @@ def tools_from_schema(schema: dict[str, Any]) -> list[dict[str, Any]]:
                     'operationId': operation.get('operationId'),
                     'legacy_tool_name': legacy_name,
                     'path_params': path_params,
-                    'query_fields': sorted(query_props.keys()) or None,
-                    'query_required': query_required or None,
-                    'body_fields': sorted(body_props.keys()) or None,
-                    'body_required': body_required or None,
+                    'tenant_path_params': tenant_path_params or None,
+                    'query_fields': sorted(agent_query_props.keys()) or None,
+                    'tenant_query_fields': tenant_query_fields or None,
+                    'query_required': agent_query_required or None,
+                    'body_fields': sorted(agent_body_props.keys()) or None,
+                    'tenant_body_fields': tenant_body_fields or None,
+                    'body_required': agent_body_required or None,
                     'read_only': access['read_only'],
                     'destructive': access['destructive'],
                     'mcp_tagged': access['tagged'],

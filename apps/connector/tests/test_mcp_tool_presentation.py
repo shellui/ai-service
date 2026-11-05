@@ -1,6 +1,7 @@
 from django.test import SimpleTestCase
 
 from apps.connector.mcp_tool_presentation import (
+    apply_company_scope_to_tool,
     apply_tool_presentation,
     sanitize_shellui_copy,
     shellui_gateway_instructions,
@@ -55,3 +56,12 @@ class McpToolPresentationTests(SimpleTestCase):
         text = shellui_gateway_instructions(title='Shellui AI MCP gateway', connected_services=['storage', 'ai'])
         self.assertIn('Shellui', text)
         self.assertNotIn('—', text)
+
+    def test_apply_company_scope_to_tool(self):
+        scoped = apply_company_scope_to_tool(
+            {'title': 'List users', 'description': 'Lists users for the workspace.'},
+            company_label='Acme',
+        )
+        self.assertEqual(scoped['title'], 'List users (Acme)')
+        self.assertIn('company Acme', scoped['description'])
+        self.assertIn('not from tool arguments', scoped['description'])

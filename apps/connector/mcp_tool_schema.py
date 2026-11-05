@@ -320,11 +320,16 @@ def audit_tool_input_schemas(tools: list[dict[str, Any]]) -> list[tuple[str, str
 
 def normalize_mcp_tool(tool: dict[str, Any], root: dict[str, Any] | None = None) -> dict[str, Any]:
     from apps.connector.mcp_tool_presentation import sanitize_shellui_copy
+    from apps.connector.mcp_tenant import apply_tenant_meta_from_binding, strip_tenant_fields_from_input_schema
 
     out = deepcopy(tool)
     schema = out.get('inputSchema')
     if isinstance(schema, dict):
+        tenant_binding = strip_tenant_fields_from_input_schema(schema)
         out['inputSchema'] = normalize_tool_input_schema(schema, root)
+        meta = out.get('_meta') if isinstance(out.get('_meta'), dict) else {}
+        if tenant_binding or meta:
+            out['_meta'] = apply_tenant_meta_from_binding(meta, tenant_binding)
     name = str(out.get('name') or 'tool')
     if not str(out.get('title') or '').strip():
         from apps.connector.mcp_tool_presentation import human_title_from_tool_name
