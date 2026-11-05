@@ -199,6 +199,9 @@ def forward_call_log(entry: dict) -> None:
         'client_ip': str(entry.get('client_ip') or '')[:45],
         'result': str(entry.get('result') or '')[:32],
     }
+    duration = entry.get('duration_ms')
+    if isinstance(duration, (int, float)) and duration >= 0:
+        body['duration_ms'] = int(duration)
     try:
         requests.post(
             url,

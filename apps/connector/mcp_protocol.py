@@ -16,6 +16,7 @@ from django.core.cache import cache
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from shellui_django.mcp.gateway import AggregatingMcpServer
 
+from apps.connector.mcp_call_log import begin_mcp_tool_call_timer, reset_mcp_tool_call_timer
 from apps.connector.mcp_tool_presentation import shellui_gateway_instructions
 from shellui_django.mcp.rate_limit import check_agent_rate_limit
 from shellui_django.mcp.server import McpServer
@@ -282,9 +283,13 @@ def handle_mcp_gateway_request(
         return server._aggregated_tools_list(req_id, agent_claims, params)
 
     if method == 'tools/call':
-        forwarded = server._maybe_forward_tool_call(request, req_id, params, agent_claims)
-        if forwarded is not None:
-            return forwarded
-        return server._tools_call(request, req_id, params, agent_claims)
+        timer = begin_mcp_tool_call_timer()
+        try:
+            forwarded = server._maybe_forward_tool_call(request, req_id, params, agent_claims)
+            if forwarded is not None:
+                return forwarded
+            return server._tools_call(request, req_id, params, agent_claims)
+        finally:
+            reset_mcp_tool_call_timer(timer)
 
     return JsonResponse(McpServer._error(req_id, -32601, 'Method not found'))

@@ -68,6 +68,7 @@ class McpIdentitySigningTests(SimpleTestCase):
                     'status': 200,
                     'client_ip': '203.0.113.1',
                     'result': 'success',
+                    'duration_ms': 42,
                 }
             )
         self._verify(_bearer(post.call_args), audience=CALL_LOG_AUDIENCE, scope=CALL_LOG_SCOPE)
@@ -75,6 +76,7 @@ class McpIdentitySigningTests(SimpleTestCase):
         self.assertEqual(body['method'], 'POST')
         self.assertEqual(body['client_ip'], '203.0.113.1')
         self.assertEqual(body['result'], 'success')
+        self.assertEqual(body['duration_ms'], 42)
         self.assertNotIn('arguments', body)
         self.assertNotIn('arguments_redacted', body)
 
