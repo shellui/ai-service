@@ -112,16 +112,31 @@ def _new_session_id() -> str:
     return secrets.token_urlsafe(32)
 
 
-def _store_session(session_id: str, *, company_id: int, agent_id: str, protocol_version: str) -> None:
+def _store_session(
+    session_id: str,
+    *,
+    company_id: int,
+    agent_id: str,
+    protocol_version: str,
+    client_elicitation: bool = False,
+) -> None:
     cache.set(
         f'{MCP_SESSION_CACHE_PREFIX}{session_id}',
         {
             'company_id': company_id,
             'agent_id': agent_id,
             'protocol_version': protocol_version,
+            'client_elicitation': bool(client_elicitation),
         },
         MCP_SESSION_TTL_SECONDS,
     )
+
+
+def session_elicitation_supported(session_id: str) -> bool:
+    record = _session_record(session_id)
+    if record is None:
+        return False
+    return bool(record.get('client_elicitation'))
 
 
 def _session_record(session_id: str) -> dict[str, Any] | None:
@@ -268,11 +283,14 @@ def handle_mcp_gateway_request(
     if method == 'initialize':
         result = build_initialize_result(server, agent_claims=agent_claims, params=params)
         session_id = _new_session_id()
+        client_caps = params.get('capabilities') if isinstance(params.get('capabilities'), dict) else {}
+        client_elicitation = isinstance(client_caps.get('elicitation'), dict)
         _store_session(
             session_id,
             company_id=company_id,
             agent_id=agent_id,
             protocol_version=str(result['protocolVersion']),
+            client_elicitation=client_elicitation,
         )
         response = JsonResponse(McpServer._result(req_id, result))
         response['Mcp-Session-Id'] = session_id
