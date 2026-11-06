@@ -55,10 +55,19 @@ def access_mode_from_claims(agent_claims: dict[str, Any]) -> str:
 
 def _log_result_from_decide(decided: DecideResult, *, fallback: str) -> str:
     """Map Identity decide response to stable gateway log tokens (activity outcomes)."""
+    if not decided.ok:
+        return 'error'
     ap = str(decided.approval_status or '').strip().lower()
-    if ap == 'approved':
-        return 'identity_approved'
     aud = str(decided.audit_status or '').strip().lower()
+    # HTTP 200 JSON can still be a non-success human flow (e.g. pending); never map that to authority success.
+    if ap == 'approved' and aud in {'', 'ok', 'approved', 'success'}:
+        return 'identity_approved'
+    if aud in {'pending', 'pending_approval'}:
+        return aud
+    if aud in {'denied', 'client_denied', 'expired', 'error'}:
+        return aud
+    if ap in {'denied'}:
+        return 'denied'
     return aud or fallback
 
 

@@ -17,6 +17,15 @@ from django.http import HttpRequest, HttpResponse, JsonResponse
 from shellui_django.mcp.gateway import AggregatingMcpServer
 
 from apps.connector.mcp_call_log import begin_mcp_tool_call_timer, reset_mcp_tool_call_timer
+from apps.connector.mcp_identity import (
+    DelegatedAuthorityFailureReason,
+    verify_live_delegated_agent_authority_detail,
+)
+from apps.connector.mcp_setup_context import (
+    global_binding_triplet_from_claims,
+    global_binding_conflict_claims,
+    is_global_delegated_claims,
+)
 from apps.connector.mcp_tool_presentation import shellui_gateway_instructions
 from shellui_django.mcp.rate_limit import check_agent_rate_limit
 from shellui_django.mcp.server import McpServer
@@ -196,6 +205,59 @@ def _is_jsonrpc_notification(payload: dict[str, Any]) -> bool:
     return 'method' in payload and 'id' not in payload
 
 
+def _delegated_live_authority_block(
+    agent_claims: dict[str, Any],
+) -> JsonResponse | None:
+    """Central gateway: delegated JWTs must pass Identity live 15-key authority before any MCP method."""
+    if global_binding_conflict_claims(agent_claims, allow_isolated_grant_version=True):
+        return JsonResponse({'error': 'global_binding_invalid'}, status=403)
+    if not is_global_delegated_claims(agent_claims):
+        return None
+    gv, cbv, gcid = global_binding_triplet_from_claims(agent_claims)
+    if gv is None or cbv is None or gcid is None:
+        return JsonResponse({'error': 'delegated_authority_forbidden'}, status=403)
+    cid_raw = agent_claims.get('company_id')
+    try:
+        company_id_int = int(cid_raw) if cid_raw is not None else None
+    except (TypeError, ValueError):
+        company_id_int = None
+    if company_id_int is None:
+        return JsonResponse({'error': 'delegated_authority_forbidden'}, status=403)
+    agent_id = str(agent_claims.get('agent_id') or '').strip()
+    if not agent_id:
+        return JsonResponse({'error': 'delegated_authority_forbidden'}, status=403)
+
+    detail = verify_live_delegated_agent_authority_detail(
+        agent_id=agent_id,
+        company_id=company_id_int,
+        global_company_id=str(gcid),
+        grant_version=int(gv),
+        company_binding_version=int(cbv),
+        agent_claims=agent_claims,
+    )
+    if detail.ok:
+        return None
+    reason = detail.reason
+    if reason in {
+        DelegatedAuthorityFailureReason.identity_not_configured,
+        DelegatedAuthorityFailureReason.signing_not_configured,
+        DelegatedAuthorityFailureReason.transport_error,
+    }:
+        return JsonResponse({'error': 'identity_unavailable'}, status=503)
+    if reason == DelegatedAuthorityFailureReason.http_not_200 and detail.http_status is not None:
+        if int(detail.http_status) >= 500:
+            return JsonResponse({'error': 'identity_unavailable'}, status=503)
+        return JsonResponse({'error': 'delegated_authority_forbidden'}, status=403)
+    if reason in {
+        DelegatedAuthorityFailureReason.http_not_200,
+        DelegatedAuthorityFailureReason.invalid_json,
+        DelegatedAuthorityFailureReason.not_authorized,
+        DelegatedAuthorityFailureReason.binding_or_shape_mismatch,
+    }:
+        return JsonResponse({'error': 'delegated_authority_forbidden'}, status=403)
+    return JsonResponse({'error': 'delegated_authority_forbidden'}, status=403)
+
+
 def _gateway_precheck(
     server: AggregatingMcpServer,
     request: HttpRequest,
@@ -220,6 +282,9 @@ def _gateway_precheck(
         return JsonResponse({'error': 'agent_revoked'}, status=403)
     if not McpServer._service_allowed(agent_claims, server.service_name):
         return JsonResponse({'error': 'forbidden'}, status=403)
+    blocked_delegated = _delegated_live_authority_block(agent_claims)
+    if blocked_delegated is not None:
+        return blocked_delegated
     return None
 
 

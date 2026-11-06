@@ -8,6 +8,10 @@ title: MCP client conformance (e2e)
 
 You run `tools/mcp-e2e` to exercise the **ai-service** MCP gateway against **identity-service** with **official MCP clients** (TypeScript SDK, Python SDK, inspector). Default Docker Compose leaves **storage**, **hosting**, and **email** MCP URLs empty and uses a **SaaS mock**. This page states exactly what is verified and what is not.
 
+## No full downstream stack required
+
+The default `tools/mcp-e2e` run is **not** an optional compose profile that you must “turn on” to get a complete stack. **Storage, hosting, and email MCP backends are absent by default** (`STORAGE_SERVICE_URL` / `HOSTING_SERVICE_URL` / `EMAIL_SERVICE_URL` empty). Conformance is **identity + ai gateway + OAuth + MCP clients** only; **real downstream MCP services are out of scope** unless you manually set URLs (see below).
+
 ## What the default stack exercises
 
 The compose file `tools/mcp-e2e/docker-compose.yml` starts **identity**, **ai-service**, **postgres**, **redis**, and **`saas-mock`**.
@@ -16,9 +20,9 @@ On the **ai** service, **`STORAGE_SERVICE_URL`**, **`HOSTING_SERVICE_URL`**, and
 
 So the default suite proves **MCP + OAuth + ai gateway + identity** for the flows in `tools/mcp-e2e` (including negatives such as tenant isolation, revoked agents, and invalid OAuth where the scripts cover them). It does **not** prove routing through real **storage**, **hosting**, or **email** gateways, full delegated-downstream integration, or production SaaS behavior.
 
-## Optional downstream URLs (local evidence)
+## Optional downstream URLs (manual local evidence only)
 
-Before `docker compose up`, you can point the **ai** container at real sibling dev URLs (each must serve MCP as your env expects):
+Before `docker compose up`, you can point the **ai** container at real sibling dev URLs (each must serve MCP as your env expects). This is **ad hoc** and **not** part of the default CI MCP client job:
 
 | Variable | Default in compose | Notes |
 |----------|-------------------|--------|
@@ -42,8 +46,7 @@ Record the **exact SHAs or branch names** of identity, saas, storage, hosting, a
 
 | Repo | PR | headRefOid (last `gh` check in ai-service CI docs) |
 |------|-----|-----------------------------------------------------|
-| shellui/identity-service | #135 (delegated-authority payload) | `d7fe35128461d00c7dd2c5d270fe4d19e7d904a3` |
-| shellui/identity-service | #136 (`mcp-call-logs` allowlist) | `c05ea83082f484f01b147126e0f4e9e06382e375` |
+| shellui/identity-service | #135 (delegated authority + merged internal MCP) | `d7fe35128461d00c7dd2c5d270fe4d19e7d904a3` (check `develop`, e.g. `bdb3c3` for `McpInternalCallLogView` + `call_log_internal.canonical_call_path`) |
 | shellui/storage-service | #59 | `6db93f833fa1f0f747a686ede9c1c4e974301fea` |
 | shellui/hosting-service | #78 | `71403d9c3cd6ffa3a0ee6d561662070ad31e0581` |
 | shellui/email-service | #46 | `17c900d07938f5fbd15a0241ba6e58d8a704c9d0` |

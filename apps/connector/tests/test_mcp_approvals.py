@@ -19,29 +19,48 @@ from apps.authapi.ai_service_jwks import (
     load_ai_service_signing_key,
 )
 from apps.connector import mcp_approval_copy as copy
-from apps.connector.mcp_approval_gate import build_elicitation_meta, enforce_tool_call_approval
+from apps.connector.mcp_approval_gate import (
+    _log_result_from_decide,
+    build_elicitation_meta,
+    enforce_tool_call_approval,
+)
 from shellui_django.mcp.write_gate import WriteGateDecision
 from apps.connector import mcp_approvals
-from apps.connector.mcp_approvals import SESSION_GRANT_SECONDS
+from apps.connector.mcp_approvals import SESSION_GRANT_SECONDS, DecideResult
 from apps.connector.mcp_protocol import MCP_SESSION_CACHE_PREFIX
 
 AI_MCP = 'https://ai.test/c/10/mcp'
 MCP_ACCEPT = 'application/json, text/event-stream'
 
+_DEFAULT_TEST_AGENT_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+
 _PRIVATE, _PUBLIC = generate_rsa_key_pair(key_size=2048)
 _SIGNING = load_ai_service_signing_key(private_pem=_PRIVATE, kid=compute_rsa_kid(_PUBLIC))
+
+
+def _delegated_authority_transport_mock(url, **kwargs):
+    """Stub Identity internal HTTP used by gateway precheck and call-log forward."""
+    u = str(url).rstrip('/')
+    resp = Mock()
+    if u.endswith('/mcp-agent-delegated-authority'):
+        resp.status_code = 404
+        return resp
+    if u.endswith('/mcp-call-logs'):
+        resp.status_code = 204
+        return resp
+    raise AssertionError(f'Unexpected identity _http_post URL: {url!r}')
 
 
 def _rpc(method: str, **params):
     return json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': method, 'params': params or {}})
 
 
-def _agent_token(*, secret: str, issuer: str, mcp_access: str = 'ask') -> str:
+def _agent_token(*, secret: str, issuer: str, mcp_access: str = 'ask', agent_id: str = _DEFAULT_TEST_AGENT_ID) -> str:
     now = int(time.time())
     claims = {
         'token_type': 'access',
-        'sub': 'agent:agent-a',
-        'agent_id': 'agent-a',
+        'sub': f'agent:{agent_id}',
+        'agent_id': agent_id,
         'agent_name': 'Test Agent',
         'company_id': 10,
         'company_name': 'Acme',
@@ -49,6 +68,7 @@ def _agent_token(*, secret: str, issuer: str, mcp_access: str = 'ask') -> str:
         'mcp_access': mcp_access,
         'mcp_read': 'safe',
         'mcp_destructive': False,
+        'grant_version': 1,
         'aud': AI_MCP,
         'iss': issuer,
         'iat': now,
@@ -108,12 +128,15 @@ class McpApprovalGatewayTests(TestCase):
         self.assertEqual(response.status_code, 200)
         return response['Mcp-Session-Id']
 
+    @patch('apps.connector.mcp_identity._http_post', side_effect=_delegated_authority_transport_mock)
     @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
     @patch('apps.connector.mcp_identity.forward_call_log')
     @patch('apps.connector.mcp_approvals.fetch_approval_state', return_value=(None, None))
     @patch('shellui_django.mcp.gateway.requests.post')
     @patch('apps.connector.mcp_approvals.create_approval_request')
-    def test_write_tool_under_ask_requires_approval(self, create_approval, post, _state, _log, _mint, *_mocks):
+    def test_write_tool_under_ask_requires_approval(
+        self, create_approval, post, _state, _log, _mint, *_mocks
+    ):
         create_approval.return_value = {'id': 'appr-1', 'status': 'pending'}
         storage_tools = {
             'jsonrpc': '2.0',
@@ -179,6 +202,7 @@ class McpApprovalGatewayTests(TestCase):
         ]
         self.assertEqual(forwarded, [])
 
+    @patch('apps.connector.mcp_identity._http_post', side_effect=_delegated_authority_transport_mock)
     @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
     @patch('apps.connector.mcp_identity.forward_call_log')
     @patch('apps.connector.mcp_approvals.fetch_approval_state', return_value=(None, None))
@@ -234,6 +258,7 @@ class McpApprovalGatewayTests(TestCase):
         self.assertNotIn('session_allow', meta['elicitation']['buttons'])
         self.assertIn('This can change data.', meta['elicitation']['title'])
 
+    @patch('apps.connector.mcp_identity._http_post', side_effect=_delegated_authority_transport_mock)
     @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
     @patch('apps.connector.mcp_identity.forward_call_log')
     @patch('shellui_django.mcp.gateway.requests.post')
@@ -274,7 +299,7 @@ class McpApprovalGatewayTests(TestCase):
             f'{MCP_SESSION_CACHE_PREFIX}{session_id}',
             {
                 'company_id': 10,
-                'agent_id': 'agent-a',
+                'agent_id': _DEFAULT_TEST_AGENT_ID,
                 'protocol_version': '2025-06-18',
                 'client_elicitation': True,
             },
@@ -303,6 +328,96 @@ class McpApprovalGatewayTests(TestCase):
             if (call.kwargs.get('json') or {}).get('method') == 'tools/call'
         ]
         self.assertEqual(len(forwarded), 1)
+
+    @patch('apps.connector.mcp_identity._http_post', side_effect=_delegated_authority_transport_mock)
+    @patch('apps.connector.mcp_views.forward_call_log')
+    @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
+    @patch('shellui_django.mcp.gateway.requests.post')
+    def test_call_log_http200_success_not_pending(
+        self,
+        post,
+        _mint,
+        capture_forward,
+        _proto_post,
+        _mcp_views_agent_revoked,
+        _identity_revocation_ok,
+        _gate_agent_revoked,
+    ):
+        post.side_effect = AssertionError('downstream MCP POST should not run for local ai_list_services')
+        token = _agent_token(secret=self.secret, issuer=self.issuer, mcp_access='full')
+        session_id = self._init_session(token)
+        response = self.client.post(
+            '/c/10/mcp',
+            data=_rpc('tools/call', name='ai_list_services', arguments={}),
+            content_type='application/json',
+            **self._auth(token, session_id=session_id),
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertFalse(response.json()['result'].get('isError', True))
+        self.assertTrue(capture_forward.called)
+        entry = capture_forward.call_args[0][0]
+        self.assertEqual(entry.get('status'), 200)
+        self.assertEqual(entry.get('log_result'), 'success')
+        self.assertFalse(entry.get('is_error', True))
+        self.assertEqual(entry.get('outcome'), 'allowed')
+
+    @patch('apps.connector.mcp_identity._http_post', side_effect=_delegated_authority_transport_mock)
+    @patch('apps.connector.mcp_views.forward_call_log')
+    @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
+    @patch('shellui_django.mcp.gateway.requests.post')
+    def test_call_log_unknown_tool_is_error_not_pending(
+        self,
+        post,
+        _mint,
+        capture_forward,
+        _proto_post,
+        _mcp_views_agent_revoked,
+        _identity_revocation_ok,
+        _gate_agent_revoked,
+    ):
+        post.side_effect = AssertionError('downstream MCP POST should not run for unknown tool')
+        token = _agent_token(secret=self.secret, issuer=self.issuer, mcp_access='full')
+        session_id = self._init_session(token)
+        response = self.client.post(
+            '/c/10/mcp',
+            data=_rpc('tools/call', name='ai_definitely_missing_tool', arguments={}),
+            content_type='application/json',
+            **self._auth(token, session_id=session_id),
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(response.json()['result'].get('isError'))
+        self.assertTrue(capture_forward.called)
+        entry = capture_forward.call_args[0][0]
+        self.assertEqual(entry.get('status'), 200)
+        self.assertEqual(entry.get('log_result'), 'error')
+        self.assertTrue(entry.get('is_error', False))
+        self.assertEqual(entry.get('outcome'), 'failed')
+
+
+class LogResultFromDecideTests(TestCase):
+    """``_log_result_from_decide`` must not map ``approval_status=approved`` alone to authority success."""
+
+    def test_http200_with_pending_audit_is_pending_not_identity_approved(self):
+        decided = DecideResult(
+            ok=True,
+            status_code=200,
+            approval_status='approved',
+            audit_status='pending',
+        )
+        self.assertEqual(_log_result_from_decide(decided, fallback='client_allowed'), 'pending')
+
+    def test_http200_ok_audit_with_approved_is_identity_approved(self):
+        decided = DecideResult(ok=True, status_code=200, approval_status='approved', audit_status='ok')
+        self.assertEqual(_log_result_from_decide(decided, fallback='client_allowed'), 'identity_approved')
+
+    def test_not_ok_returns_error(self):
+        decided = DecideResult(
+            ok=False,
+            status_code=409,
+            approval_status='approved',
+            audit_status='pending',
+        )
+        self.assertEqual(_log_result_from_decide(decided, fallback='client_allowed'), 'error')
 
 
 class McpApprovalCopyTests(TestCase):
@@ -466,6 +581,7 @@ class McpDestructiveOverrideTests(TestCase):
         self.assertEqual(response.status_code, 200)
         return response['Mcp-Session-Id']
 
+    @patch('apps.connector.mcp_identity._http_post', side_effect=_delegated_authority_transport_mock)
     @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
     @patch('apps.connector.mcp_identity.forward_call_log')
     @patch('shellui_django.mcp.gateway.requests.post')
@@ -504,8 +620,8 @@ class McpDestructiveOverrideTests(TestCase):
         now = int(time.time())
         claims = {
             'token_type': 'access',
-            'sub': 'agent:agent-a',
-            'agent_id': 'agent-a',
+            'sub': f'agent:{_DEFAULT_TEST_AGENT_ID}',
+            'agent_id': _DEFAULT_TEST_AGENT_ID,
             'agent_name': 'Test Agent',
             'company_id': 10,
             'company_name': 'Acme',
@@ -513,6 +629,7 @@ class McpDestructiveOverrideTests(TestCase):
             'mcp_access': 'full',
             'mcp_read': 'safe',
             'mcp_destructive': True,
+            'grant_version': 1,
             'aud': AI_MCP,
             'iss': self.issuer,
             'iat': now,

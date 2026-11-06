@@ -97,7 +97,9 @@ Logic lives in `apps/connector/mcp_setup_context.py`:
 
 ## Call logs and activity (Identity)
 
-`POST /api/v1/mcp/internal/mcp-call-logs` matches **identity-service `develop`** (`McpInternalCallLogView`): **no** `operation_title`, **`resource_label`**, **`arguments`**, or **`approval_request_id`**. **`grant_version`** is **required** (JSON int from the agent JWT). For **delegated** agents (global binding), **`global_company_id`** and **`company_binding_version`** are **both** required and must match the row; for non-delegated agents they must be **absent**. Canonical **`outcome`** values on ingest are **`allowed`**, **`failed`**, **`denied`**, **`waiting_approval`**, **`session_used`**; the gateway maps internal **`pending_approval`** → **`waiting_approval`**. **`result`** is the short legacy token (`success`, `error`, `denied`, `pending_approval`) aligned with `legacy_result_token`. **`approval_id`** when present must be a UUID (**not** `approval_request_id`). **`error_code`** is required (allowlisted via `sanitize_error_code`, or empty string). Identity derives display **`operation_title`** and **`resource_label`** server-side from **`service`**, **`method`**, and **`path`**.
+`POST /api/v1/mcp/internal/mcp-call-logs` tracks **downstream MCP tool execution** against **identity-service `develop`** (e.g. `bdb3c3` on `McpInternalCallLogView` + `canonical_call_path` in `call_log_internal.py`). The gateway sends only what Identity accepts for **remote** ingest: **`agent_id`**, **`company_id`**, **`grant_version`** (must match the agent JWT), **`service`**, **`tool`**, wire **`method`: `POST`** and **`path`: `/mcp`** (so Identity can build `POST /mcp (service)` resource labels—**not** REST templates or query strings), **`status`**, **`duration_ms`**, **`outcome`**, **`access_kind`**, optional **`approval_id`** (UUID only), and optional **`error_code`** from Identity’s allowlist (`apps/agents/mcp_audit_codes.py`). **No** `client_ip`, **`result`**, `operation_title`, `resource_label`, `arguments`, or **`approval_request_id`**. **Delegated** agents (JWT has full `global_company_id` + `company_binding_version` + `grant_version` triple): forward includes **`global_company_id`** and **`company_binding_version`** and must match the JWT; **personal / non-delegated** forwards omit both. If the JWT lacks **`grant_version`** or the entry disagrees with claims on company or binding, **`forward_call_log` sends nothing** (avoids inventing versions).
+
+**Destructive tools:** Identity only accepts **`access_kind`: `destructive`** with **`outcome`** **`allowed`** or **`session_used`** and a matching **`approval_id`** for an approved destructive row. On any other outcome the gateway **drops `approval_id`**, sets **`outcome`** to **`failed`**, and attaches an **`error_code`** (never a false success with a pending/waiting destructive approval).
 
 ### Gateway **`outcome`** vs Identity ingest
 
@@ -105,7 +107,7 @@ Internal rows still use **`OUTCOMES`** in `mcp_call_audit.py`. **`forward_call_l
 
 ### Safe metadata only
 
-- **`path` on forward:** `forward_call_log` strips query/fragment before POST.
+- **Wire route:** always **`POST /mcp`** on forward; OpenAPI **method/path** stay in local audit only.
 - **Labels:** **`company_name`** and **`agent_name`** are **not** forwarded (JWT display strings are not server-enforced registry data).
 - **`access_kind`:** **`read`**, **`write`**, **`destructive`**, or **`unknown`** from tool traits and HTTP method (`access_kind_from_tool`).
 - **No** raw tool arguments: sending `arguments` or `arguments_redacted` to Identity returns **400**.

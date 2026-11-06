@@ -8,11 +8,16 @@ import logging
 import threading
 import time
 import uuid
+from dataclasses import dataclass
+from enum import Enum
 from typing import Any
 
 import jwt
 import requests
 from django.conf import settings
+
+# Patchable indirection for tests (avoid mocking ``requests.post`` globally).
+_http_post = requests.post
 from django.core.cache import cache
 from shellui_django.mcp.internal import (
     REVOCATION_CACHE_SECONDS,
@@ -22,11 +27,16 @@ from shellui_django.mcp.internal import (
     verify_mcp_revocation_list_response,
 )
 
-from apps.connector.mcp_audit_codes import sanitize_error_code
-from apps.connector.mcp_call_audit import OUTCOMES, legacy_result_token, safe_route_path_for_audit
+from apps.connector.mcp_audit_codes import error_code_from_http, sanitize_error_code
+from apps.connector.mcp_call_audit import OUTCOMES, legacy_result_token
 from apps.connector.mcp_company_id import strict_numeric_company_id
 from apps.connector.mcp_revocation import revocation_fingerprint_material
-from apps.connector.mcp_setup_context import parse_global_company_id, parse_int_version_claim
+from apps.connector.mcp_setup_context import (
+    global_binding_triplet_from_claims,
+    is_global_delegated_claims,
+    parse_global_company_id,
+    parse_int_version_claim,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -123,7 +133,14 @@ def _delegated_authority_success_body_ok(
         return False
     if data.get('paused') is not False:
         return False
-    if data.get('allow_destructive') is not False:
+    row_allow_destr = data.get('allow_destructive')
+    if not isinstance(row_allow_destr, bool):
+        return False
+    jwt_destr = agent_claims.get('mcp_destructive') if isinstance(agent_claims, dict) else None
+    if isinstance(jwt_destr, bool):
+        if row_allow_destr != jwt_destr:
+            return False
+    elif row_allow_destr is not False:
         return False
     try:
         aid = uuid.UUID(str(data.get('agent_id') or '').strip())
@@ -195,7 +212,25 @@ def _delegated_authority_success_body_ok(
     return True
 
 
-def verify_live_delegated_agent_authority(
+class DelegatedAuthorityFailureReason(str, Enum):
+    ok = 'ok'
+    identity_not_configured = 'identity_not_configured'
+    signing_not_configured = 'signing_not_configured'
+    transport_error = 'transport_error'
+    http_not_200 = 'http_not_200'
+    invalid_json = 'invalid_json'
+    not_authorized = 'not_authorized'
+    binding_or_shape_mismatch = 'binding_or_shape_mismatch'
+
+
+@dataclass(frozen=True, slots=True)
+class DelegatedAuthorityResult:
+    ok: bool
+    reason: DelegatedAuthorityFailureReason = DelegatedAuthorityFailureReason.ok
+    http_status: int | None = None
+
+
+def verify_live_delegated_agent_authority_detail(
     *,
     agent_id: str,
     company_id: int,
@@ -203,7 +238,7 @@ def verify_live_delegated_agent_authority(
     grant_version: int,
     company_binding_version: int,
     agent_claims: dict[str, Any] | None = None,
-) -> bool:
+) -> DelegatedAuthorityResult:
     """
     Live delegated binding check against Identity (not revocation-cache alone).
 
@@ -218,13 +253,13 @@ def verify_live_delegated_agent_authority(
     origin = _identity_origin()
     if not origin:
         logger.warning('MCP delegated authority check skipped: Identity is not configured')
-        return False
+        return DelegatedAuthorityResult(False, reason=DelegatedAuthorityFailureReason.identity_not_configured)
     audience = _identity_audience(origin)
     try:
         assertion = _build_delegated_agent_authority_assertion(audience_url=audience)
     except InternalAssertionError:
         logger.warning('MCP delegated authority check skipped: service assertion signing is not configured')
-        return False
+        return DelegatedAuthorityResult(False, reason=DelegatedAuthorityFailureReason.signing_not_configured)
     url = f'{origin.rstrip("/")}{DELEGATED_AGENT_AUTHORITY_PATH}'
     body: dict[str, Any] = {
         'agent_id': str(agent_id).strip(),
@@ -234,7 +269,7 @@ def verify_live_delegated_agent_authority(
         'company_binding_version': int(company_binding_version),
     }
     try:
-        response = requests.post(
+        response = _http_post(
             url,
             json=body,
             headers={'Authorization': f'Bearer {assertion}', 'Content-Type': 'application/json'},
@@ -242,7 +277,7 @@ def verify_live_delegated_agent_authority(
         )
     except requests.RequestException as exc:
         logger.warning('MCP delegated authority check transport error: %s', type(exc).__name__)
-        return False
+        return DelegatedAuthorityResult(False, reason=DelegatedAuthorityFailureReason.transport_error)
     if response.status_code != 200:
         logger.info(
             'MCP delegated authority rejected: status=%s agent_id=%s company_id=%s',
@@ -250,13 +285,19 @@ def verify_live_delegated_agent_authority(
             agent_id,
             company_id,
         )
-        return False
+        return DelegatedAuthorityResult(
+            False,
+            reason=DelegatedAuthorityFailureReason.http_not_200,
+            http_status=int(response.status_code),
+        )
     try:
         data = response.json()
     except ValueError:
-        return False
+        return DelegatedAuthorityResult(False, reason=DelegatedAuthorityFailureReason.invalid_json)
     if not isinstance(data, dict):
-        return False
+        return DelegatedAuthorityResult(False, reason=DelegatedAuthorityFailureReason.invalid_json)
+    if data.get('authorized') is not True or data.get('active') is not True:
+        return DelegatedAuthorityResult(False, reason=DelegatedAuthorityFailureReason.not_authorized, http_status=200)
     if not _delegated_authority_success_body_ok(
         data,
         agent_id=agent_id,
@@ -271,8 +312,29 @@ def verify_live_delegated_agent_authority(
             agent_id,
             company_id,
         )
-        return False
-    return True
+        return DelegatedAuthorityResult(
+            False, reason=DelegatedAuthorityFailureReason.binding_or_shape_mismatch, http_status=200
+        )
+    return DelegatedAuthorityResult(True)
+
+
+def verify_live_delegated_agent_authority(
+    *,
+    agent_id: str,
+    company_id: int,
+    global_company_id: str,
+    grant_version: int,
+    company_binding_version: int,
+    agent_claims: dict[str, Any] | None = None,
+) -> bool:
+    return verify_live_delegated_agent_authority_detail(
+        agent_id=agent_id,
+        company_id=company_id,
+        global_company_id=global_company_id,
+        grant_version=grant_version,
+        company_binding_version=company_binding_version,
+        agent_claims=agent_claims,
+    ).ok
 
 
 def _revocation_headers(origin: str) -> dict[str, str]:
@@ -539,45 +601,65 @@ def forward_call_log(entry: dict) -> None:
     except InternalAssertionError:
         logger.warning('MCP call log failed: service assertion signing is not configured')
         return
+    claims = entry.get('agent_claims')
+    if not isinstance(claims, dict) or not claims:
+        logger.warning('MCP call log skipped: missing agent JWT claims context')
+        return
     raw_aid = entry.get('agent_id')
     try:
         agent_uuid = uuid.UUID(str(raw_aid).strip())
     except (TypeError, ValueError, AttributeError):
         logger.warning('MCP call log skipped: invalid agent_id')
         return
+    try:
+        claim_agent = uuid.UUID(str(claims.get('agent_id') or '').strip())
+    except (TypeError, ValueError, AttributeError):
+        logger.warning('MCP call log skipped: invalid agent_id claim')
+        return
+    if claim_agent != agent_uuid:
+        logger.warning('MCP call log skipped: agent_id does not match JWT')
+        return
     cid = strict_numeric_company_id(entry.get('company_id'))
     if cid is None:
         logger.warning('MCP call log skipped: invalid company_id')
         return
-    gv_log = parse_int_version_claim(entry.get('grant_version'))
-    if gv_log is None:
-        logger.warning('MCP call log skipped: grant_version missing or invalid')
+    claim_cid = strict_numeric_company_id(claims.get('company_id'))
+    if claim_cid is None or claim_cid != cid:
+        logger.warning('MCP call log skipped: company_id does not match JWT')
         return
-    gcid_log = parse_global_company_id(entry.get('global_company_id'))
-    cbv_log = parse_int_version_claim(entry.get('company_binding_version'))
-    delegated = gcid_log is not None and cbv_log is not None
-    if gcid_log is not None and cbv_log is None:
-        logger.warning('MCP call log skipped: partial delegated global binding')
+    gv_claim, cbv_claim, gcid_claim = global_binding_triplet_from_claims(claims)
+    if gv_claim is None:
+        logger.warning('MCP call log skipped: grant_version missing from JWT')
         return
-    if gcid_log is None and cbv_log is not None:
-        logger.warning('MCP call log skipped: partial delegated global binding')
+    gv_entry = parse_int_version_claim(entry.get('grant_version'))
+    if gv_entry is None or int(gv_entry) != int(gv_claim):
+        logger.warning('MCP call log skipped: grant_version mismatch or missing on entry')
         return
+    delegated = is_global_delegated_claims(claims)
+    gcid_entry = parse_global_company_id(entry.get('global_company_id'))
+    cbv_entry = parse_int_version_claim(entry.get('company_binding_version'))
+    if delegated:
+        if gcid_claim is None or cbv_claim is None:
+            logger.warning('MCP call log skipped: incomplete delegated claims')
+            return
+        if gcid_entry is None or cbv_entry is None:
+            logger.warning('MCP call log skipped: delegated entry missing global pair')
+            return
+        if gcid_entry != gcid_claim or int(cbv_entry) != int(cbv_claim):
+            logger.warning('MCP call log skipped: global binding pair inconsistent with JWT')
+            return
+    else:
+        if gcid_entry is not None or cbv_entry is not None:
+            logger.warning('MCP call log skipped: global fields on non-delegated forward')
+            return
+
     outcome_raw = str(entry.get('outcome') or '').strip().lower()
     log_res = str(entry.get('log_result') or '').strip() if entry.get('log_result') is not None else None
     ingest_outcome = _identity_ingest_outcome(outcome=outcome_raw, log_result=log_res)
     access_raw = str(entry.get('access_kind') or entry.get('access_level') or '').strip().lower()
     access_kind = access_raw if access_raw in _ACCESS_KINDS else 'unknown'
     tool_name = str(entry.get('tool_export_id') or entry.get('tool') or '')[:255] or 'tool'
-    safe_path = safe_route_path_for_audit(entry.get('path'))[:500]
-    internal_for_legacy = ingest_outcome
-    if internal_for_legacy == 'waiting_approval':
-        internal_for_legacy = 'pending_approval'
-    if internal_for_legacy not in OUTCOMES:
-        internal_for_legacy = 'failed'
-    legacy_res = str(entry.get('result') or '').strip().lower()[:32]
-    if not legacy_res:
-        legacy_res = legacy_result_token(outcome=internal_for_legacy)
-    aid_raw = str(entry.get('approval_id') or entry.get('approval_request_id') or '').strip()
+    aid_raw = str(entry.get('approval_id') or '').strip()
     approval_uuid: str | None = None
     if aid_raw:
         try:
@@ -586,32 +668,54 @@ def forward_call_log(entry: dict) -> None:
             approval_uuid = None
     duration = entry.get('duration_ms')
     dur_ms = int(duration) if isinstance(duration, (int, float)) and duration >= 0 else 0
-    client_ip = str(entry.get('client_ip') or '').strip()[:45]
-    ec_raw = entry.get('error_code')
-    error_code_val = (sanitize_error_code(ec_raw) or '') if ec_raw is not None else ''
+    status_code = int(entry.get('status') or 0)
+    is_err = entry.get('is_error')
+
+    destructive_audit = access_kind == 'destructive' or bool(entry.get('destructive_hint'))
+    if destructive_audit:
+        if ingest_outcome not in ('allowed', 'session_used'):
+            ingest_outcome = 'failed'
+            approval_uuid = None
+            ec_derived = sanitize_error_code(entry.get('error_code')) or 'mcp_tool_error'
+        elif approval_uuid is None:
+            ingest_outcome = 'failed'
+            ec_derived = 'mcp_tool_error'
+        else:
+            ec_derived = None
+    else:
+        ec_raw = entry.get('error_code')
+        ec_derived = sanitize_error_code(ec_raw)
+        if ec_derived is None and ingest_outcome not in ('allowed', 'session_used'):
+            ec_derived = error_code_from_http(status=status_code, is_error=is_err)
+        if ec_derived is None and ingest_outcome == 'waiting_approval':
+            ec_derived = 'waiting_approval'
+        if ec_derived is None and ingest_outcome == 'denied':
+            ec_derived = 'denied'
+        if ec_derived is None and ingest_outcome == 'failed':
+            ec_derived = error_code_from_http(status=status_code, is_error=is_err) or 'internal_error'
+
     body: dict[str, Any] = {
         'agent_id': str(agent_uuid),
         'company_id': int(cid),
-        'grant_version': int(gv_log),
+        'grant_version': int(gv_claim),
         'service': str(entry.get('service') or 'ai')[:32],
         'tool': tool_name,
-        'method': str(entry.get('method') or '')[:10],
-        'path': safe_path,
-        'status': int(entry.get('status') or 0),
+        'method': 'POST',
+        'path': '/mcp',
+        'status': status_code,
         'duration_ms': dur_ms,
-        'client_ip': client_ip,
-        'result': legacy_res,
         'outcome': ingest_outcome,
         'access_kind': access_kind,
-        'error_code': error_code_val,
     }
     if delegated:
-        body['global_company_id'] = str(gcid_log)
-        body['company_binding_version'] = int(cbv_log)
+        body['global_company_id'] = str(gcid_claim)
+        body['company_binding_version'] = int(cbv_claim)
     if approval_uuid:
         body['approval_id'] = approval_uuid
+    if ec_derived:
+        body['error_code'] = ec_derived
     try:
-        requests.post(
+        _http_post(
             url,
             json=body,
             headers={'Authorization': f'Bearer {assertion}', 'Content-Type': 'application/json'},

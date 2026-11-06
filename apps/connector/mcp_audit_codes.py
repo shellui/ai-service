@@ -1,8 +1,12 @@
-"""Allowlisted audit fields for identity personal activity (no raw provider text)."""
+"""Allowlisted audit fields for identity personal activity (no raw provider text).
+
+Aligned with identity-service ``apps/agents/mcp_audit_codes.py`` on ``develop`` (merge #135+),
+plus gateway-only ``mcp_tool_error`` for local classification before forward.
+"""
 
 from __future__ import annotations
 
-# Small stable set only; anything else is dropped (fail closed for UI).
+# Union of identity ingest allowlist and gateway-only codes; anything else is dropped.
 ALLOWED_ERROR_CODES = frozenset(
     {
         'bad_request',
@@ -14,9 +18,18 @@ ALLOWED_ERROR_CODES = frozenset(
         'timeout',
         'upstream_error',
         'internal_error',
+        'unknown',
         'denied',
+        'pending_approval',
+        'waiting_approval',
         'expired',
         'out_of_sync',
+        'identity_unreachable',
+        'invalid_grant',
+        'permission_changed',
+        'request_expired',
+        'downstream_error',
+        'server_error',
         'mcp_tool_error',
     },
 )

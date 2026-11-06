@@ -34,6 +34,25 @@ def legacy_result_token(*, outcome: str) -> str:
     return 'error'
 
 
+def _canonical_log_result(*, outcome: str, status: int, is_error: bool | None) -> str:
+    """Stable ``log_result`` for forwarded rows (tests + Identity ingest) after outcome is computed."""
+    o = str(outcome or '').strip().lower()
+    if o == 'pending_approval':
+        return 'pending_approval'
+    if o == 'denied':
+        return 'denied'
+    if o in {'allowed', 'session_used'}:
+        return 'success'
+    if o == 'failed':
+        return 'error'
+    code = int(status or 0)
+    if is_error is True:
+        return 'error'
+    if is_error is False and 200 <= code < 400:
+        return 'success'
+    return 'error'
+
+
 def outcome_from_audit(*, log_result: str | None, status: int | None, is_error: bool | None) -> str:
     """Map gateway bookkeeping to a fixed outcome enum (no substring heuristics on error text)."""
     lr = str(log_result or '').strip().lower()
@@ -218,6 +237,20 @@ def build_call_audit_log(
         entry['error_code'] = ec
     if rid:
         entry['approval_id'] = rid[:64]
+    final_outcome = str(entry.get('outcome') or 'failed').strip().lower()
+    entry['log_result'] = _canonical_log_result(
+        outcome=final_outcome,
+        status=int(status),
+        is_error=is_error,
+    )
+    if is_error is not None:
+        entry['is_error'] = bool(is_error)
+    elif final_outcome in {'allowed', 'session_used'}:
+        entry['is_error'] = False
+    elif final_outcome in {'failed', 'denied'}:
+        entry['is_error'] = True
+    else:
+        entry['is_error'] = None
     lr = str(legacy_result or '').strip()[:32]
     if lr:
         entry['result'] = lr

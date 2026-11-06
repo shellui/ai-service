@@ -125,9 +125,16 @@ def is_global_delegated_claims(agent_claims: dict | None) -> bool:
     return gv is not None and cbv is not None and gcid is not None
 
 
-def global_binding_conflict_claims(agent_claims: dict | None) -> bool:
+def global_binding_conflict_claims(
+    agent_claims: dict | None,
+    *,
+    allow_isolated_grant_version: bool = False,
+) -> bool:
     """
     True if some but not all of the global triple are present or parseable (reject; no legacy guess).
+
+    When ``allow_isolated_grant_version`` is True (gateway precheck), ``grant_version`` alone is allowed
+    on personal tokens so JWTs can carry grant policy for call logs without implying delegated mode.
     """
     if not isinstance(agent_claims, dict):
         return False
@@ -142,6 +149,8 @@ def global_binding_conflict_claims(agent_claims: dict | None) -> bool:
         return False
     if has_raw_gcid and gcid is None:
         return True
+    if allow_isolated_grant_version and gv is not None and cbv is None and gcid is None:
+        return False
     return True
 
 

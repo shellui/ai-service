@@ -12,6 +12,15 @@ import requests
 from django.core.cache import cache
 from django.test import Client, TestCase, override_settings
 
+from apps.authapi.ai_service_jwks import (
+    compute_rsa_kid,
+    generate_rsa_key_pair,
+    load_ai_service_signing_key,
+)
+
+_PRIVATE, _PUBLIC = generate_rsa_key_pair(key_size=2048)
+_SIGNING = load_ai_service_signing_key(private_pem=_PRIVATE, kid=compute_rsa_kid(_PUBLIC))
+
 AI_MCP = 'https://ai.test/c/10/mcp'
 STORAGE_MCP = 'https://storage.test/mcp'
 IDENTITY_MCP = 'https://identity.test/mcp'
@@ -31,6 +40,11 @@ def _agent_token(
     company_id: int = 10,
     scope: str = 'ai storage',
     company_name: str | None = None,
+    global_company_id: str | None = None,
+    grant_version: int | None = None,
+    company_binding_version: int | None = None,
+    global_agent_id: str | None = None,
+    mcp_destructive: bool = False,
 ) -> str:
     now = int(time.time())
     claims = {
@@ -41,7 +55,7 @@ def _agent_token(
         'scope': scope,
         'mcp_access': 'full',
         'mcp_read': 'safe',
-        'mcp_destructive': False,
+        'mcp_destructive': mcp_destructive,
         'aud': resource,
         'iss': issuer,
         'iat': now,
@@ -49,6 +63,14 @@ def _agent_token(
     }
     if company_name:
         claims['company_name'] = company_name
+    if global_company_id is not None:
+        claims['global_company_id'] = global_company_id
+    if grant_version is not None:
+        claims['grant_version'] = grant_version
+    if company_binding_version is not None:
+        claims['company_binding_version'] = company_binding_version
+    if global_agent_id is not None:
+        claims['global_agent_id'] = global_agent_id
     return jwt.encode(claims, secret, algorithm='HS256')
 
 
@@ -111,6 +133,8 @@ EMAIL_LEGACY_TOOLS = {
     EMAIL_SERVICE_URL='https://email.test',
     EMAIL_SERVICE_API_KEY='esk_test_gateway_route_cache',  # gitleaks:allow
     AI_PUBLIC_URL='https://ai.test',
+    AI_SERVICE_SIGNING_KEY=_SIGNING,
+    AI_SERVICE_ISSUER='https://ai.test',
     AUTH_RATE_LIMIT_ENABLED=False,
     CACHES={
         'default': {
@@ -504,3 +528,294 @@ class McpGatewayTests(TestCase):
             else:
                 response = self.client.post(path, data=_rpc('tools/list'), content_type='application/json')
             self.assertEqual(response.status_code, 404, path)
+
+    def _delegated_fixed15(
+        self,
+        *,
+        agent_id: str,
+        company_id: int,
+        global_company_id: str,
+        grant_version: int,
+        company_binding_version: int,
+        global_agent_id: str,
+        services_allowed: list[str],
+        allow_destructive: bool = False,
+    ) -> dict:
+        return {
+            'authorized': True,
+            'active': True,
+            'revoked': False,
+            'paused': False,
+            'agent_id': agent_id,
+            'company_id': company_id,
+            'global_agent_id': global_agent_id,
+            'global_company_id': global_company_id,
+            'grant_version': grant_version,
+            'company_binding_version': company_binding_version,
+            'access_mode': 'full',
+            'read_level': 'safe',
+            'allow_destructive': allow_destructive,
+            'services_allowed': sorted(services_allowed),
+            'revoked_at': None,
+        }
+
+    @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
+    @patch('apps.connector.mcp_identity._http_post')
+    def test_delegated_tools_list_requires_live_authority_ok(self, post, _mint, _rev_ok):
+        g_cid = '11111111-1111-4111-8111-111111111111'
+        g_aid = '22222222-2222-4222-8222-222222222222'
+        agent_uuid = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+
+        def side_effect(url, **kwargs):
+            body = kwargs.get('json') or {}
+            if str(url).rstrip('/').endswith('/mcp-agent-delegated-authority'):
+                self.assertEqual(body.get('global_company_id'), g_cid)
+                self.assertEqual(body.get('grant_version'), 1)
+                resp = Mock()
+                resp.status_code = 200
+                resp.json.return_value = self._delegated_fixed15(
+                    agent_id=agent_uuid,
+                    company_id=10,
+                    global_company_id=g_cid,
+                    grant_version=1,
+                    company_binding_version=1,
+                    global_agent_id=g_aid,
+                    services_allowed=['ai', 'storage'],
+                )
+                return resp
+            resp = Mock()
+            resp.status_code = 200
+            resp.json.return_value = {'jsonrpc': '2.0', 'id': 1, 'result': {'tools': []}}
+            return resp
+
+        post.side_effect = side_effect
+        token = _agent_token(
+            secret=self.secret,
+            issuer=self.issuer,
+            agent_id=agent_uuid,
+            global_company_id=g_cid,
+            grant_version=1,
+            company_binding_version=1,
+            global_agent_id=g_aid,
+        )
+        response = self.client.post(
+            '/c/10/mcp',
+            data=_rpc('tools/list'),
+            content_type='application/json',
+            **self._auth(token),
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(any(
+            str(c.args[0]).rstrip('/').endswith('/mcp-agent-delegated-authority') for c in post.call_args_list
+        ))
+
+    @patch('apps.connector.mcp_identity._http_post')
+    def test_delegated_allow_destructive_mismatch_denied(self, post, _rev_ok):
+        g_cid = '11111111-1111-4111-8111-111111111111'
+        g_aid = '22222222-2222-4222-8222-222222222222'
+        agent_uuid = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+
+        def side_effect(url, **kwargs):
+            if str(url).rstrip('/').endswith('/mcp-agent-delegated-authority'):
+                resp = Mock()
+                resp.status_code = 200
+                resp.json.return_value = self._delegated_fixed15(
+                    agent_id=agent_uuid,
+                    company_id=10,
+                    global_company_id=g_cid,
+                    grant_version=1,
+                    company_binding_version=1,
+                    global_agent_id=g_aid,
+                    services_allowed=['ai', 'storage'],
+                    allow_destructive=True,
+                )
+                return resp
+            resp = Mock()
+            resp.status_code = 200
+            resp.json.return_value = {'jsonrpc': '2.0', 'id': 1, 'result': {'tools': []}}
+            return resp
+
+        post.side_effect = side_effect
+        token = _agent_token(
+            secret=self.secret,
+            issuer=self.issuer,
+            agent_id=agent_uuid,
+            global_company_id=g_cid,
+            grant_version=1,
+            company_binding_version=1,
+            global_agent_id=g_aid,
+            mcp_destructive=False,
+        )
+        response = self.client.post(
+            '/c/10/mcp',
+            data=_rpc('tools/list'),
+            content_type='application/json',
+            **self._auth(token),
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json().get('error'), 'delegated_authority_forbidden')
+
+    @patch('apps.connector.mcp_identity._http_post')
+    def test_delegated_scope_mismatch_denied(self, post, _rev_ok):
+        g_cid = '11111111-1111-4111-8111-111111111111'
+        g_aid = '22222222-2222-4222-8222-222222222222'
+        agent_uuid = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+
+        def side_effect(url, **kwargs):
+            if str(url).rstrip('/').endswith('/mcp-agent-delegated-authority'):
+                resp = Mock()
+                resp.status_code = 200
+                resp.json.return_value = self._delegated_fixed15(
+                    agent_id=agent_uuid,
+                    company_id=10,
+                    global_company_id=g_cid,
+                    grant_version=1,
+                    company_binding_version=1,
+                    global_agent_id=g_aid,
+                    services_allowed=['ai'],
+                )
+                return resp
+            resp = Mock()
+            resp.status_code = 200
+            resp.json.return_value = {'jsonrpc': '2.0', 'id': 1, 'result': {'tools': []}}
+            return resp
+
+        post.side_effect = side_effect
+        token = _agent_token(
+            secret=self.secret,
+            issuer=self.issuer,
+            agent_id=agent_uuid,
+            scope='ai storage',
+            global_company_id=g_cid,
+            grant_version=1,
+            company_binding_version=1,
+            global_agent_id=g_aid,
+        )
+        response = self.client.post(
+            '/c/10/mcp',
+            data=_rpc('tools/list'),
+            content_type='application/json',
+            **self._auth(token),
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json().get('error'), 'delegated_authority_forbidden')
+
+    @patch('apps.connector.mcp_identity._http_post')
+    def test_delegated_grant_mismatch_denied(self, post, _rev_ok):
+        g_cid = '11111111-1111-4111-8111-111111111111'
+        g_aid = '22222222-2222-4222-8222-222222222222'
+        agent_uuid = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+
+        def side_effect(url, **kwargs):
+            if str(url).rstrip('/').endswith('/mcp-agent-delegated-authority'):
+                resp = Mock()
+                resp.status_code = 200
+                resp.json.return_value = self._delegated_fixed15(
+                    agent_id=agent_uuid,
+                    company_id=10,
+                    global_company_id=g_cid,
+                    grant_version=2,
+                    company_binding_version=1,
+                    global_agent_id=g_aid,
+                    services_allowed=['ai', 'storage'],
+                )
+                return resp
+            resp = Mock()
+            resp.status_code = 200
+            resp.json.return_value = {'jsonrpc': '2.0', 'id': 1, 'result': {'tools': []}}
+            return resp
+
+        post.side_effect = side_effect
+        token = _agent_token(
+            secret=self.secret,
+            issuer=self.issuer,
+            agent_id=agent_uuid,
+            global_company_id=g_cid,
+            grant_version=1,
+            company_binding_version=1,
+            global_agent_id=g_aid,
+        )
+        response = self.client.post(
+            '/c/10/mcp',
+            data=_rpc('tools/list'),
+            content_type='application/json',
+            **self._auth(token),
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json().get('error'), 'delegated_authority_forbidden')
+
+    @patch('apps.connector.mcp_identity._http_post')
+    def test_delegated_global_agent_mismatch_denied(self, post, _rev_ok):
+        g_cid = '11111111-1111-4111-8111-111111111111'
+        g_aid_row = '22222222-2222-4222-8222-222222222222'
+        g_aid_claim = '33333333-3333-4333-8333-333333333333'
+        agent_uuid = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+
+        def side_effect(url, **kwargs):
+            if str(url).rstrip('/').endswith('/mcp-agent-delegated-authority'):
+                resp = Mock()
+                resp.status_code = 200
+                resp.json.return_value = self._delegated_fixed15(
+                    agent_id=agent_uuid,
+                    company_id=10,
+                    global_company_id=g_cid,
+                    grant_version=1,
+                    company_binding_version=1,
+                    global_agent_id=g_aid_row,
+                    services_allowed=['ai', 'storage'],
+                )
+                return resp
+            resp = Mock()
+            resp.status_code = 200
+            resp.json.return_value = {'jsonrpc': '2.0', 'id': 1, 'result': {'tools': []}}
+            return resp
+
+        post.side_effect = side_effect
+        token = _agent_token(
+            secret=self.secret,
+            issuer=self.issuer,
+            agent_id=agent_uuid,
+            global_company_id=g_cid,
+            grant_version=1,
+            company_binding_version=1,
+            global_agent_id=g_aid_claim,
+        )
+        response = self.client.post(
+            '/c/10/mcp',
+            data=_rpc('tools/list'),
+            content_type='application/json',
+            **self._auth(token),
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json().get('error'), 'delegated_authority_forbidden')
+
+    def test_personal_partial_global_triplet_rejected(self, _rev_ok):
+        token = _agent_token(
+            secret=self.secret,
+            issuer=self.issuer,
+            grant_version=1,
+            company_binding_version=1,
+        )
+        response = self.client.post(
+            '/c/10/mcp',
+            data=_rpc('tools/list'),
+            content_type='application/json',
+            **self._auth(token),
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json().get('error'), 'global_binding_invalid')
+
+    def test_personal_cannot_present_global_company_without_pair(self, _rev_ok):
+        token = _agent_token(
+            secret=self.secret,
+            issuer=self.issuer,
+            global_company_id='11111111-1111-4111-8111-111111111111',
+        )
+        response = self.client.post(
+            '/c/10/mcp',
+            data=_rpc('tools/list'),
+            content_type='application/json',
+            **self._auth(token),
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json().get('error'), 'global_binding_invalid')

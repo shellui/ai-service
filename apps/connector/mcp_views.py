@@ -83,6 +83,9 @@ def _record_mcp_call(entry: dict) -> None:
     status_code = int(entry.get('status') or 0)
     is_error = entry.pop('is_error', None)
     log_result = entry.pop('log_result', None)
+    # shellui_django McpServer ``on_call`` omits ``is_error``; treat 2xx/3xx inner HTTP as non-error so audit does not fail closed.
+    if is_error is None and 200 <= status_code < 400:
+        is_error = False
     legacy = mcp_call_result(
         status_code=status_code,
         is_error=is_error,
@@ -90,6 +93,11 @@ def _record_mcp_call(entry: dict) -> None:
     )
     if entry.get('_mcp_audit_ready') is True:
         entry['result'] = legacy_result_token(outcome=str(entry.get('outcome') or 'failed'))
+        entry['agent_claims'] = dict(claims)
+        if log_result is not None:
+            entry['log_result'] = str(log_result)
+        if is_error is not None:
+            entry['is_error'] = bool(is_error)
         entry.pop('_mcp_audit_ready', None)
         entry.pop('arguments', None)
         forward_call_log(entry)
@@ -120,6 +128,7 @@ def _record_mcp_call(entry: dict) -> None:
     )
     audit['client_ip'] = entry.get('client_ip') or client_ip_from_request(request)
     audit['result'] = legacy_result_token(outcome=str(audit.get('outcome') or 'failed'))
+    audit['agent_claims'] = dict(claims)
     entry.clear()
     entry.update(audit)
     entry.pop('arguments', None)

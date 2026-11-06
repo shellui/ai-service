@@ -60,12 +60,14 @@ class McpIdentitySigningTests(SimpleTestCase):
         self.assertEqual(claims['iss'], 'https://ai.test')
 
     def test_call_log_is_signed_with_ai_service_key(self):
-        with patch('apps.connector.mcp_identity.requests.post') as post:
+        with patch('apps.connector.mcp_identity._http_post') as post:
             mcp_identity.forward_call_log(
                 {
                     'agent_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
                     'company_id': 1,
                     'grant_version': 1,
+                    'service': 'ai',
+                    'tool': 'ai_list_services',
                     'method': 'POST',
                     'status': 200,
                     'client_ip': '203.0.113.1',
@@ -73,39 +75,51 @@ class McpIdentitySigningTests(SimpleTestCase):
                     'outcome': 'allowed',
                     'access_kind': 'write',
                     'log_result': 'success',
+                    'agent_claims': {
+                        'agent_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+                        'company_id': 1,
+                        'grant_version': 1,
+                    },
                 }
             )
         self._verify(_bearer(post.call_args), audience=CALL_LOG_AUDIENCE, scope=CALL_LOG_SCOPE)
         body = post.call_args.kwargs['json']
         self.assertEqual(body['method'], 'POST')
-        self.assertEqual(body['client_ip'], '203.0.113.1')
+        self.assertEqual(body['path'], '/mcp')
         self.assertEqual(body['outcome'], 'allowed')
-        self.assertEqual(body['result'], 'success')
         self.assertEqual(body['duration_ms'], 42)
-        self.assertEqual(body['error_code'], '')
+        self.assertNotIn('client_ip', body)
+        self.assertNotIn('result', body)
+        self.assertNotIn('error_code', body)
         self.assertNotIn('operation_title', body)
         self.assertNotIn('arguments', body)
         self.assertNotIn('arguments_redacted', body)
 
     def test_call_log_pending_outcome_maps_for_identity(self):
-        with patch('apps.connector.mcp_identity.requests.post') as post:
+        with patch('apps.connector.mcp_identity._http_post') as post:
             mcp_identity.forward_call_log(
                 {
                     'agent_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
                     'company_id': 1,
                     'grant_version': 0,
+                    'service': 'ai',
+                    'tool': 'ai_list_services',
                     'method': 'GET',
                     'path': '/api/r?q=1',
                     'outcome': 'pending_approval',
                     'access_kind': 'read',
                     'log_result': 'pending_approval',
                     'status': 202,
+                    'agent_claims': {
+                        'agent_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+                        'company_id': 1,
+                        'grant_version': 0,
+                    },
                 }
             )
         body = post.call_args.kwargs['json']
         self.assertEqual(body['outcome'], 'waiting_approval')
-        self.assertEqual(body['result'], 'pending_approval')
-        self.assertEqual(body['path'], '/api/r')
+        self.assertEqual(body['path'], '/mcp')
 
     def _delegated_ok_json(self, **overrides):
         """Minimal valid **200** body matching identity ``d7fe351`` ``_delegated_authority_fixed_payload`` (15 keys)."""
@@ -130,7 +144,7 @@ class McpIdentitySigningTests(SimpleTestCase):
         return base
 
     def test_delegated_authority_internal_assertion_shape(self):
-        with patch('apps.connector.mcp_identity.requests.post') as post:
+        with patch('apps.connector.mcp_identity._http_post') as post:
             post.return_value = MagicMock(
                 status_code=200,
                 json=lambda: self._delegated_ok_json(),
@@ -157,7 +171,7 @@ class McpIdentitySigningTests(SimpleTestCase):
         self.assertEqual(claims.get('sub'), 'service')
 
     def test_delegated_authority_rejects_global_company_echo_mismatch(self):
-        with patch('apps.connector.mcp_identity.requests.post') as post:
+        with patch('apps.connector.mcp_identity._http_post') as post:
             bad = self._delegated_ok_json(
                 authorized=False,
                 active=False,
@@ -174,7 +188,7 @@ class McpIdentitySigningTests(SimpleTestCase):
         self.assertFalse(ok)
 
     def test_delegated_authority_rejects_string_grant_version_in_json(self):
-        with patch('apps.connector.mcp_identity.requests.post') as post:
+        with patch('apps.connector.mcp_identity._http_post') as post:
             bad = self._delegated_ok_json(grant_version='1')
             post.return_value = MagicMock(status_code=200, json=lambda: bad)
             ok = mcp_identity.verify_live_delegated_agent_authority(
@@ -187,7 +201,7 @@ class McpIdentitySigningTests(SimpleTestCase):
         self.assertFalse(ok)
 
     def test_delegated_authority_requires_exactly_15_keys(self):
-        with patch('apps.connector.mcp_identity.requests.post') as post:
+        with patch('apps.connector.mcp_identity._http_post') as post:
             bad = self._delegated_ok_json()
             bad['extra'] = 'nope'
             post.return_value = MagicMock(status_code=200, json=lambda: bad)
@@ -201,7 +215,7 @@ class McpIdentitySigningTests(SimpleTestCase):
         self.assertFalse(ok)
 
     def test_delegated_authority_rejects_services_scope_mismatch(self):
-        with patch('apps.connector.mcp_identity.requests.post') as post:
+        with patch('apps.connector.mcp_identity._http_post') as post:
             post.return_value = MagicMock(
                 status_code=200,
                 json=lambda: self._delegated_ok_json(services_allowed=['ai']),
@@ -217,18 +231,25 @@ class McpIdentitySigningTests(SimpleTestCase):
         self.assertFalse(ok)
 
     def test_call_log_omits_jwt_display_labels(self):
-        with patch('apps.connector.mcp_identity.requests.post') as post:
+        with patch('apps.connector.mcp_identity._http_post') as post:
             mcp_identity.forward_call_log(
                 {
                     'agent_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
                     'company_id': 1,
                     'grant_version': 1,
+                    'service': 'ai',
+                    'tool': 'ai_list_services',
                     'method': 'POST',
                     'status': 200,
                     'company_name': 'EvilCo',
                     'agent_name': 'EvilAgent',
                     'outcome': 'allowed',
                     'access_kind': 'write',
+                    'agent_claims': {
+                        'agent_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+                        'company_id': 1,
+                        'grant_version': 1,
+                    },
                 }
             )
         body = post.call_args.kwargs['json']
@@ -236,7 +257,7 @@ class McpIdentitySigningTests(SimpleTestCase):
         self.assertNotIn('agent_name', body)
 
     def test_call_log_skipped_without_grant_version(self):
-        with patch('apps.connector.mcp_identity.requests.post') as post:
+        with patch('apps.connector.mcp_identity._http_post') as post:
             mcp_identity.forward_call_log(
                 {
                     'agent_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
@@ -245,6 +266,12 @@ class McpIdentitySigningTests(SimpleTestCase):
                     'status': 200,
                     'outcome': 'allowed',
                     'access_kind': 'write',
+                    'service': 'ai',
+                    'tool': 'ai_list_services',
+                    'agent_claims': {
+                        'agent_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+                        'company_id': 1,
+                    },
                 }
             )
         post.assert_not_called()
@@ -257,6 +284,6 @@ class McpIdentitySigningTests(SimpleTestCase):
 
     @override_settings(AI_SERVICE_SIGNING_KEY=None)
     def test_without_signing_key_call_log_is_not_sent(self):
-        with patch('apps.connector.mcp_identity.requests.post') as post:
+        with patch('apps.connector.mcp_identity._http_post') as post:
             mcp_identity.forward_call_log({'agent_id': 'a', 'company_id': 1})
         post.assert_not_called()
