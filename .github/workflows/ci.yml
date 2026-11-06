@@ -75,11 +75,12 @@ jobs:
       - name: Run tests
         run: uv run python manage.py test --verbosity=1
 
+      # Optional repo variable IDENTITY_SERVICE_REF (commit SHA or branch) to test against identity changes not yet on develop.
       - name: Checkout identity-service (develop)
         uses: actions/checkout@v4
         with:
           repository: shellui/identity-service
-          ref: develop
+          ref: ${{ vars.IDENTITY_SERVICE_REF || 'develop' }}
           path: .e2e-identity
 
       - name: Checkout storage-service (develop)

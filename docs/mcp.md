@@ -1,70 +1,128 @@
 ---
-title: MCP gateway
+title: MCP gateway handbook
 ---
 
-# MCP gateway
+# MCP gateway handbook
 
-## URLs and resource server
+This document describes how the **ai-service MCP gateway** behaves in this repository: URLs, tokens, approvals, session grants, tool naming, and what gets sent to Identity for activity. It is the operational reference for gateway code in `apps/connector/mcp_*.py`, not a status log for other projects.
 
-Each company has its own MCP URL: `POST /c/<company_id>/mcp`. OAuth protected-resource metadata
-(RFC 9728) is at `GET /.well-known/oauth-protected-resource/c/<company_id>/mcp`. Unauthenticated
-requests get `401`. Token `aud` must match the per-company URL and `company_id` must match
-the path. Plain `/mcp` without a company returns `404` with `company_required`.
+## Public URL and company scope
 
-`tools/list` exports downstream tools as `<service>_<tool>`. Configure `AI_PUBLIC_URL` when behind a
-proxy.
+- **Per-company MCP endpoint:** `POST /c/<company_id>/mcp` where `company_id` is the **numeric regional** company id (integer in the path and JWT `company_id` claim).
+- **OAuth protected-resource metadata (RFC 9728):** `GET /.well-known/oauth-protected-resource/c/<company_id>/mcp`.
+- **Unauthenticated** requests get `401`. Token `aud` must match the per-company URL and `company_id` must match the path.
+- **No company in path:** `POST /mcp` returns `404` with `company_required`.
+- Behind a reverse proxy, set **`AI_PUBLIC_URL`** so metadata and redirects stay correct.
 
-## Downstream access tokens
+### Regional company id versus global delegation
 
-Gateway → identity: `POST /api/v1/mcp/internal/mcp-downstream-access-token` with RS256 from this
-service (`AI_SERVICE_SIGNING_KEY`, `AI_SERVICE_ISSUER`, JWKS at `/.well-known/jwks.json`). Identity
-mints `{ "access_token": "…" }`. The **same** key signs internal assertions (revocation poll,
-call logs, approvals). Without it, revocation fails closed and call logs are skipped.
+- **Regional operations** use the **numeric** `company_id` in the URL and JWT (one regional tenant).
+- **Global delegation** is a separate mode: the regional JWT can carry **`global_company_id`** (UUID) plus **`grant_version`** and **`company_binding_version`** when Identity has issued a delegated global agent token. The gateway does **not** treat `global_company_id` alone as proof of anything: **grant_version is not invented** for ordinary SaaS or global-cap tokens; it comes from Identity’s **authoritative** binding after exchange.
+- **Direct resource** flows use regional scope; **delegated global** flows require Identity’s global binding fields in the regional token after the appropriate Identity exchange. Do not “guess” delegation from `personal_token_id` alone.
 
-**Identity #135 coordination:** identity must validate the signed AI request against **current**
-agent + resource, then `encode_access_token` embeds the **authoritative** global binding
-(grant_version, company_binding_version, global_company_id) and caps access. Downstream services
-must not invent binding from AI requests alone. Merge gateway and identity #135 changes in lockstep;
-verify with integration tests on real payloads.
+## Tool naming and the export surface
 
-## MCP tool approvals (gateway)
+Downstream OpenAPI operations become MCP tools with stable names:
 
-**Flow:** (1) `mcp-approval-requests` with signed assertion. (2) `mcp-approval-decide`. (3)
-`mcp-approval-consume` — only HTTP 2xx and JSON `consumed: true` (bool). (4)
-`mcp-approval-session-check` on every eligible call (no local cache). (5) Optional
-`mcp-approval-session-revoke`.
+1. **Service-local name** comes from OpenAPI (`operationId` after normalization, optional `x-mcp.tool_name`, path/method fallback). See `resolve_mcp_tool_name` in `apps/connector/mcp_tool_naming.py`.
+2. **Gateway export name** prefixes the service id: **`{service_id}_{local_name}`** (for example `storage_list_buckets` when `service_id` is `storage` and the local tool is `list_buckets`).
 
-On `tools/call`, in-chat elicitation uses `_meta.shellui_approval`; client retries with
-`params._meta.shellui_approval.decision` in `allow` | `deny` | `session_allow`. Gateway forwards
-decisions to `mcp-approval-decide`.
+So the string the client passes to **`tools/call`** is always the **prefixed** export name. Internal routing strips the prefix to recover the downstream tool and HTTP route.
 
-### Global binding vs personal (regional JWT)
+**`tools/list`** exposes only those export names and registry-derived `_meta` (path, method, `operation_summary`, access flags, etc.). **LiteLLM** or other inference stacks are **not** part of this gateway path; this branch documents the gateway only.
 
-Do **not** infer mode from `personal_token_id` alone (identity #135 may issue it on global tokens).
+## Bounded authority: `mcp_access` and tool safety
 
-| Mode | Rule |
-|------|------|
-| **Global delegated** | Canonical `global_company_id` **and** `grant_version` **and** `company_binding_version` (each strict nonnegative int, `0` allowed). |
-| **Personal / legacy** | None of the three parsed as above; optional `personal_token_id` + `jti` for personal flows. |
-| **Reject** | Any **partial** triple (e.g. gv without gcid, malformed UUID string, one version missing). |
+The agent JWT may carry **`mcp_access`** (default **`ask`**). The gateway combines that with **tool traits** (read-only vs write vs destructive) from registry metadata and annotations (`readOnlyHint`, `destructiveHint`, and `_meta.read_only` / `_meta.destructive` from OpenAPI **`x-mcp`**), via `decide_write` from shellui-django (`apps/connector/mcp_approval_gate.py`).
 
-Session-check POST body repeats binding fields **from the regional JWT only** (no stored authority).
-For Identity only, `connection_id` is derived from `Mcp-Session-Id`: printable ASCII, max 128 chars,
-no `|`; otherwise SHA-256 hex (local session cache still uses the raw header value).
-For global tokens, Identity response must echo **exact** `global_company_id`, `grant_version`, and
-`company_binding_version`. Invalid `setup_flow` blocks **all** approval APIs (`blocked_assertion`).
+| Agent `mcp_access` (typical) | Read-only tools | Non-destructive writes | Destructive tools |
+|-----------------------------|-----------------|-------------------------|-------------------|
+| **`read_only`** | Allowed without approval | Denied | Denied |
+| **`ask`** | Allowed without approval | Approval or session grant | Approval always (`mcp_destructive` does **not** bypass destructive operations) |
+| **`full`** | Allowed | Allowed without approval for non-destructive | **Still requires approval** for destructive |
 
-**Ordinary grant:** `expires_at` within ~60s; caps include JWT `exp` and setup bounds where applicable.
+**Destructive** classification is driven by the **OpenAPI/registry** model, not by client-supplied labels. **`x-mcp`** on the operation is the supported way to mark `read_only` / `destructive`; clients must not rely on overriding limits via untrusted fields.
 
-**commons pin:** `shellui-django[mcp]` @ `1f0754b421688ed26b7eb2e76b25b6fa3eea2a37` (`pyproject.toml`).
+## Downstream access token (gateway to Identity)
 
-## Call logs (activity)
+The gateway calls Identity’s internal endpoint **`POST /api/v1/mcp/internal/mcp-downstream-access-token`** with an **RS256 service assertion** (`AI_SERVICE_SIGNING_KEY`, `AI_SERVICE_ISSUER`, JWKS at **`/.well-known/jwks.json`**). Identity returns **`{ "access_token": "…" }`** for calling downstream APIs.
 
-`POST /api/v1/mcp/internal/mcp-call-logs` with RS256. Fields are allowlisted; `operation_title` from
-registry `_meta.operation_summary`; `path` / `resource_label` from static `_meta.path` (no client
-query). HTTP 200 with `is_error` can map to `outcome: failed` with allowlisted `error_code`.
-`client_ip` from the HTTP request only.
+The **same** signing material is used for other internal Identity calls (**revocation poll**, **call logs**, **approval** assertions). If signing is not configured, **revocation polling fails closed** (treat as blocked) and **call logs are skipped**; see `apps/connector/mcp_identity.py`.
 
-## Client conformance
+## MCP approvals and session grants
 
-See [mcp-e2e-conformance.md](./mcp-e2e-conformance.md) and [mcp-tool-schema-audit.md](./mcp-tool-schema-audit.md).
+### Endpoints (Identity)
+
+1. **`mcp-approval-requests`:** create request; assertion is a signed JWT (includes binding: `company_id`, `agent_id`, `service`, `action`, `arguments_hash`).
+2. **`mcp-approval-decide`:** user allow / deny / allow for session (`allow_session`).
+3. **`mcp-approval-consume`:** **only** treat as consumed when HTTP **2xx** and JSON body has **`consumed: true`** (boolean).
+4. **`mcp-approval-session-check`:** **no local cache** for grant validity on gated paths; gateway validates session with Identity using the **same** tool identity (`service`, **`action` = export name**, `arguments_hash`) and **`connection_id`** derived from **`Mcp-Session-Id`** (see below).
+5. **`mcp-approval-session-revoke`:** optional revoke by `connection_id`.
+
+### Client elicitation and retries
+
+On **`tools/call`**, when approval is required, the gateway returns MCP content with **`_meta.shellui_approval`**. The client retries **`tools/call`** with **`params._meta.shellui_approval.decision`** in **`allow`** | **`deny`** | **`session_allow`**, and the relevant **`approval_id`** when applicable. **Approval-gated retries** must replay the **full** tool call (same export name and normalized arguments); changing the action or normalized args requires a **new** approval.
+
+### Session grant rules (gateway behavior)
+
+`check_session_grant` in `apps/connector/mcp_approvals.py` **fails closed**:
+
+- **Destructive** tools: session grant **never** applies (`is_destructive=True` → deny immediately).
+- **Identity errors/timeouts/non-2xx/invalid JSON:** deny (do **not** execute downstream on ambiguity).
+- **Binding:** grant must match **agent_id**, **numeric company_id**, **service**, **`action` (export name)**, **`arguments_hash`**, and sanitized **`connection_id`**.
+- **Revocation:** if the agent is revoked for that tenant in the trusted revocation snapshot, deny.
+- **Delegated global:** response must echo **`global_company_id`**, **`grant_version`**, and **`company_binding_version`** exactly as in the trusted regional JWT claims; partial triples or version mismatch → deny. **Do not** add a default grant version for global-cap tokens that never went through Identity’s delegated binding.
+- **Setup flow:** `setup_flow` and **`setup_expires_at`** from Identity’s response are enforced; the gateway does **not** trust a setup **`true`** in an **old** JWT alone as authoritative—persisted setup state is **Identity’s** (session-check / consume contract). **Refresh** may **narrow** expiry but must not extend past caps (JWT wall, ordinary ~60s grant for non-setup, setup TTL ceiling).
+- **Deny/supersede:** a **deny** or **revoke** invalidates prior allows; **pause** / **narrow** changes should invalidate earlier session decisions (enforced by Identity + version checks on the gateway side).
+
+### `connection_id` (sanitized for Identity only)
+
+`identity_connection_id` in `apps/connector/mcp_approvals.py`: printable ASCII, max **128** characters, no **`|`**; otherwise **SHA-256** hex of the UTF-8 **raw** `Mcp-Session-Id`. The local session cache may still use the raw header value.
+
+### Signed assertions: trusted fields only
+
+Internal approval assertions are built with **`build_mcp_approval_assertion`** (commons / shellui-django). For **delegated** mode, **grant_version**, **global_company_id**, and **company_binding_version** are taken from **strictly parsed** regional JWT claims (`ApprovalAssertionContext`), not from raw request bodies or unverified client overrides. Identity compares **service snapshot / persisted versions** to what the gateway asserts; the gateway must **not** accept raw JWT passthrough or untrusted body fields for that binding.
+
+## Global binding detection (strict)
+
+Logic lives in `apps/connector/mcp_setup_context.py`:
+
+- **Global delegated** only when **`global_company_id`** is a canonical UUID **and** **`grant_version`** **and** **`company_binding_version`** are each a **non‑negative int** (including **`0`**).
+- **Reject** on any **partial** triple or malformed UUID string.
+- **`personal_token_id`** may appear on delegated tokens; **do not** infer delegation from it alone.
+
+**commons pin:** `shellui-django[mcp]` is pinned in `pyproject.toml` / `uv.lock` (see the repo for the current revision).
+
+## Call logs and activity (Identity)
+
+`POST /api/v1/mcp/internal/mcp-call-logs` forwards **allowlisted** fields only (`apps/connector/mcp_identity.py` + `apps/connector/mcp_call_audit.py`).
+
+### Canonical **`outcome`** (Identity JSON)
+
+Internal `forward_call_log` maps gateway bookkeeping to Identity’s **`outcome`** using a fixed set (see **`OUTCOMES`** in `mcp_call_audit.py`):
+
+- **`pending_approval`** — from internal `pending` (pending approval state).
+- **`allowed`**, **`denied`**, **`failed`**, **`session_used`** — from `outcome_from_audit` rules.
+- Unknown provider strings do **not** map to “allowed”; they collapse to safe **`failed`** semantics with allowlisted metadata only.
+
+The legacy **`result`** field uses a small whitelist (`success`, `error`, `denied`, `pending`); other values are derived via **`legacy_result_token`** from the outcome (see code), not from raw downstream text.
+
+### Safe metadata only
+
+- **`operation_title`:** from registry **`_meta.operation_summary`** when present; otherwise a neutral title (no raw client labels).
+- **`resource_label` / path:** normalized template path from **`_meta.path`** (query stripped); **`safe_route_path_for_audit`** prevents leaking arbitrary URLs.
+- **`access_kind`:** **`read`**, **`write`**, or **`destructive`** from tool traits and HTTP method (`access_kind_from_tool`), not from guesswork on names.
+- **`error_code`:** only if in the allowlist (`mcp_audit_codes.py`).
+- **No** raw tool arguments, provider exception text, or arbitrary client paths in the forwarded body.
+
+A downstream HTTP **2xx** alone does **not** imply **`allowed`** if the gateway classified the operation as an error (`is_error`, audit `log_result`, etc.)—see **`outcome_from_audit`**.
+
+## Client conformance and CI
+
+- **Conformance and audits:** [mcp-e2e-conformance.md](./mcp-e2e-conformance.md), [mcp-tool-schema-audit.md](./mcp-tool-schema-audit.md).
+- **CI** checks out **`shellui/identity-service`** at **`develop`** by default. For gateway changes that depend on an Identity branch not yet on `develop`, set the repository variable **`IDENTITY_SERVICE_REF`** (commit SHA or branch name) in GitHub **Actions variables** so the **Tests** job clones that ref. Record the **exact ref you validated** in the **pull request description** for traceability (not necessarily in this doc).
+
+## Unsupported / transport notes
+
+- **`resources/`** and **`templates/`** are not used as generic MCP transports here; tool responses follow the **text** / structured content patterns enforced by the Django MCP integration.
+- Downstream adapters must treat broker and HTTP errors as **untrusted** for user-visible text; the gateway redacts and maps to allowlisted **error_code** values where applicable.
