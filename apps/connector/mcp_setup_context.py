@@ -52,14 +52,16 @@ def parse_setup_expires_at_claim(raw: object, *, wall_max_exp: int) -> timezone.
     if isinstance(raw, bool):
         return None
     dt: timezone.datetime | None = None
-    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+    if isinstance(raw, int):
         try:
             ts = float(raw)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             return None
         if ts <= 0:
             return None
         dt = datetime.fromtimestamp(ts, tz=dt_timezone.utc)
+    elif isinstance(raw, float):
+        return None
     else:
         text = str(raw).strip()
         if not text:
@@ -183,10 +185,19 @@ class ApprovalAssertionContext:
     blocked_assertion: bool = False
 
 
+def _mcp_authority_claim(raw: object) -> str:
+    if raw is None or isinstance(raw, bool):
+        return ''
+    if not isinstance(raw, str):
+        return ''
+    return raw.strip().lower()
+
+
 def _fallback_context(
     agent_claims: dict | None = None,
     *,
     setup_claim_rejected: bool = False,
+    force_blocked: bool = False,
 ) -> ApprovalAssertionContext:
     gv: int | None = None
     cbv: int | None = None
@@ -195,7 +206,7 @@ def _fallback_context(
         gv, cbv, gcid = global_binding_triplet_from_claims(agent_claims)
     is_gd = is_global_delegated_claims(agent_claims)
     conflict = global_binding_conflict_claims(agent_claims)
-    blocked = bool(setup_claim_rejected or conflict)
+    blocked = bool(setup_claim_rejected or conflict or force_blocked)
     return ApprovalAssertionContext(
         lifetime_seconds=_DEFAULT_APPROVAL_ASSERTION_LIFETIME,
         grant_version=gv,
@@ -217,6 +228,14 @@ def approval_assertion_context_from_agent_claims(agent_claims: dict | None) -> A
         return _fallback_context()
 
     is_gd = is_global_delegated_claims(agent_claims)
+    mcp_auth = _mcp_authority_claim(agent_claims.get('mcp_authority'))
+    if mcp_auth == 'global_delegated' and not is_gd:
+        return _fallback_context(agent_claims, force_blocked=True)
+    if mcp_auth == 'delegated' and is_gd:
+        return _fallback_context(agent_claims, force_blocked=True)
+    if mcp_auth in {'delegated', 'global_delegated'} and global_binding_conflict_claims(agent_claims):
+        return _fallback_context(agent_claims, force_blocked=True)
+
     if global_binding_conflict_claims(agent_claims):
         return _fallback_context(agent_claims)
 
@@ -250,10 +269,11 @@ def approval_assertion_context_from_agent_claims(agent_claims: dict | None) -> A
         return _fallback_context(agent_claims, setup_claim_rejected=True)
 
     raw_ttl = agent_claims.get('mcp_session_ttl_seconds')
-    try:
-        setup_ttl = int(raw_ttl)
-    except (TypeError, ValueError):
+    if raw_ttl is None or isinstance(raw_ttl, bool) or isinstance(raw_ttl, float) or isinstance(raw_ttl, str):
         return _fallback_context(agent_claims, setup_claim_rejected=True)
+    if not isinstance(raw_ttl, int):
+        return _fallback_context(agent_claims, setup_claim_rejected=True)
+    setup_ttl = raw_ttl
 
     lo, hi = session_allow_ttl_bounds()
     if setup_ttl < lo or setup_ttl > hi:

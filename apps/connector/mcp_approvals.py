@@ -291,7 +291,11 @@ def fetch_approval_state(payload: dict[str, Any]) -> tuple[str | None, str | Non
     if not isinstance(data, dict):
         return None, None
     status = str(data.get('status') or '')
-    approval_id = str(data.get('id') or '') if status == 'approved' else None
+    raw_id = str(data.get('id') or '').strip()
+    approval_id = raw_id or None
+    # Bind pending and approved rows by id so we never create a duplicate when one already exists.
+    if status not in {'approved', 'pending'}:
+        approval_id = None
     return status or None, approval_id
 
 
@@ -628,8 +632,9 @@ def approval_handler(payload: dict[str, Any]) -> dict[str, Any] | None:
 
 def approval_state(payload: dict[str, Any]) -> str | None:
     status, approval_id = fetch_approval_state(payload)
-    if status == 'approved' and approval_id:
+    if approval_id:
         payload['approval_id'] = approval_id
+    if status == 'approved' and approval_id:
         return 'approved'
     if status == 'pending':
         return 'pending'

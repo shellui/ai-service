@@ -131,7 +131,6 @@ def build_elicitation_meta(
     destructive: bool,
     agent_claims: dict[str, Any],
     approval_id: str,
-    short_action_summary: str = '',
     tool_count: int = 1,
 ) -> dict[str, Any]:
     agent_name = _agent_display_name(agent_claims)
@@ -166,8 +165,6 @@ def build_elicitation_meta(
         'settings_url': approvals.approval_settings_url(approval_id),
         'approvals_list_url': approvals.approval_settings_url(),
     }
-    if short_action_summary:
-        payload['elicitation']['detail'] = short_action_summary
     if not destructive:
         payload['elicitation']['session_helper'] = copy.session_helper_text(seconds=session_seconds)
     return payload
@@ -196,13 +193,13 @@ def _audit_status_from_log_result(log_result: str) -> tuple[int, bool | None]:
     lr = str(log_result or '').strip().lower()
     if lr in {'denied', 'client_denied'}:
         return 403, True
-    if lr in {'pending'}:
+    if lr in {'pending', 'pending_approval'}:
         return 202, None
     if lr in {'expired'}:
         return 410, True
     if lr in {'error'}:
         return 500, True
-    if lr in {'success', 'approved', 'client_allowed', 'client_session_allowed'}:
+    if lr in {'success', 'approved', 'client_allowed', 'client_session_allowed', 'identity_approved'}:
         return 200, False
     return 200, None
 
@@ -317,10 +314,7 @@ def enforce_tool_call_approval(
         'company_id': company_id,
         'service': service_id,
         'action': export_name,
-        'arguments': arguments,
         'arguments_hash': args_hash,
-        'path': path,
-        'method': method,
         '_agent_claims': agent_claims,
     }
 
@@ -448,7 +442,7 @@ def enforce_tool_call_approval(
     if state == 'approved':
         approval_id = str(approval_payload.get('approval_id') or client_approval_id or '')
         if approval_id and approvals.approval_consume(approval_id, approval_payload):
-            log_result = 'approved'
+            log_result = 'identity_approved'
             return GateOutcome(
                 proceed=True,
                 log=_log_entry(
@@ -531,7 +525,7 @@ def enforce_tool_call_approval(
                     tool=tool,
                     method=method,
                     path=path,
-                    log_result='pending',
+                    log_result='pending_approval',
                     approval_id=approval_id,
                 ),
             )
@@ -557,7 +551,7 @@ def enforce_tool_call_approval(
                 tool=tool,
                 method=method,
                 path=path,
-                log_result='pending',
+                log_result='pending_approval',
                 approval_id=approval_id,
             ),
         )
@@ -590,7 +584,7 @@ def enforce_tool_call_approval(
                 tool=tool,
                 method=method,
                 path=path,
-                log_result='pending',
+                log_result='pending_approval',
                 approval_id=approval_id,
             ),
         )
@@ -615,7 +609,7 @@ def enforce_tool_call_approval(
             tool=tool,
             method=method,
             path=path,
-            log_result='pending',
+            log_result='pending_approval',
             approval_id=approval_id,
         ),
     )

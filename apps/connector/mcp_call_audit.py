@@ -14,8 +14,8 @@ from apps.connector.mcp_audit_codes import error_code_from_http, sanitize_error_
 from apps.connector.mcp_company_id import strict_numeric_company_id
 from apps.connector.mcp_tool_presentation import strip_presentation_noise
 
-# Aligned with identity personal activity / #135 serializer (strict allowlist).
-OUTCOMES = frozenset({'allowed', 'failed', 'denied', 'pending', 'session_used'})
+# Public activity vocabulary (identity new writes). Internal log_result may still use ``pending``.
+OUTCOMES = frozenset({'allowed', 'failed', 'denied', 'pending_approval', 'session_used'})
 
 
 def legacy_result_token(*, outcome: str) -> str:
@@ -29,7 +29,7 @@ def legacy_result_token(*, outcome: str) -> str:
         return 'error'
     if o == 'denied':
         return 'denied'
-    if o == 'pending':
+    if o in {'pending_approval', 'pending'}:
         return 'pending'
     return 'error'
 
@@ -43,8 +43,8 @@ def outcome_from_audit(*, log_result: str | None, status: int | None, is_error: 
         return 'allowed'
     if lr in {'approved', 'client_allowed', 'success'}:
         return 'allowed'
-    if lr in {'pending'}:
-        return 'pending'
+    if lr in {'pending', 'pending_approval'}:
+        return 'pending_approval'
     if lr in {'denied', 'client_denied'}:
         return 'denied'
     if lr in {'expired'}:
@@ -53,8 +53,11 @@ def outcome_from_audit(*, log_result: str | None, status: int | None, is_error: 
     # MCP JSON-RPC can return HTTP 200 with isError true; classify as failed, not allowed.
     if lr == 'error' or is_error is True:
         return 'failed'
-    if 200 <= code < 400 and is_error is not True:
-        return 'allowed'
+    # Unknown log_result with HTTP success: fail closed unless explicitly not an error.
+    if 200 <= code < 400:
+        if is_error is False:
+            return 'allowed'
+        return 'failed'
     if code == 403:
         return 'denied'
     if code == 401:
@@ -115,7 +118,7 @@ def operation_title_for_audit(
     export_name: str,
     method: str,
 ) -> str:
-    """Trusted title: OpenAPI summary from registry _meta, else presentation title; neutral fallback."""
+    """Trusted title: OpenAPI ``operation_summary`` from registry ``_meta`` only (no tool.title / downstream text)."""
     if not isinstance(tool, dict):
         return _neutral_operation_title(export_name)
     meta = tool.get('_meta') if isinstance(tool.get('_meta'), dict) else {}
@@ -124,11 +127,6 @@ def operation_title_for_audit(
         if _OP_TITLE_BROKER_RE.search(op_sum):
             return _neutral_operation_title(export_name)
         return strip_presentation_noise(op_sum)[:200]
-    title = str(tool.get('title') or '').strip()
-    if title:
-        if _OP_TITLE_BROKER_RE.search(title):
-            return _neutral_operation_title(export_name)
-        return strip_presentation_noise(title)[:200]
     return _neutral_operation_title(export_name)
 
 
@@ -145,12 +143,15 @@ def safe_route_path_for_audit(raw: object) -> str:
     return path.strip()[:512]
 
 
-def resource_label_safe(*, method: str, path: str, tool: dict[str, Any] | None) -> str:
+def resource_label_safe(*, method: str, path: str, tool: dict[str, Any] | None, export_name: str = '') -> str:
     m = str(method or '').strip().upper()[:16] or 'GET'
     meta = tool.get('_meta') if isinstance(tool, dict) and isinstance(tool.get('_meta'), dict) else {}
-    tmpl = _path_template_for_audit(meta) if meta else ''
+    tmpl = _path_template_for_audit(meta)
     if not tmpl:
-        tmpl = safe_route_path_for_audit(path)
+        # No registered route template: stable gateway export id only (no raw path / query).
+        en = str(export_name or '').strip() or (str(tool.get('name') or '').strip() if isinstance(tool, dict) else '')
+        tmpl = f'gateway:{en}' if en else 'gateway:tool'
+        tmpl = tmpl[:120]
     if len(tmpl) > 160:
         tmpl = tmpl[:157] + '...'
     label = f'{m} {tmpl}'.strip()
@@ -181,7 +182,9 @@ def build_call_audit_log(
         outcome = outcome_from_audit(log_result=log_result, status=status, is_error=is_error)
     access_kind = access_kind_from_tool(tool, method=method)
     op_title = operation_title_for_audit(tool, export_name=export_name, method=method)
-    safe_path = safe_route_path_for_audit(path)
+    meta = tool.get('_meta') if isinstance(tool, dict) and isinstance(tool.get('_meta'), dict) else {}
+    path_tmpl = _path_template_for_audit(meta)
+    safe_path = path_tmpl if path_tmpl else ''
     rid = str(approval_id or '').strip()
     agent_name = str(agent_claims.get('agent_name') or '').strip()[:200]
     company_name = str(agent_claims.get('company_name') or '').strip()[:200]
@@ -197,7 +200,7 @@ def build_call_audit_log(
         'operation_title': op_title,
         'method': str(method or '')[:16],
         'path': safe_path,
-        'resource_label': resource_label_safe(method=method, path=path, tool=tool),
+        'resource_label': resource_label_safe(method=method, path=path, tool=tool, export_name=export_name),
         'access_kind': access_kind,
         'status': int(status),
         'outcome': outcome if outcome in OUTCOMES else 'failed',

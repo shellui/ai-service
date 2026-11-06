@@ -33,8 +33,17 @@ class McpCallAuditOutcomeTests(SimpleTestCase):
         """MCP JSON-RPC often uses HTTP 200 with result.isError true."""
         self.assertEqual(outcome_from_audit(log_result=None, status=200, is_error=True), 'failed')
 
+    def test_http200_unknown_log_result_fail_closed(self):
+        self.assertEqual(outcome_from_audit(log_result='weird', status=200, is_error=None), 'failed')
+
+    def test_pending_approval_synonym(self):
+        self.assertEqual(
+            outcome_from_audit(log_result='pending_approval', status=202, is_error=None),
+            'pending_approval',
+        )
+
     def test_outcomes_set(self):
-        self.assertEqual(OUTCOMES, {'allowed', 'failed', 'denied', 'pending', 'session_used'})
+        self.assertEqual(OUTCOMES, {'allowed', 'failed', 'denied', 'pending_approval', 'session_used'})
 
     def test_hostile_error_code_dropped(self):
         row = build_call_audit_log(
@@ -76,18 +85,19 @@ class McpCallAuditOutcomeTests(SimpleTestCase):
         self.assertNotIn('?', label)
 
     def test_audit_path_strips_query_and_fragment(self):
+        tool = {'_meta': {'path': '/api/resource/{id}'}}
         row = build_call_audit_log(
             agent_claims={'agent_id': 'a', 'company_id': 1},
             service_id='storage',
             export_name='t',
-            tool=None,
+            tool=tool,
             method='GET',
-            path='/api/resource?q=abc#frag',
+            path='/api/resource/1?q=abc#frag',
             log_result='success',
             status=200,
             is_error=False,
         )
-        self.assertEqual(row['path'], '/api/resource')
+        self.assertEqual(row['path'], '/api/resource/{id}')
         self.assertNotIn('?', row['resource_label'])
         self.assertNotIn('#', row['resource_label'])
 
@@ -105,12 +115,29 @@ class McpCallAuditOutcomeTests(SimpleTestCase):
         )
         self.assertEqual(row['access_kind'], 'write')
 
-    def test_operation_title_uses_registry_title_without_path_meta(self):
-        tool = {'title': 'List users', '_meta': {'operation_summary': 'List all users'}}
+    def test_operation_title_meta_summary_only_not_tool_title(self):
+        tool = {'title': 'List users from response', '_meta': {'operation_summary': 'List all users'}}
         self.assertEqual(
             operation_title_for_audit(tool, export_name='svc_list_users', method='GET'),
             'List all users',
         )
+
+    def test_operation_title_without_meta_summary_is_neutral(self):
+        tool = {'title': 'Untrusted downstream title'}
+        self.assertTrue(
+            operation_title_for_audit(tool, export_name='svc_list_users', method='GET').startswith('Operation '),
+        )
+
+    def test_resource_label_without_path_meta_uses_export_id_not_raw_path(self):
+        label = resource_label_safe(
+            method='GET',
+            path='/users/secret@x.test/items/1?q=hide',
+            tool={'name': 'legacy'},
+            export_name='storage_list_items',
+        )
+        self.assertIn('gateway:storage_list_items', label)
+        self.assertNotIn('@', label)
+        self.assertNotIn('?', label)
 
     def test_neutral_title_not_doubled_when_export_starts_with_operation(self):
         self.assertEqual(

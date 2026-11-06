@@ -103,21 +103,37 @@ Logic lives in `apps/connector/mcp_setup_context.py`:
 
 Internal `forward_call_log` maps gateway bookkeeping to Identity’s **`outcome`** using a fixed set (see **`OUTCOMES`** in `mcp_call_audit.py`):
 
-- **`pending_approval`** — from internal `pending` (pending approval state).
+- **`pending_approval`** — from internal log tokens like `pending_approval` (or legacy `pending` mapped before forward).
 - **`allowed`**, **`denied`**, **`failed`**, **`session_used`** — from `outcome_from_audit` rules.
 - Unknown provider strings do **not** map to “allowed”; they collapse to safe **`failed`** semantics with allowlisted metadata only.
+
+HTTP **200** with unknown `log_result` and **`is_error` unset** is treated as **`failed`** (fail closed). **`is_error: false`** is required to record **`allowed`** on success-class HTTP status.
 
 The legacy **`result`** field uses a small whitelist (`success`, `error`, `denied`, `pending`); other values are derived via **`legacy_result_token`** from the outcome (see code), not from raw downstream text.
 
 ### Safe metadata only
 
-- **`operation_title`:** from registry **`_meta.operation_summary`** when present; otherwise a neutral title (no raw client labels).
-- **`resource_label` / path:** normalized template path from **`_meta.path`** (query stripped); **`safe_route_path_for_audit`** prevents leaking arbitrary URLs.
+- **`operation_title`:** **only** from registry **`_meta.operation_summary`** when present; otherwise a neutral `Operation …` title (**not** from tool `title` or downstream bodies).
+- **`path`** / **`resource_label`:** **only** from registry **`_meta.path`** templates (query stripped). If no template is registered, **`path`** is omitted/empty and **`resource_label`** uses a stable `gateway:<export_name>` id (no raw request paths, query strings, or interpolated ids).
 - **`access_kind`:** **`read`**, **`write`**, or **`destructive`** from tool traits and HTTP method (`access_kind_from_tool`), not from guesswork on names.
 - **`error_code`:** only if in the allowlist (`mcp_audit_codes.py`).
 - **No** raw tool arguments, provider exception text, or arbitrary client paths in the forwarded body.
 
 A downstream HTTP **2xx** alone does **not** imply **`allowed`** if the gateway classified the operation as an error (`is_error`, audit `log_result`, etc.)—see **`outcome_from_audit`**.
+
+### Approvals: state before create, retry, and bodies
+
+On each gated **`tools/call`**, the gateway calls **`mcp-approval-state`** first (empty JSON body; binding is **only** in the signed assertion). If Identity returns **`pending`** or **`approved`**, the **`id`** is stored so the client can **`allow`** / **`deny`** / **`session_allow`** without creating a second row for the same binding.
+
+- **Create** (`mcp-approval-requests`): JSON body is **`{ "is_destructive": <bool> }`** only—never `arguments`, `arguments_redacted`, `path`, `method`, or **`short_action_summary`**.
+- **Decide** (`mcp-approval-decide`): includes `approval_id`, `decision`, sanitized `connection_id`, optional `actor_email`.
+- **Consume** (`mcp-approval-consume`): JSON **`{ "approval_id": "…" }`** only.
+
+See **`test_mcp_identity_conformance`** for a mocked Identity round-trip (state → pending → allow → consume) that asserts those body shapes.
+
+### Coordinator: sibling services (storage / hosting / email)
+
+Other service gateways that write MCP approvals or forward activity to Identity should match the same contract: **no** `arguments` or `arguments_redacted` on approval creates; binding only in signed assertions; **live** delegated-authority checks where applicable; and activity fields from **registry `_meta`** only. This repo does not change those PRs; align their gateways independently.
 
 ## Client conformance and CI
 

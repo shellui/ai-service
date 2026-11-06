@@ -23,7 +23,7 @@ from shellui_django.mcp.internal import (
 )
 
 from apps.connector.mcp_audit_codes import ALLOWED_ERROR_CODES
-from apps.connector.mcp_call_audit import OUTCOMES, legacy_result_token, safe_route_path_for_audit
+from apps.connector.mcp_call_audit import OUTCOMES, legacy_result_token
 from apps.connector.mcp_company_id import strict_numeric_company_id
 from apps.connector.mcp_revocation import revocation_fingerprint_material
 
@@ -372,6 +372,8 @@ def forward_call_log(entry: dict) -> None:
     outcome_raw = str(entry.get('outcome') or '').strip().lower()
     if outcome_raw == 'pending':
         outcome = 'pending_approval'
+    elif outcome_raw == 'pending_approval':
+        outcome = 'pending_approval'
     elif outcome_raw in OUTCOMES:
         outcome = outcome_raw
     else:
@@ -388,7 +390,7 @@ def forward_call_log(entry: dict) -> None:
         'tool': str(entry.get('tool') or '')[:256],
         'tool_export_id': tool_export_id,
         'method': str(entry.get('method') or '')[:16],
-        'path': safe_route_path_for_audit(entry.get('path'))[:512],
+        'path': str(entry.get('path') or '')[:512],
         'status': int(entry.get('status') or 0),
         'client_ip': str(entry.get('client_ip') or '')[:45],
     }

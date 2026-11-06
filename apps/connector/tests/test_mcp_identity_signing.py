@@ -96,7 +96,7 @@ class McpIdentitySigningTests(SimpleTestCase):
             )
         body = post.call_args.kwargs['json']
         self.assertEqual(body['outcome'], 'pending_approval')
-        self.assertEqual(body['path'], '/api/r')
+        self.assertEqual(body['path'], '/api/r?q=1')
         self.assertEqual(body['result'], 'pending')
 
     def test_delegated_authority_internal_assertion_shape(self):
