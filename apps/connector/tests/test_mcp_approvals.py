@@ -26,7 +26,7 @@ from apps.connector.mcp_approval_gate import (
 )
 from shellui_django.mcp.write_gate import WriteGateDecision
 from apps.connector import mcp_approvals
-from apps.connector.mcp_approvals import SESSION_GRANT_SECONDS, DecideResult
+from apps.connector.mcp_approvals import SESSION_GRANT_SECONDS, ConsumeResult, DecideResult
 from apps.connector.mcp_protocol import MCP_SESSION_CACHE_PREFIX
 
 AI_MCP = 'https://ai.test/c/10/mcp'
@@ -523,6 +523,93 @@ class McpApprovalGateDenyPrecedenceTests(TestCase):
             )
         sess.assert_not_called()
         self.assertFalse(out.proceed)
+        self.assertIsNotNone(out.log)
+        assert out.log is not None
+        self.assertEqual(out.log.get('approval_id'), 'ap-deny')
+        self.assertEqual(out.log.get('outcome'), 'denied')
+
+    def test_destructive_session_allow_does_not_execute(self):
+        request = Mock()
+        request.headers = {'Mcp-Session-Id': 'sess-1'}
+        tool = {
+            'annotations': {'readOnlyHint': False, 'destructiveHint': True},
+            '_meta': {'method': 'DELETE', 'path': '/api/v1/buckets/{id}/', 'destructive': True},
+        }
+        approval_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+        with (
+            patch('apps.connector.mcp_approval_gate.decide_write') as decide,
+            patch('apps.connector.mcp_approval_gate.approvals.session_grant_covers_write', return_value=False),
+            patch('apps.connector.mcp_approval_gate.approvals.decide_approval') as decide_remote,
+            patch('apps.connector.mcp_approval_gate.approvals.approval_consume_detail') as consume,
+            patch('apps.connector.mcp_approval_gate.approvals.approval_state', return_value='pending'),
+        ):
+            decide.return_value = WriteGateDecision(
+                allowed=False,
+                needs_approval=True,
+                reason='Write requires approval.',
+            )
+            out = enforce_tool_call_approval(
+                request,
+                1,
+                params={'_meta': {'shellui_approval': {'decision': 'session_allow', 'approval_id': approval_id}}},
+                agent_claims={'agent_id': 'a1', 'company_id': 10, 'mcp_access': 'ask'},
+                export_name='storage_delete_bucket',
+                service_id='storage',
+                tool=tool,
+                method='DELETE',
+                path='/api/v1/buckets/{id}/',
+                arguments={},
+            )
+        decide_remote.assert_not_called()
+        consume.assert_not_called()
+        self.assertFalse(out.proceed)
+        self.assertIsNotNone(out.log)
+        assert out.log is not None
+        self.assertEqual(out.log.get('access_kind'), 'destructive')
+        self.assertNotEqual(out.log.get('outcome'), 'session_used')
+        self.assertEqual(out.log.get('outcome'), 'pending_approval')
+        self.assertEqual(out.log.get('approval_id'), approval_id)
+
+    def test_duplicate_consumed_destructive_is_failed_with_approval(self):
+        request = Mock()
+        request.headers = {'Mcp-Session-Id': 'sess-1'}
+        tool = {
+            'annotations': {'readOnlyHint': False, 'destructiveHint': True},
+            '_meta': {'method': 'DELETE', 'path': '/api/v1/buckets/{id}/', 'destructive': True},
+        }
+        approval_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+        with (
+            patch('apps.connector.mcp_approval_gate.decide_write') as decide,
+            patch('apps.connector.mcp_approval_gate.approvals.session_grant_covers_write', return_value=False),
+            patch('apps.connector.mcp_approval_gate.approvals.approval_state', return_value='expired'),
+            patch('apps.connector.mcp_approval_gate.approvals.approval_consume_detail') as consume,
+        ):
+            decide.return_value = WriteGateDecision(
+                allowed=False,
+                needs_approval=True,
+                reason='Write requires approval.',
+            )
+            consume.return_value = ConsumeResult(False, status_code=409, already_consumed=True)
+            out = enforce_tool_call_approval(
+                request,
+                1,
+                params={'_meta': {'shellui_approval': {'approval_id': approval_id}}},
+                agent_claims={'agent_id': 'a1', 'company_id': 10, 'mcp_access': 'ask'},
+                export_name='storage_delete_bucket',
+                service_id='storage',
+                tool=tool,
+                method='DELETE',
+                path='/api/v1/buckets/{id}/',
+                arguments={},
+            )
+        self.assertFalse(out.proceed)
+        self.assertIsNotNone(out.log)
+        assert out.log is not None
+        self.assertEqual(out.log.get('outcome'), 'failed')
+        self.assertEqual(out.log.get('access_kind'), 'destructive')
+        self.assertEqual(out.log.get('approval_id'), approval_id)
+        self.assertNotEqual(out.log.get('outcome'), 'session_used')
+        self.assertNotEqual(out.log.get('outcome'), 'allowed')
 
 
 @override_settings(

@@ -32,7 +32,8 @@ from apps.connector.mcp_tool_presentation import shellui_gateway_instructions
 from shellui_django.mcp.rate_limit import check_agent_rate_limit
 from shellui_django.mcp.server import McpServer
 
-# Supported MCP revisions (exact client match only; see ``negotiate_protocol_version``).
+# Supported MCP revisions, newest first. ``negotiate_protocol_version`` echoes a requested
+# member and otherwise answers with the newest revision this gateway implements.
 SUPPORTED_PROTOCOL_VERSIONS: tuple[str, ...] = (
     '2025-06-18',
     '2025-03-26',
@@ -49,11 +50,17 @@ _SUPPORTED_PROTOCOL_SET = frozenset(SUPPORTED_PROTOCOL_VERSIONS)
 
 
 def negotiate_protocol_version(client_version: str | None) -> str | None:
-    """Return client version only when it is an exact gateway-supported revision (no silent fallback)."""
+    """Echo a supported client revision, or the newest gateway revision when the client asks for another.
+
+    A missing version is rejected. The official SDK sends its latest revision (for example
+    ``2025-11-25``) and accepts an older revision from this list in the initialize result.
+    """
     requested = str(client_version or '').strip()
     if not requested:
         return None
-    return requested if requested in _SUPPORTED_PROTOCOL_SET else None
+    if requested in _SUPPORTED_PROTOCOL_SET:
+        return requested
+    return SUPPORTED_PROTOCOL_VERSIONS[0]
 
 
 def server_capabilities() -> dict[str, Any]:

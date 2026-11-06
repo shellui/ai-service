@@ -141,23 +141,22 @@ class McpProtocolComplianceTests(TestCase):
             tested.add(ver)
         self.assertEqual(tested, set(mcp_protocol.SUPPORTED_PROTOCOL_VERSIONS))
 
-    def test_initialize_unknown_protocol_version_rejected(self, *_mocks):
+    def test_initialize_newer_protocol_version_answers_with_newest_supported(self, *_mocks):
         token = _agent_token(secret=self.secret, issuer=self.issuer)
         response = self.client.post(
             '/c/10/mcp',
             data=_rpc(
                 'initialize',
-                protocolVersion='2099-01-01',
+                protocolVersion='2025-11-25',
                 capabilities={},
                 clientInfo={'name': 'future', 'version': '1.0'},
             ),
             content_type='application/json',
             **self._auth(token),
         )
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertEqual(body['error']['code'], -32600)
-        self.assertEqual(body['error']['message'], 'Unsupported MCP protocol version')
+        self.assertEqual(body['result']['protocolVersion'], '2025-06-18')
 
     def test_initialize_negotiates_older_protocol_version(self, *_mocks):
         token = _agent_token(secret=self.secret, issuer=self.issuer)

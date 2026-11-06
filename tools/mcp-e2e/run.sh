@@ -21,6 +21,40 @@ export MCP_E2E_TOKEN_FILE="${SECRETS_DIR}/access.token"
 
 log() { printf '==> %s\n' "$*"; }
 
+# Redact credentials before failure logs are printed. JWTs, PEM blocks, and
+# assignment-style secrets must not land in CI output.
+redact_stream() {
+  python3 -c '
+import re, sys
+text = sys.stdin.read()
+text = re.sub(
+    r"-----BEGIN [A-Z0-9 ]+-----[\s\S]*?-----END [A-Z0-9 ]+-----",
+    "[REDACTED_PEM]",
+    text,
+)
+text = re.sub(
+    r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b",
+    "[REDACTED_JWT]",
+    text,
+)
+text = re.sub(r"(?i)(bearer\s+)[A-Za-z0-9._~+/=-]{8,}", r"\1[REDACTED]", text)
+text = re.sub(
+    r"(?i)((?:password|secret|token|authorization|api[_-]?key|private[_-]?key|jwt_private_key|signing_key)(\s*[:=]\s*|\s+))([^\s\"'"'"']+)",
+    lambda m: m.group(1) + "[REDACTED]",
+    text,
+)
+sys.stdout.write(text)
+'
+}
+
+dump_failure_logs() {
+  local dest="${MCP_E2E_FAILURE_LOG:-/tmp/mcp-e2e-failure.log}"
+  {
+    printf '==> docker compose logs ai identity saas-mock (redacted)\n'
+    docker compose -f "${COMPOSE_FILE}" logs --no-color ai identity saas-mock 2>&1 || true
+  } | redact_stream | tee "${dest}" >&2 || true
+}
+
 if [[ ! -d "${IDENTITY_SRC}" ]]; then
   echo "IDENTITY_SRC not found at ${IDENTITY_SRC}. Clone shellui/identity-service (develop) alongside ai-service or set IDENTITY_SRC." >&2
   exit 1
@@ -50,12 +84,17 @@ PY
 fi
 export E2E_AI_SIGNING_KID="$(cat "${SECRETS_DIR}/signing.kid")"
 
-cleanup() {
-  docker compose -f "${COMPOSE_FILE}" down -v --remove-orphans >/dev/null 2>&1 || true
+on_exit() {
+  local code=$?
+  if [[ "${code}" -ne 0 ]]; then
+    dump_failure_logs
+  fi
+  if [[ "${MCP_E2E_LEAVE_STACK:-}" != "1" ]]; then
+    docker compose -f "${COMPOSE_FILE}" down -v --remove-orphans >/dev/null 2>&1 || true
+  fi
+  exit "${code}"
 }
-if [[ "${MCP_E2E_LEAVE_STACK:-}" != "1" ]]; then
-  trap cleanup EXIT
-fi
+trap on_exit EXIT
 
 log 'Starting MCP e2e stack'
 docker compose -f "${COMPOSE_FILE}" build identity ai
@@ -79,6 +118,30 @@ for _ in $(seq 1 60); do
 done
 curl -sf "${IDENTITY_ORIGIN}/health/live" >/dev/null
 curl -sf "http://localhost:8006/ai/v1/health" >/dev/null
+
+log 'Revocation body echoes signed max_active_grant_version'
+docker compose -f "${COMPOSE_FILE}" exec -T ai python manage.py shell <<'PY'
+from apps.connector import mcp_identity
+import requests
+origin = mcp_identity._identity_origin()
+url = f"{origin}/api/v1/mcp/internal/mcp-revocations"
+response = requests.get(url, headers=mcp_identity._revocation_headers(origin), timeout=5)
+body = response.json()
+if "max_active_grant_version" not in body or isinstance(body.get("max_active_grant_version"), bool):
+    raise SystemExit(
+        "revocation JSON omitted max_active_grant_version "
+        f"(HTTP {response.status_code}, keys={sorted(k for k in body if k != 'revocation_assertion')})"
+    )
+try:
+    trusted = mcp_identity.verify_mcp_revocation_list_response(
+        body, **mcp_identity._revocation_verify_kwargs(origin)
+    )
+except Exception as exc:
+    raise SystemExit(f"revocation verify failed: {type(exc).__name__}: {exc}") from exc
+if trusted.get("max_active_grant_version") != body["max_active_grant_version"]:
+    raise SystemExit("revocation max_active_grant_version body does not match the signed claim")
+print("[revocation] max_active_grant_version echoed and verified")
+PY
 
 log 'Ensuring company 2 exists (tenant isolation)'
 docker compose -f "${COMPOSE_FILE}" exec -T identity python manage.py shell <<'PY'

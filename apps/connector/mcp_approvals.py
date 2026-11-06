@@ -198,6 +198,13 @@ class DecideResult:
     approval_status: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class ConsumeResult:
+    consumed: bool
+    status_code: int | None = None
+    already_consumed: bool = False
+
+
 def approval_binding_from_payload(payload: dict[str, Any]) -> dict[str, Any] | None:
     agent_id = str(payload.get('agent_id') or '').strip()
     company_id = payload.get('company_id')
@@ -299,19 +306,34 @@ def fetch_approval_state(payload: dict[str, Any]) -> tuple[str | None, str | Non
     return status or None, approval_id
 
 
-def consume_approval(approval_id: str, payload: dict[str, Any]) -> bool:
+def _already_consumed_body(response: requests.Response) -> bool:
+    """Identity consume returns 409 ``consumed: false`` when the row is already executed."""
+    if response.status_code != 409:
+        return False
+    try:
+        data = response.json()
+    except ValueError:
+        return False
+    return (
+        isinstance(data, dict)
+        and data.get('consumed') is False
+        and data.get('error') == 'Approval already consumed.'
+    )
+
+
+def consume_approval_detail(approval_id: str, payload: dict[str, Any]) -> ConsumeResult:
     origin = _identity_origin()
     binding = approval_binding_from_payload(payload)
     if not origin or binding is None or not approval_id:
-        return False
+        return ConsumeResult(False)
     url = f'{origin.rstrip("/")}{APPROVAL_CONSUME_PATH}'
     ctx = _assertion_context(payload)
     if ctx.blocked_assertion:
-        return False
+        return ConsumeResult(False)
     try:
         headers = _approval_headers(binding, ctx=ctx)
     except InternalAssertionError:
-        return False
+        return ConsumeResult(False)
     try:
         response = requests.post(
             url,
@@ -320,14 +342,23 @@ def consume_approval(approval_id: str, payload: dict[str, Any]) -> bool:
             timeout=5,
         )
     except requests.RequestException:
-        return False
+        return ConsumeResult(False)
     if response.status_code >= 400:
-        return False
+        return ConsumeResult(
+            False,
+            status_code=response.status_code,
+            already_consumed=_already_consumed_body(response),
+        )
     try:
         data = response.json()
     except ValueError:
-        return False
-    return isinstance(data, dict) and data.get('consumed') is True
+        return ConsumeResult(False, status_code=response.status_code)
+    consumed = isinstance(data, dict) and data.get('consumed') is True
+    return ConsumeResult(consumed, status_code=response.status_code)
+
+
+def consume_approval(approval_id: str, payload: dict[str, Any]) -> bool:
+    return consume_approval_detail(approval_id, payload).consumed
 
 
 def decide_approval(
@@ -647,3 +678,7 @@ def approval_state(payload: dict[str, Any]) -> str | None:
 
 def approval_consume(approval_id: str, payload: dict[str, Any] | None = None) -> bool:
     return consume_approval(approval_id, payload or {})
+
+
+def approval_consume_detail(approval_id: str, payload: dict[str, Any] | None = None) -> ConsumeResult:
+    return consume_approval_detail(approval_id, payload or {})

@@ -20,7 +20,7 @@ On the **ai** service, **`STORAGE_SERVICE_URL`**, **`HOSTING_SERVICE_URL`**, and
 
 So the default suite proves **MCP + OAuth + ai gateway + identity** for the flows in `tools/mcp-e2e` (including negatives such as tenant isolation, revoked agents, and invalid OAuth where the scripts cover them). It does **not** prove routing through real **storage**, **hosting**, or **email** gateways, full delegated-downstream integration, or production SaaS behavior.
 
-The gateway **`initialize`** response echoes **`protocolVersion`** only when the client sends one of the exact revisions listed in `apps.connector.mcp_protocol.SUPPORTED_PROTOCOL_VERSIONS` (same set the unit tests assert against **shellui-django**); unknown strings return **JSON-RPC -32600** with HTTP 400—there is no silent upgrade to a default revision. Default CI still uses empty downstream URLs and the SaaS mock, so **live** delegated downstream MCP is not exercised automatically.
+The gateway **`initialize`** response echoes **`protocolVersion`** when the client sends one of the revisions in `apps.connector.mcp_protocol.SUPPORTED_PROTOCOL_VERSIONS`. A newer revision, such as the official SDK's `2025-11-25`, is answered with the newest revision this gateway implements (`2025-06-18`). A missing version is still **JSON-RPC -32600**. Default CI still uses empty downstream URLs and the SaaS mock, so **live** delegated downstream MCP is not exercised automatically.
 
 ## Optional downstream URLs (manual local evidence only)
 
@@ -48,7 +48,7 @@ Record the **exact SHAs or branch names** of identity, saas, storage, hosting, a
 
 | Repo | PR | headRefOid (last `gh` check in ai-service CI docs) |
 |------|-----|-----------------------------------------------------|
-| shellui/identity-service | #135 (delegated authority + merged internal MCP) | `d7fe35128461d00c7dd2c5d270fe4d19e7d904a3` (check `develop`, e.g. `bdb3c3` for `McpInternalCallLogView` + `call_log_internal.canonical_call_path`) |
+| shellui/identity-service | #135, #138 (`b53ebbd`), and #139 merged. Closed #136 and #137 are not the contract. Revocation JSON echoes signed `max_active_grant_version` and full agent snapshots (`a7708eb`, merge `6a0c6a0`). | `6a0c6a0354d4ef79491f332e3c25c8b19d98084f` (`develop` after #139) |
 | shellui/storage-service | #59 | `6db93f833fa1f0f747a686ede9c1c4e974301fea` |
 | shellui/hosting-service | #78 | `71403d9c3cd6ffa3a0ee6d561662070ad31e0581` |
 | shellui/email-service | #46 | `17c900d07938f5fbd15a0241ba6e58d8a704c9d0` |
@@ -56,7 +56,7 @@ Record the **exact SHAs or branch names** of identity, saas, storage, hosting, a
 
 The **Tests** job checks out `shellui/saas-service` with `continue-on-error: true` because that repository may be unreadable from a token with only public-repo scope; schema audit then omits SaaS unless the checkout succeeds.
 
-CI **MCP client conformance** still uses empty downstream URLs and the SaaS mock unless you change the workflow; `IDENTITY_SERVICE_REF` (and sibling refs for the **Tests** job schema audit) stay the way to pin identity in GitHub Actions. **`POST .../mcp-call-logs`** must match identity **`develop`** (canonical **`outcome`**, required **`grant_version`**, no forwarded labels/arguments); **#135** head above is authoritative for the delegated-authority **200** JSON shape (`active`, **`services_allowed`**, **`allow_destructive`**, fixed key set).
+CI **MCP client conformance** still uses empty downstream URLs and the SaaS mock unless you change the workflow; `IDENTITY_SERVICE_REF` (and sibling refs for the **Tests** job schema audit) stay the way to pin identity in GitHub Actions. **`POST .../mcp-call-logs`** must match identity **`develop`** after merged **#135** and **#138** (`b53ebbd`): canonical **`outcome`**, required **`grant_version`**, no forwarded labels/arguments. Destructive **`allowed`** / **`failed`** keep the consumed approval id and leave that row **executed**; a duplicate consume is **`failed`** with that same id, not a second success and not **`session_used`**. **`denied`** / **`waiting_approval`** stay **`access_kind: destructive`** and may link a pending or rejected row. The delegated-authority **200** body stays the fixed 15 keys from **#135**. The revocation poll JSON must echo signed **`max_active_grant_version`** and the agent snapshots. The gateway does not invent that field. Identity **`develop`** `6a0c6a0` (#139) does.
 
 **Live HTTP proof (human OAuth, narrowed approval, masked activity)** is out of scope for default CI and was not run in this agent environment: terms/sign-up stay on the human SaaS shell; do not add one-off DB inserts or auto-approvals beyond sanctioned dev seeds.
 

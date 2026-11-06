@@ -357,6 +357,7 @@ def enforce_tool_call_approval(
                 method=method,
                 path=path,
                 log_result=log_result,
+                approval_id=client_approval_id,
             ),
         )
 
@@ -385,7 +386,9 @@ def enforce_tool_call_approval(
             )
         return GateOutcome(proceed=True)
 
-    if client_decision == 'session_allow' and client_approval_id:
+    # Identity rejects session allow on destructive rows (409). Do not consume or
+    # record session_used; fall through so a duplicate executed row stays failed.
+    if client_decision == 'session_allow' and client_approval_id and not destructive:
         decided = _decide(client_approval_id, 'allow_session')
         if decided.status_code == 409 or not decided.ok:
             return GateOutcome(
@@ -413,6 +416,29 @@ def enforce_tool_call_approval(
 
     state = approvals.approval_state(approval_payload)
     if state == 'expired':
+        if client_approval_id:
+            duplicate = approvals.approval_consume_detail(client_approval_id, approval_payload)
+            if duplicate.already_consumed:
+                # Identity #138 accepts failed plus the executed approval id. Denial must not
+                # drop that id, and this is not a second execution.
+                return GateOutcome(
+                    proceed=False,
+                    response=_approval_result(
+                        req_id,
+                        text=copy.expired_text(),
+                        meta={'shellui_approval': {'status': 'expired', 'consumed': False}},
+                    ),
+                    log=_log_entry(
+                        agent_claims=agent_claims,
+                        service=service_id,
+                        export_name=export_name,
+                        tool=tool,
+                        method=method,
+                        path=path,
+                        log_result='error',
+                        approval_id=client_approval_id,
+                    ),
+                )
         return GateOutcome(
             proceed=False,
             response=_approval_result(
@@ -446,24 +472,47 @@ def enforce_tool_call_approval(
                 method=method,
                 path=path,
                 log_result='denied',
+                approval_id=client_approval_id,
             ),
         )
     if state == 'approved':
         approval_id = str(approval_payload.get('approval_id') or client_approval_id or '')
-        if approval_id and approvals.approval_consume(approval_id, approval_payload):
-            log_result = 'identity_approved'
-            return GateOutcome(
-                proceed=True,
-                log=_log_entry(
-                    agent_claims=agent_claims,
-                    service=service_id,
-                    export_name=export_name,
-                    tool=tool,
-                    method=method,
-                    path=path,
-                    log_result=log_result,
-                ),
-            )
+        if approval_id:
+            consumed = approvals.approval_consume_detail(approval_id, approval_payload)
+            if consumed.consumed:
+                log_result = 'identity_approved'
+                return GateOutcome(
+                    proceed=True,
+                    log=_log_entry(
+                        agent_claims=agent_claims,
+                        service=service_id,
+                        export_name=export_name,
+                        tool=tool,
+                        method=method,
+                        path=path,
+                        log_result=log_result,
+                        approval_id=approval_id,
+                    ),
+                )
+            if consumed.already_consumed:
+                return GateOutcome(
+                    proceed=False,
+                    response=_approval_result(
+                        req_id,
+                        text=copy.expired_text(),
+                        meta={'shellui_approval': {'status': 'expired', 'consumed': False}},
+                    ),
+                    log=_log_entry(
+                        agent_claims=agent_claims,
+                        service=service_id,
+                        export_name=export_name,
+                        tool=tool,
+                        method=method,
+                        path=path,
+                        log_result='error',
+                        approval_id=approval_id,
+                    ),
+                )
         return GateOutcome(
             proceed=False,
             response=_approval_result(
