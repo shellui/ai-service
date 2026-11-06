@@ -405,10 +405,19 @@ def _refresh_revocations() -> bool:
         logger.warning('MCP revocation poll failed: service assertion signing is not configured')
         _mark_revocation_untrusted()
         return False
-    try:
-        response = requests.get(url, headers=headers, timeout=5)
-    except requests.RequestException as exc:
-        logger.warning('MCP revocation poll failed: %s', type(exc).__name__)
+    response: requests.Response | None = None
+    for attempt in range(12):
+        try:
+            response = requests.get(url, headers=headers, timeout=5)
+        except requests.RequestException as exc:
+            logger.warning('MCP revocation poll failed: %s', type(exc).__name__)
+            response = None
+        if response is None or int(response.status_code) >= 500:
+            if attempt < 11:
+                time.sleep(1.0)
+            continue
+        break
+    if response is None:
         _mark_revocation_untrusted()
         return False
     if response.status_code >= 400:
