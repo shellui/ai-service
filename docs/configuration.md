@@ -36,6 +36,9 @@ Identity verifies delegation requests with `AI_SERVICE_JWKS` / `AI_SERVICE_JWKS_
 | `MCP_GATEWAY_TOOLS_CACHE_TTL_SECONDS` | `30` |
 | `MCP_GATEWAY_DOWNSTREAM_TIMEOUT_SECONDS` | `5` |
 | `MCP_RATE_LIMIT_AGENT` | `120` |
+| `MCP_APPROVAL_ASSERTION_MAX_LIFETIME_SECONDS` | `900` | Maximum `exp - iat` for RS256 approval assertions to identity (setup flows need 600–900s; align with identity `MCP_APPROVAL_ASSERTION_MAX_LIFETIME_SECONDS`). |
+| `MCP_APPROVAL_SETUP_SESSION_TTL_MIN_SECONDS` | `600` | Lower bound for signed `mcp_session_ttl_seconds` during setup (must match identity). |
+| `MCP_APPROVAL_SETUP_SESSION_TTL_MAX_SECONDS` | `900` | Upper bound for the same. |
 
 ## Downstream services
 

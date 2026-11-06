@@ -21,9 +21,10 @@ def approval_batch_body(*, agent_name: str, tool_name: str, company_name: str, t
     )
 
 
-def session_helper_text() -> str:
+def session_helper_text(*, seconds: int | None = None) -> str:
+    sec = int(seconds) if seconds is not None else SESSION_SECONDS
     return (
-        f'For {SESSION_SECONDS} seconds on this connection. '
+        f'For {sec} seconds on this connection. '
         'Tools that change data still ask again.'
     )
 
@@ -32,8 +33,9 @@ def after_deny_text(*, tool_name: str) -> str:
     return f'You denied {tool_name}.'
 
 
-def after_session_allow_text() -> str:
-    return f'Allowed for {SESSION_SECONDS} seconds on this connection.'
+def after_session_allow_text(*, seconds: int | None = None) -> str:
+    sec = int(seconds) if seconds is not None else SESSION_SECONDS
+    return f'Allowed for {sec} seconds on this connection.'
 
 
 def expired_text() -> str:

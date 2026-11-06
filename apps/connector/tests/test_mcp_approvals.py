@@ -321,4 +321,156 @@ class McpApprovalCopyTests(TestCase):
             approval_id='id-1',
         )
         self.assertEqual(meta['elicitation']['session_seconds'], SESSION_GRANT_SECONDS)
-        self.assertEqual(meta['elicitation']['session_helper'], copy.session_helper_text())
+        self.assertEqual(
+            meta['elicitation']['session_helper'], copy.session_helper_text(seconds=SESSION_GRANT_SECONDS)
+        )
+
+    @override_settings(
+        MCP_APPROVAL_SETUP_SESSION_TTL_MIN_SECONDS=600,
+        MCP_APPROVAL_SETUP_SESSION_TTL_MAX_SECONDS=900,
+        MCP_APPROVAL_ASSERTION_MAX_LIFETIME_SECONDS=900,
+    )
+    def test_elicitation_meta_setup_session_seconds(self):
+        now = int(time.time())
+        meta = build_elicitation_meta(
+            tool_name='storage_create_bucket',
+            destructive=False,
+            agent_claims={
+                'agent_name': 'Bot',
+                'company_name': 'Acme',
+                'agent_id': 'a',
+                'company_id': 10,
+                'setup_flow': True,
+                'mcp_session_ttl_seconds': 600,
+                'iat': now,
+                'exp': now + 900,
+            },
+            approval_id='id-2',
+        )
+        self.assertEqual(meta['elicitation']['session_seconds'], 600)
+        self.assertIn('600', meta['elicitation']['session_helper'])
+
+
+@override_settings(
+    DEBUG=True,
+    JWT_HS256_FALLBACK_SECRET='test-hs256-secret-for-mcp-gateway-tests-only',  # gitleaks:allow
+    ALLOW_JWT_HS256_FALLBACK=True,
+    IDENTITY_ISSUER='https://identity.test',
+    IDENTITY_AUDIENCE='shellui-test',
+    IDENTITY_JWKS_URL='',
+    IDENTITY_SERVICE_URL='https://identity.test',
+    AI_SERVICE_SIGNING_KEY=_SIGNING,
+    AI_SERVICE_ISSUER='https://ai.test',
+    STORAGE_SERVICE_URL='https://storage.test',
+    AI_PUBLIC_URL='https://ai.test',
+    AUTH_RATE_LIMIT_ENABLED=False,
+    CACHES={
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'ai-mcp-destructive-tests',
+        }
+    },
+)
+@patch('apps.connector.mcp_views.identity_revocation_unavailable', return_value=False)
+@patch('apps.connector.mcp_views.agent_is_revoked', return_value=False)
+class McpDestructiveOverrideTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.client = Client()
+        self.secret = 'test-hs256-secret-for-mcp-gateway-tests-only'  # gitleaks:allow
+        self.issuer = 'https://identity.test'
+        jwks_patcher = patch('apps.authapi.agent_tokens.get_jwks_client')
+        self.jwks_mock = jwks_patcher.start()
+        self.addCleanup(jwks_patcher.stop)
+        self.jwks_mock.return_value.get_signing_key.return_value = None
+
+    def _auth(self, token: str, *, session_id: str | None = None) -> dict:
+        headers = {'HTTP_AUTHORIZATION': f'Bearer {token}', 'HTTP_ACCEPT': MCP_ACCEPT}
+        if session_id:
+            headers['HTTP_MCP_SESSION_ID'] = session_id
+        return headers
+
+    def _init_session(self, token: str) -> str:
+        response = self.client.post(
+            '/c/10/mcp',
+            data=json.dumps(
+                {
+                    'jsonrpc': '2.0',
+                    'id': 1,
+                    'method': 'initialize',
+                    'params': {'protocolVersion': '2025-06-18', 'capabilities': {'elicitation': {}}},
+                }
+            ),
+            content_type='application/json',
+            **self._auth(token),
+        )
+        self.assertEqual(response.status_code, 200)
+        return response['Mcp-Session-Id']
+
+    @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
+    @patch('apps.connector.mcp_identity.forward_call_log')
+    @patch('shellui_django.mcp.gateway.requests.post')
+    @patch('apps.connector.mcp_approvals.create_approval_request')
+    def test_mcp_destructive_does_not_bypass_destructive_approval(self, create_approval, post, _log, _mint, *_mocks):
+        storage_tools = {
+            'jsonrpc': '2.0',
+            'id': 1,
+            'result': {
+                'tools': [
+                    {
+                        'name': 'delete_bucket',
+                        'annotations': {
+                            'readOnlyHint': False,
+                            'destructiveHint': True,
+                            'idempotentHint': True,
+                            'openWorldHint': True,
+                        },
+                        '_meta': {'method': 'delete', 'path': '/api/v1/buckets/{id}/'},
+                    }
+                ]
+            },
+        }
+
+        def side_effect(url, **kwargs):
+            resp = Mock()
+            resp.status_code = 200
+            payload = kwargs.get('json') or {}
+            if payload.get('method') != 'tools/call':
+                resp.json.return_value = storage_tools
+            else:
+                resp.json.return_value = {'jsonrpc': '2.0', 'id': 1, 'result': {'content': []}}
+            return resp
+
+        post.side_effect = side_effect
+        now = int(time.time())
+        claims = {
+            'token_type': 'access',
+            'sub': 'agent:agent-a',
+            'agent_id': 'agent-a',
+            'agent_name': 'Test Agent',
+            'company_id': 10,
+            'company_name': 'Acme',
+            'scope': 'ai storage',
+            'mcp_access': 'full',
+            'mcp_read': 'safe',
+            'mcp_destructive': True,
+            'aud': AI_MCP,
+            'iss': self.issuer,
+            'iat': now,
+            'exp': now + 3600,
+        }
+        token = jwt.encode(claims, self.secret, algorithm='HS256')
+        session_id = self._init_session(token)
+        self.client.post(
+            '/c/10/mcp',
+            data=_rpc('tools/list'),
+            content_type='application/json',
+            **self._auth(token, session_id=session_id),
+        )
+        self.client.post(
+            '/c/10/mcp',
+            data=_rpc('tools/call', name='storage_delete_bucket', arguments={'method': 'DELETE'}),
+            content_type='application/json',
+            **self._auth(token, session_id=session_id),
+        )
+        create_approval.assert_called_once()

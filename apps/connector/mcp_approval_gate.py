@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextvars
 import hashlib
 import json
+import logging
 from dataclasses import dataclass
 from typing import Any
 
@@ -31,6 +32,9 @@ def patched_decide_write(**kwargs: Any) -> WriteGateDecision:
 from apps.connector import mcp_approval_copy as copy
 from apps.connector import mcp_approvals as approvals
 from apps.connector.mcp_company_label import resolve_company_label
+from apps.connector.mcp_setup_context import approval_assertion_context_from_agent_claims
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,6 +136,10 @@ def build_elicitation_meta(
     buttons: dict[str, str] = {'allow': 'Allow', 'deny': 'Deny'}
     if not destructive:
         buttons['session_allow'] = 'Allow for this session'
+    ctx = approval_assertion_context_from_agent_claims(agent_claims)
+    session_seconds = (
+        ctx.mcp_session_ttl_seconds if ctx.setup_flow and ctx.mcp_session_ttl_seconds else copy.SESSION_SECONDS
+    )
     payload: dict[str, Any] = {
         'approval_id': approval_id,
         'status': 'pending',
@@ -139,7 +147,7 @@ def build_elicitation_meta(
             'title': title,
             'body': body,
             'buttons': buttons,
-            'session_seconds': copy.SESSION_SECONDS,
+            'session_seconds': session_seconds,
         },
         'settings_url': approvals.approval_settings_url(approval_id),
         'approvals_list_url': approvals.approval_settings_url(),
@@ -147,7 +155,7 @@ def build_elicitation_meta(
     if short_action_summary:
         payload['elicitation']['detail'] = short_action_summary
     if not destructive:
-        payload['elicitation']['session_helper'] = copy.session_helper_text()
+        payload['elicitation']['session_helper'] = copy.session_helper_text(seconds=session_seconds)
     return payload
 
 
@@ -207,11 +215,19 @@ def enforce_tool_call_approval(
 ) -> GateOutcome:
     read_only, destructive = tool_traits_from_export(tool, method=method)
     access = access_mode_from_claims(agent_claims)
+    allow_destructive_flag = bool(agent_claims.get('mcp_destructive'))
+    if destructive and allow_destructive_flag:
+        logger.info(
+            'MCP gateway ignoring mcp_destructive for destructive tool (approval required): company_id=%s agent_id=%s export=%s',
+            agent_claims.get('company_id'),
+            agent_claims.get('agent_id'),
+            export_name,
+        )
     decision = decide_write(
         method=method,
         access_mode=access,
         destructive=destructive,
-        allow_destructive_without_asking=bool(agent_claims.get('mcp_destructive')),
+        allow_destructive_without_asking=(allow_destructive_flag and not destructive),
         tool_read_only=read_only,
     )
     connection_id = _connection_id(request)
@@ -249,6 +265,7 @@ def enforce_tool_call_approval(
         'arguments_hash': args_hash,
         'path': path,
         'method': method,
+        '_agent_claims': agent_claims,
     }
 
     if approvals.session_grant_covers_write(
