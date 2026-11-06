@@ -51,7 +51,7 @@ Record the **exact SHAs or branch names** of identity, saas, storage, hosting, a
 
 The **Tests** job checks out `shellui/saas-service` with `continue-on-error: true` because that repository may be unreadable from a token with only public-repo scope; schema audit then omits SaaS unless the checkout succeeds.
 
-CI **MCP client conformance** still uses empty downstream URLs and the SaaS mock unless you change the workflow; `IDENTITY_SERVICE_REF` (and sibling refs for the **Tests** job schema audit) stay the way to pin identity in GitHub Actions. For **`POST .../mcp-call-logs`** parity, run identity at **#136** (or merge) locally while you exercise tools; **#135** head above is authoritative for the delegated-authority **200** JSON shape (`active`, **`services_allowed`**, **`allow_destructive`**, fixed key set).
+CI **MCP client conformance** still uses empty downstream URLs and the SaaS mock unless you change the workflow; `IDENTITY_SERVICE_REF` (and sibling refs for the **Tests** job schema audit) stay the way to pin identity in GitHub Actions. **`POST .../mcp-call-logs`** must match identity **`develop`** (canonical **`outcome`**, required **`grant_version`**, no forwarded labels/arguments); **#135** head above is authoritative for the delegated-authority **200** JSON shape (`active`, **`services_allowed`**, **`allow_destructive`**, fixed key set).
 
 **Live HTTP proof (human OAuth, narrowed approval, masked activity)** is out of scope for default CI and was not run in this agent environment: terms/sign-up stay on the human SaaS shell; do not add one-off DB inserts or auto-approvals beyond sanctioned dev seeds.
 

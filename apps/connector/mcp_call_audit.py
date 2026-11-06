@@ -104,7 +104,7 @@ def _path_template_for_audit(meta: dict[str, Any]) -> str:
 
 _OP_TITLE_BROKER_RE = re.compile(r'\b(broker|queue|ask)\b', re.I)
 
-# identity-service PR #136 ``parse_resource_label``: charset only (no ``{`` ``}`` from OpenAPI templates).
+# Local audit labels only; Identity ``develop`` derives its own ``resource_label`` for ingest.
 _RESOURCE_LABEL_IDENTITY_CHARS = re.compile(r'[^\w\- ./:~+@%]', re.UNICODE)
 
 
@@ -154,7 +154,7 @@ def resource_label_safe(*, method: str, path: str, tool: dict[str, Any] | None, 
         # No registered route template: stable gateway export id only (no raw path / query).
         en = str(export_name or '').strip() or (str(tool.get('name') or '').strip() if isinstance(tool, dict) else '')
         tmpl = f'gateway:{en}' if en else 'gateway:tool'
-    # No whitespace: Identity PR #136 ``resource_label`` allows ``[\w\- ./:~+@%]`` only.
+    # No whitespace: keep local labels charset-safe (forwarded path only; no client ``resource_label``).
     avail = max(1, 120 - len(m) - 1)
     tmpl = tmpl.strip()[:avail]
     label = f'{m}-{tmpl}'.strip('-')

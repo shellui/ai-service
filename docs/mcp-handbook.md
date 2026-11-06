@@ -103,7 +103,7 @@ Binding (`service`, `action` = export name, `arguments_hash`, company, agent) is
 
 ## Call log outcomes (activity)
 
-Internal audit rows use **`outcome`** (`allowed`, `failed`, `denied`, `pending_approval`, `session_used`). **`forward_call_log`** maps to Identity **PR #136** **`operation_result`**: `success`, `error`, `denied`, `timeout`, `cancelled`, `unavailable` (**`pending_approval`** → **`unavailable`** on forward). The POST body is allowlisted; see [mcp.md](./mcp.md) call logs section.
+Internal audit rows use **`outcome`** (`allowed`, `failed`, `denied`, `pending_approval`, `session_used`). **`forward_call_log`** maps to Identity **`develop`** canonical ingest (**`waiting_approval`** instead of **`pending_approval`**). The POST body matches **`McpInternalCallLogView`** (required **`grant_version`**, optional delegated binding, no client **`operation_title`** / **`resource_label`**); see [mcp.md](./mcp.md) call logs section.
 
 ## Revocation cache
 

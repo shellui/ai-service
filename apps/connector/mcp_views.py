@@ -35,6 +35,7 @@ from apps.connector.mcp_approval_gate import (
 from apps.connector.mcp_call_audit import build_call_audit_log, legacy_result_token
 from apps.connector.mcp_call_log import apply_duration_ms, client_ip_from_request, mcp_call_result
 from apps.connector.mcp_identity import agent_is_revoked, forward_call_log, identity_revocation_unavailable
+from apps.connector.mcp_setup_context import parse_global_company_id, parse_int_version_claim
 from apps.connector.mcp_urls import (
     PLAIN_MCP_MESSAGE,
     company_audience_matches,
@@ -59,10 +60,25 @@ _mcp_http_request: contextvars.ContextVar[HttpRequest | None] = contextvars.Cont
 _mcp_agent_claims: contextvars.ContextVar[dict | None] = contextvars.ContextVar('mcp_agent_claims', default=None)
 
 
+def _enrich_call_log_identity_authority(entry: dict, claims: dict | None) -> None:
+    """Attach ``grant_version`` and optional global binding from JWT for Identity ``mcp-call-logs``."""
+    if not isinstance(claims, dict) or not claims:
+        return
+    gv = parse_int_version_claim(claims.get('grant_version'))
+    if gv is not None:
+        entry['grant_version'] = gv
+    gcid = parse_global_company_id(claims.get('global_company_id'))
+    cbv = parse_int_version_claim(claims.get('company_binding_version'))
+    if gcid is not None and cbv is not None:
+        entry['global_company_id'] = gcid
+        entry['company_binding_version'] = cbv
+
+
 def _record_mcp_call(entry: dict) -> None:
     apply_duration_ms(entry)
     request = _mcp_http_request.get()
     claims = _mcp_agent_claims.get() or {}
+    _enrich_call_log_identity_authority(entry, claims if isinstance(claims, dict) else None)
     entry['client_ip'] = client_ip_from_request(request)
     status_code = int(entry.get('status') or 0)
     is_error = entry.pop('is_error', None)

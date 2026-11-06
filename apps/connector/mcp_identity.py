@@ -22,9 +22,11 @@ from shellui_django.mcp.internal import (
     verify_mcp_revocation_list_response,
 )
 
-from apps.connector.mcp_call_audit import OUTCOMES, safe_route_path_for_audit
+from apps.connector.mcp_audit_codes import sanitize_error_code
+from apps.connector.mcp_call_audit import OUTCOMES, legacy_result_token, safe_route_path_for_audit
 from apps.connector.mcp_company_id import strict_numeric_company_id
 from apps.connector.mcp_revocation import revocation_fingerprint_material
+from apps.connector.mcp_setup_context import parse_global_company_id, parse_int_version_claim
 
 logger = logging.getLogger(__name__)
 
@@ -108,8 +110,9 @@ def _delegated_authority_success_body_ok(
     global_company_id: str,
     grant_version: int,
     company_binding_version: int,
+    agent_claims: dict[str, Any] | None,
 ) -> bool:
-    """Require Identity **200** JSON to match ``_delegated_authority_fixed_payload`` (PR #135 head ``d7fe351``+)."""
+    """Require Identity **200** JSON to match ``_delegated_authority_fixed_payload`` (merged ``develop``)."""
     if set(data.keys()) != _DELEGATED_AUTHORITY_RESPONSE_KEYS:
         return False
     if data.get('authorized') is not True:
@@ -151,7 +154,7 @@ def _delegated_authority_success_body_ok(
     if not isinstance(ga_raw, str) or not ga_raw.strip():
         return False
     try:
-        uuid.UUID(ga_raw.strip())
+        resp_ga = uuid.UUID(ga_raw.strip())
     except (ValueError, TypeError, AttributeError):
         return False
     if not isinstance(data.get('access_mode'), str) or not str(data.get('access_mode') or '').strip():
@@ -166,6 +169,29 @@ def _delegated_authority_success_body_ok(
     ra = data.get('revoked_at')
     if ra is not None and not isinstance(ra, int):
         return False
+    if isinstance(agent_claims, dict) and agent_claims:
+        raw_ga = agent_claims.get('global_agent_id')
+        if raw_ga not in (None, ''):
+            try:
+                claim_ga = uuid.UUID(str(raw_ga).strip())
+            except (ValueError, TypeError, AttributeError):
+                return False
+            if claim_ga != resp_ga:
+                return False
+        jwt_access = str(agent_claims.get('mcp_access') or '').strip().lower()
+        jwt_read = str(agent_claims.get('mcp_read') or '').strip().lower()
+        if jwt_access and str(data.get('access_mode') or '').strip().lower() != jwt_access:
+            return False
+        if jwt_read and str(data.get('read_level') or '').strip().lower() != jwt_read:
+            return False
+        try:
+            from shellui_django.mcp.gateway import scope_service_ids
+        except ImportError:
+            scope_service_ids = None  # type: ignore[misc, assignment]
+        if scope_service_ids is not None:
+            claim_svcs = sorted(str(x) for x in scope_service_ids(agent_claims))
+            if claim_svcs != list(svcs):
+                return False
     return True
 
 
@@ -176,6 +202,7 @@ def verify_live_delegated_agent_authority(
     global_company_id: str,
     grant_version: int,
     company_binding_version: int,
+    agent_claims: dict[str, Any] | None = None,
 ) -> bool:
     """
     Live delegated binding check against Identity (not revocation-cache alone).
@@ -185,6 +212,8 @@ def verify_live_delegated_agent_authority(
     ``allow_destructive`` are **false**, binding fields match the request, ``services_allowed`` is a
     sorted list of strings, and there are **no** extra keys. Mismatch can still be **HTTP 200** with
     ``authorized: false``; the gateway treats that as deny. Transport errors and non-200 → deny.
+    When ``agent_claims`` is set, ``global_agent_id`` (if present), ``mcp_access`` / ``mcp_read``, and
+    JWT ``scope`` services must match the Identity row (``access_mode``, ``read_level``, ``services_allowed``).
     """
     origin = _identity_origin()
     if not origin:
@@ -235,6 +264,7 @@ def verify_live_delegated_agent_authority(
         global_company_id=global_company_id,
         grant_version=grant_version,
         company_binding_version=company_binding_version,
+        agent_claims=agent_claims,
     ):
         logger.info(
             'MCP delegated authority response rejected: binding echo mismatch or invalid shape agent_id=%s company_id=%s',
@@ -456,30 +486,38 @@ def personal_agent_bearer_valid(claims: dict) -> bool:
 
 
 _ACCESS_KINDS = frozenset({'read', 'write', 'destructive'})
-# Identity PR #136 ``call_log_trusted.ALLOWED_CALL_RESULTS`` (terminal; no pending_grant).
-_IDENTITY_OPERATION_RESULTS = frozenset(
-    {'success', 'error', 'denied', 'timeout', 'cancelled', 'unavailable'}
-)
 
 
-def operation_result_for_identity_trusted_log(*, outcome: str, log_result: str | None) -> str:
-    """Map gateway ``outcome`` to Identity ``operation_result`` (strict enum)."""
+def _identity_ingest_outcome(*, outcome: str, log_result: str | None) -> str:
     o = str(outcome or '').strip().lower()
-    if not o and log_result:
-        lr = str(log_result).strip().lower()
-        if lr == 'pending_approval' or lr == 'pending':
-            return 'unavailable'
-        if lr in {'success', 'error', 'denied'}:
-            return lr
-    if o in {'allowed', 'session_used'}:
-        return 'success'
+    if o == 'pending':
+        o = 'pending_approval'
+    if o == 'session_used':
+        return 'session_used'
+    if o == 'allowed':
+        return 'allowed'
+    if o == 'failed':
+        return 'failed'
     if o == 'denied':
         return 'denied'
-    if o == 'failed':
-        return 'error'
     if o == 'pending_approval':
-        return 'unavailable'
-    return 'error'
+        return 'waiting_approval'
+    lr = str(log_result or '').strip().lower() if log_result else ''
+    if lr == 'pending':
+        lr = 'pending_approval'
+    eff = o if o in OUTCOMES else lr
+    if eff not in OUTCOMES:
+        eff = 'failed'
+    token = legacy_result_token(outcome=eff)
+    if token == 'success':
+        return 'allowed'
+    if token == 'error':
+        return 'failed'
+    if token == 'denied':
+        return 'denied'
+    if token == 'pending_approval':
+        return 'waiting_approval'
+    return 'failed'
 
 
 def forward_call_log(entry: dict) -> None:
@@ -492,25 +530,44 @@ def forward_call_log(entry: dict) -> None:
     except InternalAssertionError:
         logger.warning('MCP call log failed: service assertion signing is not configured')
         return
+    raw_aid = entry.get('agent_id')
+    try:
+        agent_uuid = uuid.UUID(str(raw_aid).strip())
+    except (TypeError, ValueError, AttributeError):
+        logger.warning('MCP call log skipped: invalid agent_id')
+        return
+    cid = strict_numeric_company_id(entry.get('company_id'))
+    if cid is None:
+        logger.warning('MCP call log skipped: invalid company_id')
+        return
+    gv_log = parse_int_version_claim(entry.get('grant_version'))
+    if gv_log is None:
+        logger.warning('MCP call log skipped: grant_version missing or invalid')
+        return
+    gcid_log = parse_global_company_id(entry.get('global_company_id'))
+    cbv_log = parse_int_version_claim(entry.get('company_binding_version'))
+    delegated = gcid_log is not None and cbv_log is not None
+    if gcid_log is not None and cbv_log is None:
+        logger.warning('MCP call log skipped: partial delegated global binding')
+        return
+    if gcid_log is None and cbv_log is not None:
+        logger.warning('MCP call log skipped: partial delegated global binding')
+        return
     outcome_raw = str(entry.get('outcome') or '').strip().lower()
-    if outcome_raw == 'pending':
-        outcome = 'pending_approval'
-    elif outcome_raw == 'pending_approval':
-        outcome = 'pending_approval'
-    elif outcome_raw in OUTCOMES:
-        outcome = outcome_raw
-    else:
-        outcome = ''
+    log_res = str(entry.get('log_result') or '').strip() if entry.get('log_result') is not None else None
+    ingest_outcome = _identity_ingest_outcome(outcome=outcome_raw, log_result=log_res)
     access_raw = str(entry.get('access_kind') or entry.get('access_level') or '').strip().lower()
-    access_kind = access_raw if access_raw in _ACCESS_KINDS else 'write'
-    op_title = str(entry.get('operation_title') or '').strip()[:200] or 'Operation'
-    resource_label = str(entry.get('resource_label') or '').strip()[:120] or 'gateway:tool'
+    access_kind = access_raw if access_raw in _ACCESS_KINDS else 'unknown'
     tool_name = str(entry.get('tool_export_id') or entry.get('tool') or '')[:255] or 'tool'
     safe_path = safe_route_path_for_audit(entry.get('path'))[:500]
-    log_res = entry.get('log_result')
-    op_result = operation_result_for_identity_trusted_log(outcome=outcome, log_result=str(log_res) if log_res else None)
-    if op_result not in _IDENTITY_OPERATION_RESULTS:
-        op_result = 'error'
+    internal_for_legacy = ingest_outcome
+    if internal_for_legacy == 'waiting_approval':
+        internal_for_legacy = 'pending_approval'
+    if internal_for_legacy not in OUTCOMES:
+        internal_for_legacy = 'failed'
+    legacy_res = str(entry.get('result') or '').strip().lower()[:32]
+    if not legacy_res:
+        legacy_res = legacy_result_token(outcome=internal_for_legacy)
     aid_raw = str(entry.get('approval_id') or entry.get('approval_request_id') or '').strip()
     approval_uuid: str | None = None
     if aid_raw:
@@ -520,26 +577,30 @@ def forward_call_log(entry: dict) -> None:
             approval_uuid = None
     duration = entry.get('duration_ms')
     dur_ms = int(duration) if isinstance(duration, (int, float)) and duration >= 0 else 0
-    client_ip = str(entry.get('client_ip') or '')[:45]
-    # Identity PR #136: ai-service posts allowlisted keys only; required audit block.
+    client_ip = str(entry.get('client_ip') or '').strip()[:45]
+    ec_raw = entry.get('error_code')
+    error_code_val = (sanitize_error_code(ec_raw) or '') if ec_raw is not None else ''
     body: dict[str, Any] = {
-        'agent_id': entry.get('agent_id'),
-        'company_id': entry.get('company_id'),
+        'agent_id': str(agent_uuid),
+        'company_id': int(cid),
+        'grant_version': int(gv_log),
         'service': str(entry.get('service') or 'ai')[:32],
         'tool': tool_name,
-        'method': str(entry.get('method') or '')[:16],
+        'method': str(entry.get('method') or '')[:10],
         'path': safe_path,
         'status': int(entry.get('status') or 0),
         'duration_ms': dur_ms,
         'client_ip': client_ip,
-        'arguments': {},
-        'operation_title': op_title,
+        'result': legacy_res,
+        'outcome': ingest_outcome,
         'access_kind': access_kind,
-        'operation_result': op_result,
-        'resource_label': resource_label,
+        'error_code': error_code_val,
     }
+    if delegated:
+        body['global_company_id'] = str(gcid_log)
+        body['company_binding_version'] = int(cbv_log)
     if approval_uuid:
-        body['approval_request_id'] = approval_uuid
+        body['approval_id'] = approval_uuid
     try:
         requests.post(
             url,

@@ -55,6 +55,7 @@ def delegation_authority_consistent_with_revocation(
         global_company_id=str(jwt_gcid),
         grant_version=int(jwt_gv),
         company_binding_version=int(jwt_cbv),
+        agent_claims=agent_claims,
     ):
         return False
     payload = _cached_payload()

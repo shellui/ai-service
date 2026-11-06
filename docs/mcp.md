@@ -97,20 +97,18 @@ Logic lives in `apps/connector/mcp_setup_context.py`:
 
 ## Call logs and activity (Identity)
 
-`POST /api/v1/mcp/internal/mcp-call-logs` from the gateway must match **identity-service PR #136** when that branch is deployed: for caller **`ai`**, the JSON body uses an **exact allowlist** of keys (**no** `outcome`, **`result`**, **`error_code`**, **`tool_export_id`**, or JWT display fields). Required audit fields include **`operation_title`**, **`access_kind`**, **`operation_result`**, **`resource_label`**, and **`arguments`** as **`{}`**. Optional **`approval_request_id`** is a UUID only when the id is valid (`apps/connector/mcp_identity.py` + `mcp_call_audit.py`).
+`POST /api/v1/mcp/internal/mcp-call-logs` matches **identity-service `develop`** (`McpInternalCallLogView`): **no** `operation_title`, **`resource_label`**, **`arguments`**, or **`approval_request_id`**. **`grant_version`** is **required** (JSON int from the agent JWT). For **delegated** agents (global binding), **`global_company_id`** and **`company_binding_version`** are **both** required and must match the row; for non-delegated agents they must be **absent**. Canonical **`outcome`** values on ingest are **`allowed`**, **`failed`**, **`denied`**, **`waiting_approval`**, **`session_used`**; the gateway maps internal **`pending_approval`** → **`waiting_approval`**. **`result`** is the short legacy token (`success`, `error`, `denied`, `pending_approval`) aligned with `legacy_result_token`. **`approval_id`** when present must be a UUID (**not** `approval_request_id`). **`error_code`** is required (allowlisted via `sanitize_error_code`, or empty string). Identity derives display **`operation_title`** and **`resource_label`** server-side from **`service`**, **`method`**, and **`path`**.
 
-### Gateway **`outcome`** vs Identity **`operation_result`**
+### Gateway **`outcome`** vs Identity ingest
 
-Internal rows still use **`OUTCOMES`** in `mcp_call_audit.py`. **`forward_call_log`** maps to Identity’s terminal **`operation_result`** (`success`, `error`, `denied`, `timeout`, `cancelled`, `unavailable`). **`pending_approval`** maps to **`unavailable`** on forward because the trusted enum has no pending value.
+Internal rows still use **`OUTCOMES`** in `mcp_call_audit.py`. **`forward_call_log`** maps those to Identity’s five ingest outcomes; see `_identity_ingest_outcome` in `apps/connector/mcp_identity.py`.
 
 ### Safe metadata only
 
-- **`operation_title`:** **only** from registry **`_meta.operation_summary`** when present; otherwise a neutral `Operation …` title (**not** from tool `title` or downstream bodies).
-- **`path`** / **`resource_label`:** **only** from registry **`_meta.path`** templates (query stripped). If no template is registered, **`path`** is empty and **`resource_label`** uses a stable `gateway:<export_name>` id (no raw request paths or query strings). Characters outside Identity’s **`resource_label`** charset (e.g. `{` `}` in route templates) are replaced for forward.
 - **`path` on forward:** `forward_call_log` strips query/fragment before POST.
 - **Labels:** **`company_name`** and **`agent_name`** are **not** forwarded (JWT display strings are not server-enforced registry data).
-- **`access_kind`:** **`read`**, **`write`**, or **`destructive`** from tool traits and HTTP method (`access_kind_from_tool`), not from guesswork on names.
-- **No** raw tool arguments except the fixed empty **`arguments`** object required by Identity.
+- **`access_kind`:** **`read`**, **`write`**, **`destructive`**, or **`unknown`** from tool traits and HTTP method (`access_kind_from_tool`).
+- **No** raw tool arguments: sending `arguments` or `arguments_redacted` to Identity returns **400**.
 
 A downstream HTTP **2xx** alone does **not** imply **`allowed`** if the gateway classified the operation as an error (`is_error`, audit `log_result`, etc.). See **`outcome_from_audit`**.
 
