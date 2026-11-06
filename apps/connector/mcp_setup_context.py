@@ -34,13 +34,6 @@ def _bool_claim(raw: object) -> bool:
     return False
 
 
-def _is_personal_agent_claims(agent_claims: dict | None) -> bool:
-    """Personal regional agent: verified token carries ``personal_token_id`` (not inferred from HTTP)."""
-    if not isinstance(agent_claims, dict):
-        return False
-    return bool(str(agent_claims.get('personal_token_id') or '').strip())
-
-
 def parse_int_version_claim(raw: object) -> int | None:
     """Strict nonnegative int from JWT only (commons #14: ``None`` vs ``0``; no string claims)."""
     if raw is None:
@@ -107,6 +100,49 @@ def parse_global_company_id(raw: object) -> str | None:
         return None
 
 
+def global_binding_triplet_from_claims(agent_claims: dict | None) -> tuple[int | None, int | None, str | None]:
+    """Parse grant_version, company_binding_version, global_company_id (each strict or None)."""
+    if not isinstance(agent_claims, dict):
+        return None, None, None
+    return (
+        parse_int_version_claim(agent_claims.get('grant_version')),
+        parse_int_version_claim(agent_claims.get('company_binding_version')),
+        parse_global_company_id(agent_claims.get('global_company_id')),
+    )
+
+
+def is_global_delegated_claims(agent_claims: dict | None) -> bool:
+    """
+    Global (company-scoped) regional agent: **authoritative** complete triple from identity #135.
+
+    Identity may still issue ``personal_token_id`` on delegated tokens; do **not** infer mode from
+    that claim. Delegation is detected only by canonical ``global_company_id`` plus both nonnegative
+    int versions (``0`` is valid).
+    """
+    gv, cbv, gcid = global_binding_triplet_from_claims(agent_claims)
+    return gv is not None and cbv is not None and gcid is not None
+
+
+def global_binding_conflict_claims(agent_claims: dict | None) -> bool:
+    """
+    True if some but not all of the global triple are present or parseable (reject; no legacy guess).
+    """
+    if not isinstance(agent_claims, dict):
+        return False
+    raw_gcid = agent_claims.get('global_company_id')
+    gv, cbv, gcid = global_binding_triplet_from_claims(agent_claims)
+    has_raw_gcid = not (
+        raw_gcid is None or (isinstance(raw_gcid, str) and raw_gcid.strip() == '')
+    )
+    if gv is not None and cbv is not None and gcid is not None:
+        return False
+    if gv is None and cbv is None and gcid is None and not has_raw_gcid:
+        return False
+    if has_raw_gcid and gcid is None:
+        return True
+    return True
+
+
 def session_allow_ttl_bounds() -> tuple[int, int]:
     """Bounds for ``mcp_session_ttl_seconds`` during setup (must match identity-service)."""
     lo = int(getattr(settings, 'MCP_APPROVAL_SETUP_SESSION_TTL_MIN_SECONDS', 600) or 600)
@@ -143,18 +179,8 @@ class ApprovalAssertionContext:
     grant_version: int | None = None
     company_binding_version: int | None = None
     global_company_id: str | None = None
-    is_personal_agent: bool = False
+    is_global_delegated: bool = False
     blocked_assertion: bool = False
-
-
-def _delegated_binding_incomplete(agent_claims: dict | None) -> bool:
-    """Delegated (non-personal) tokens require integer versions + global_company_id UUID."""
-    if not isinstance(agent_claims, dict) or _is_personal_agent_claims(agent_claims):
-        return False
-    gv = parse_int_version_claim(agent_claims.get('grant_version'))
-    cbv = parse_int_version_claim(agent_claims.get('company_binding_version'))
-    gcid = parse_global_company_id(agent_claims.get('global_company_id'))
-    return gv is None or cbv is None or gcid is None
 
 
 def _fallback_context(
@@ -165,22 +191,17 @@ def _fallback_context(
     gv: int | None = None
     cbv: int | None = None
     gcid: str | None = None
-    is_personal = _is_personal_agent_claims(agent_claims)
     if isinstance(agent_claims, dict):
-        gv = parse_int_version_claim(agent_claims.get('grant_version'))
-        cbv = parse_int_version_claim(agent_claims.get('company_binding_version'))
-        gcid = parse_global_company_id(agent_claims.get('global_company_id'))
-    incomplete = _delegated_binding_incomplete(agent_claims)
-    blocked = bool(
-        (setup_claim_rejected and not is_personal)
-        or (incomplete and not is_personal),
-    )
+        gv, cbv, gcid = global_binding_triplet_from_claims(agent_claims)
+    is_gd = is_global_delegated_claims(agent_claims)
+    conflict = global_binding_conflict_claims(agent_claims)
+    blocked = bool(setup_claim_rejected or conflict)
     return ApprovalAssertionContext(
         lifetime_seconds=_DEFAULT_APPROVAL_ASSERTION_LIFETIME,
         grant_version=gv,
         company_binding_version=cbv,
         global_company_id=gcid,
-        is_personal_agent=is_personal,
+        is_global_delegated=is_gd,
         blocked_assertion=blocked,
     )
 
@@ -195,7 +216,9 @@ def approval_assertion_context_from_agent_claims(agent_claims: dict | None) -> A
     if not isinstance(agent_claims, dict):
         return _fallback_context()
 
-    is_personal = _is_personal_agent_claims(agent_claims)
+    is_gd = is_global_delegated_claims(agent_claims)
+    if global_binding_conflict_claims(agent_claims):
+        return _fallback_context(agent_claims)
 
     if agent_claims.get('setup_flow') is not True:
         return _fallback_context(agent_claims)
@@ -328,6 +351,6 @@ def approval_assertion_context_from_agent_claims(agent_claims: dict | None) -> A
         grant_version=gv,
         company_binding_version=cbv,
         global_company_id=gcid,
-        is_personal_agent=is_personal,
+        is_global_delegated=is_gd,
         blocked_assertion=False,
     )

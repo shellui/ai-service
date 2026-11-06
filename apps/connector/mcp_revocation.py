@@ -9,7 +9,12 @@ from typing import Any
 from django.core.cache import cache
 
 from apps.connector.mcp_company_id import strict_numeric_company_id
-from apps.connector.mcp_setup_context import parse_global_company_id, parse_int_version_claim
+from apps.connector.mcp_setup_context import (
+    global_binding_triplet_from_claims,
+    is_global_delegated_claims,
+    parse_global_company_id,
+    parse_int_version_claim,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -33,15 +38,13 @@ def delegation_authority_consistent_with_revocation(
     agent_claims: dict[str, Any],
 ) -> bool:
     """
-    For **delegated** regional JWTs (no ``personal_token_id``), ensure global triple matches the
+    For **global-delegated** regional JWTs (complete ``global_company_id`` + version triple), ensure global triple matches the
     trusted Identity revocation ``agents[]`` row when present (fail closed on mismatch or
     ``mcp_authority_snapshot_rejected``).
     """
-    if str(agent_claims.get('personal_token_id') or '').strip():
+    if not is_global_delegated_claims(agent_claims):
         return True
-    jwt_gv = parse_int_version_claim(agent_claims.get('grant_version'))
-    jwt_gcid = parse_global_company_id(agent_claims.get('global_company_id'))
-    jwt_cbv = parse_int_version_claim(agent_claims.get('company_binding_version'))
+    jwt_gv, jwt_cbv, jwt_gcid = global_binding_triplet_from_claims(agent_claims)
     if jwt_gv is None or jwt_gcid is None or jwt_cbv is None:
         return False
     payload = _cached_payload()

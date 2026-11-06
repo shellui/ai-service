@@ -110,7 +110,7 @@ def _build_approval_assertion_jwt(*, binding: dict[str, Any], ctx: ApprovalAsser
     gv = ctx.grant_version
     gcid = ctx.global_company_id
     cbv = ctx.company_binding_version
-    if ctx.is_personal_agent:
+    if not ctx.is_global_delegated:
         token = build_mcp_approval_assertion(
             company_id=int(binding['company_id']),
             agent_id=str(binding['agent_id']),
@@ -225,7 +225,7 @@ def create_approval_request(payload: dict[str, Any], *, is_destructive: bool = F
         body['path'] = path
     ctx = _assertion_context(payload)
     if ctx.blocked_assertion:
-        logger.warning('MCP approval create skipped: invalid setup claims for delegated token')
+        logger.warning('MCP approval create skipped: blocked assertion (setup or global binding)')
         return None
     try:
         headers = _approval_headers(binding, ctx=ctx)
@@ -449,8 +449,8 @@ def check_session_grant(
     ctx = _assertion_context(payload)
     if ctx.blocked_assertion:
         return False
-    personal = ctx.is_personal_agent
-    if not personal:
+    global_delegated = ctx.is_global_delegated
+    if global_delegated:
         if expected_gv is None or expected_cbv is None or expected_gcid is None:
             return False
         if not delegation_authority_consistent_with_revocation(
@@ -530,9 +530,8 @@ def check_session_grant(
         return False
 
     version_mismatch = resp_gv != expected_gv or resp_cbv != expected_cbv
-    if not personal:
-        # Delegated: Identity session-check must echo the token's canonical global id and both
-        # nonnegative int versions exactly (no drift / no optional fields). Compare to regional JWT only.
+    if global_delegated:
+        # Global delegated: echo canonical global id and both nonnegative ints exactly.
         if resp_gcid is None or expected_gcid is None or resp_gcid != expected_gcid:
             return False
         if resp_gv is None or resp_cbv is None:

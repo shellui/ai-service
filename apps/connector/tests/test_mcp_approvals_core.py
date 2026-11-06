@@ -223,16 +223,20 @@ class McpApprovalsCoreTests(TestCase):
         self.assertFalse(mcp_approvals.check_session_grant(p, connection_id='c-no-gcid', is_destructive=False))
 
     @patch('apps.connector.mcp_approvals.requests.post')
-    def test_missing_versions_in_token_rejected(self, post):
+    def test_missing_triple_treated_as_personal_session_ok(self, post):
+        """No global triple on the token → personal/legacy path; Identity may allow session allow."""
         fut = (timezone.now() + timedelta(seconds=30)).isoformat()
-        post.return_value = _session_ok_response(expires_at=fut)
+        post.return_value = MagicMock(status_code=200, json=lambda: {'session_allowed': True, 'expires_at': fut})
         now = int(time.time())
         p = {
             **_BASE_PAYLOAD,
             '_agent_claims': {'iat': now, 'exp': now + 3600},
         }
-        self.assertFalse(mcp_approvals.check_session_grant(p, connection_id='c-mv', is_destructive=False))
-        post.assert_not_called()
+        self.assertTrue(mcp_approvals.check_session_grant(p, connection_id='c-mv', is_destructive=False))
+        post.assert_called_once()
+        jb = post.call_args.kwargs.get('json') or {}
+        self.assertNotIn('grant_version', jb)
+        self.assertNotIn('global_company_id', jb)
 
     @patch('apps.connector.mcp_approvals.requests.post')
     def test_integer_zero_versions_match_string_response(self, post):
@@ -284,7 +288,8 @@ class McpApprovalsCoreTests(TestCase):
         self.assertNotIn('company_binding_version', jb)
 
     @patch('apps.connector.mcp_approvals.requests.post')
-    def test_personal_one_version_without_other_rejected(self, post):
+    def test_partial_global_triple_rejected(self, post):
+        """Exactly one of gv/cbv/gcid blocks assertions and session-check (no legacy inference)."""
         fut = (timezone.now() + timedelta(seconds=30)).isoformat()
         post.return_value = _session_ok_response(expires_at=fut)
         now = int(time.time())
@@ -300,6 +305,23 @@ class McpApprovalsCoreTests(TestCase):
         }
         self.assertFalse(mcp_approvals.check_session_grant(p, connection_id='c1v', is_destructive=False))
         post.assert_not_called()
+
+    @patch('apps.connector.mcp_approvals.requests.post')
+    def test_global_triplet_with_personal_token_id_is_delegated(self, post):
+        """Identity #135: delegated tokens may still carry personal_token_id."""
+        fut = (timezone.now() + timedelta(seconds=30)).isoformat()
+        post.return_value = _session_ok_response(expires_at=fut)
+        now = int(time.time())
+        p = {
+            **_BASE_PAYLOAD,
+            '_agent_claims': {
+                **_claims_base(now),
+                'personal_token_id': 'pt-delegated',
+                'jti': 'jt-1',
+            },
+        }
+        self.assertTrue(mcp_approvals.check_session_grant(p, connection_id='c-deleg-pt', is_destructive=False))
+        post.assert_called_once()
 
     @patch('apps.connector.mcp_approvals.requests.post')
     def test_assertion_jwt_includes_integer_zero_versions(self, post):
