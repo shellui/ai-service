@@ -21,6 +21,7 @@ from shellui_django.mcp.internal import (
     InternalAssertionError,
 )
 
+from apps.connector.mcp_company_id import strict_numeric_company_id
 from apps.connector.mcp_identity import (
     _identity_audience,
     _identity_origin,
@@ -52,6 +53,7 @@ class _GrantRecord(TypedDict):
     exp_ms: int
     revoke_fp: str
     jti: str
+    grant_ver: str
 
 
 def _agent_claims_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -162,6 +164,8 @@ def _build_approval_assertion_jwt(*, binding: dict[str, Any], ctx: ApprovalAsser
     if ctx.setup_flow and ctx.mcp_session_ttl_seconds is not None:
         claims['setup_flow'] = True
         claims['mcp_session_ttl_seconds'] = int(ctx.mcp_session_ttl_seconds)
+        if ctx.setup_expires_at is not None:
+            claims['setup_expires_at'] = ctx.setup_expires_at.isoformat()
     try:
         token = jwt.encode(
             claims,
@@ -196,9 +200,8 @@ def approval_binding_from_payload(payload: dict[str, Any]) -> dict[str, Any] | N
     arguments_hash = str(payload.get('arguments_hash') or '').strip()
     if not agent_id or company_id is None or not service or not action or not arguments_hash:
         return None
-    try:
-        cid = int(company_id)
-    except (TypeError, ValueError):
+    cid = strict_numeric_company_id(company_id)
+    if cid is None:
         return None
     return {
         'agent_id': agent_id,
@@ -377,7 +380,14 @@ def _jti_from_agent_claims(agent_claims: dict[str, Any]) -> str:
     return str(agent_claims.get('jti') or '').strip()
 
 
-def _prune_grant_map_records(m: dict[str, Any], *, now_ms: int, fp: str, jti: str) -> dict[str, _GrantRecord]:
+def _prune_grant_map_records(
+    m: dict[str, Any],
+    *,
+    now_ms: int,
+    fp: str,
+    jti: str,
+    grant_ver: str,
+) -> dict[str, _GrantRecord]:
     out: dict[str, _GrantRecord] = {}
     for k, v in m.items():
         if not isinstance(v, dict):
@@ -392,12 +402,37 @@ def _prune_grant_map_records(m: dict[str, Any], *, now_ms: int, fp: str, jti: st
             continue
         if jti and str(v.get('jti') or '') != jti:
             continue
+        if str(v.get('grant_ver', '')) != grant_ver:
+            continue
         out[str(k)] = {
             'exp_ms': exp_ms,
             'revoke_fp': fp,
             'jti': str(v.get('jti') or ''),
+            'grant_ver': grant_ver,
         }
     return out
+
+
+def _session_check_grant_version(data: dict[str, Any]) -> str:
+    """Identity #135: grant/permission version on session-check (field name TBD)."""
+    for key in ('grant_validity_version', 'permission_version', 'session_grant_version', 'grant_version'):
+        if key in data and data[key] is not None:
+            return str(data[key])
+    return ''
+
+
+def _grant_version_from_agent_claims(agent_claims: dict[str, Any]) -> str:
+    """When identity puts grant validity on the regional token, use it to invalidate stale cache."""
+    for key in ('session_grant_version', 'grant_validity_version', 'permission_version'):
+        if key in agent_claims and agent_claims[key] is not None:
+            return str(agent_claims[key])
+    return ''
+
+
+def _setup_expires_at_cap_ms(ctx: ApprovalAssertionContext) -> int | None:
+    if not ctx.setup_flow or ctx.setup_expires_at is None:
+        return None
+    return int(ctx.setup_expires_at.timestamp() * 1000)
 
 
 def invalidate_local_session_grants_for_agent(*, agent_id: str, company_id: int) -> None:
@@ -415,6 +450,8 @@ def _store_session_grant(
     action: str,
     arguments_hash: str,
     expires_at_iso: str | None,
+    grant_ver: str,
+    setup_cap_ms: int | None,
 ) -> None:
     map_key = _grant_map_key(connection_id=connection_id, agent_id=agent_id, company_id=company_id)
     entry_k = _grant_entry_key(service=service, action=action, arguments_hash=arguments_hash)
@@ -431,13 +468,20 @@ def _store_session_grant(
         grant_exp_ms = _now_ms() + SESSION_GRANT_SECONDS * 1000
     if jwt_exp_ms is not None:
         grant_exp_ms = min(grant_exp_ms, jwt_exp_ms)
+    if setup_cap_ms is not None:
+        grant_exp_ms = min(grant_exp_ms, int(setup_cap_ms))
     now_ms = _now_ms()
     if grant_exp_ms <= now_ms:
         return
-    record: _GrantRecord = {'exp_ms': grant_exp_ms, 'revoke_fp': fp, 'jti': jti}
+    record: _GrantRecord = {
+        'exp_ms': grant_exp_ms,
+        'revoke_fp': fp,
+        'jti': jti,
+        'grant_ver': grant_ver,
+    }
     raw = cache.get(map_key)
     m = (
-        _prune_grant_map_records(raw, now_ms=now_ms, fp=fp, jti=jti)
+        _prune_grant_map_records(raw, now_ms=now_ms, fp=fp, jti=jti, grant_ver=grant_ver)
         if isinstance(raw, dict)
         else {}
     )
@@ -463,10 +507,10 @@ def check_session_grant(
     if is_destructive:
         return False
     agent_id = str(payload.get('agent_id') or '')
-    try:
-        company_id = int(payload.get('company_id'))
-    except (TypeError, ValueError):
+    cid = strict_numeric_company_id(payload.get('company_id'))
+    if cid is None:
         return False
+    company_id = cid
     service = str(payload.get('service') or '')
     action = str(payload.get('action') or '')
     arguments_hash = str(payload.get('arguments_hash') or '')
@@ -478,6 +522,7 @@ def check_session_grant(
     ag = _agent_claims_from_payload(payload)
     jti = _jti_from_agent_claims(ag)
     fp = _revoke_fingerprint()
+    expected_grant_ver = _grant_version_from_agent_claims(ag)
     map_key = _grant_map_key(connection_id=connection_id, agent_id=agent_id, company_id=company_id)
     entry_k = _grant_entry_key(service=service, action=action, arguments_hash=arguments_hash)
     now_ms = _now_ms()
@@ -491,15 +536,25 @@ def check_session_grant(
                 exp_ms = 0
             rec_fp = str(rec.get('revoke_fp') or '')
             rec_jti = str(rec.get('jti') or '')
+            rec_gv = str(rec.get('grant_ver') or '')
             if (
                 exp_ms > now_ms
                 and rec_fp == fp
                 and (not jti or rec_jti == jti)
+                and rec_gv == expected_grant_ver
                 and not agent_is_revoked(agent_id, company_id)
             ):
                 return True
-        pruned = _prune_grant_map_records(raw, now_ms=now_ms, fp=fp, jti=jti)
-        mismatch_had_entry = isinstance(rec, dict) and str(rec.get('revoke_fp') or '') != fp
+        pruned = _prune_grant_map_records(
+            raw,
+            now_ms=now_ms,
+            fp=fp,
+            jti=jti,
+            grant_ver=expected_grant_ver,
+        )
+        mismatch_had_entry = isinstance(rec, dict) and (
+            str(rec.get('revoke_fp') or '') != fp or str(rec.get('grant_ver') or '') != expected_grant_ver
+        )
         if pruned:
             longest_ms = max(r['exp_ms'] for r in pruned.values())
             longest_remaining = max(1, int((longest_ms - now_ms) / 1000) + 1)
@@ -516,6 +571,7 @@ def check_session_grant(
         return False
     url = f'{origin.rstrip("/")}{SESSION_CHECK_PATH}'
     ctx = _assertion_context(payload)
+    setup_cap_ms = _setup_expires_at_cap_ms(ctx)
     try:
         headers = _approval_headers(binding, ctx=ctx)
     except InternalAssertionError:
@@ -532,6 +588,7 @@ def check_session_grant(
     except ValueError:
         return False
     if isinstance(data, dict) and data.get('session_allowed'):
+        sess_grant_ver = _session_check_grant_version(data)
         expires_at = data.get('expires_at')
         exp_dt = _parse_iso_expires_at(expires_at)
         if exp_dt is not None:
@@ -544,6 +601,9 @@ def check_session_grant(
             return False
         wall = _seconds_until_jwt_exp(ag)
         if wall is not None and wall <= 0:
+            return False
+        require_abs = bool(getattr(settings, 'MCP_SESSION_GRANT_REQUIRES_ABSOLUTE_EXPIRES_AT', False))
+        if require_abs and ctx.setup_flow and exp_dt is None and setup_cap_ms is None:
             return False
         capped_iso: str | None = None
         if exp_dt is not None and wall is not None:
@@ -565,6 +625,8 @@ def check_session_grant(
             action=action,
             arguments_hash=arguments_hash,
             expires_at_iso=capped_iso,
+            grant_ver=sess_grant_ver,
+            setup_cap_ms=setup_cap_ms,
         )
         return True
     return False
@@ -597,10 +659,8 @@ def revoke_session_grant(payload: dict[str, Any], *, connection_id: str) -> bool
     except ValueError:
         return False
     agent_id = str(payload.get('agent_id') or '')
-    try:
-        company_id = int(payload.get('company_id'))
-    except (TypeError, ValueError):
-        company_id = 0
+    cid = strict_numeric_company_id(payload.get('company_id'))
+    company_id = int(cid) if cid is not None else 0
     if agent_id and company_id:
         invalidate_local_session_grants_for_agent(agent_id=agent_id, company_id=company_id)
     return isinstance(data, dict) and bool(data.get('revoked'))

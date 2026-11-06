@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+import uuid
 from unittest.mock import MagicMock, patch
 
 import jwt
@@ -62,6 +63,7 @@ class McpApprovalsCoreTests(TestCase):
             'action': 'x',
             'arguments_hash': 'h' * 64,
             '_agent_claims': {
+                'company_id': 10,
                 'setup_flow': True,
                 'mcp_session_ttl_seconds': 600,
                 'iat': now,
@@ -86,7 +88,11 @@ class McpApprovalsCoreTests(TestCase):
     def test_session_grant_cache_key_includes_company(self, post):
         post.return_value = MagicMock(
             status_code=200,
-            json=lambda: {'session_allowed': True, 'expires_at': '2099-01-01T00:00:00+00:00'},
+            json=lambda: {
+                'session_allowed': True,
+                'expires_at': '2099-01-01T00:00:00+00:00',
+                'grant_validity_version': 'v-test',
+            },
         )
         base = {
             'agent_id': 'a1',
@@ -106,7 +112,11 @@ class McpApprovalsCoreTests(TestCase):
     def test_session_grant_cache_respects_expires_at(self, post):
         post.return_value = MagicMock(
             status_code=200,
-            json=lambda: {'session_allowed': True, 'expires_at': '2000-01-01T00:00:01+00:00'},
+            json=lambda: {
+                'session_allowed': True,
+                'expires_at': '2000-01-01T00:00:01+00:00',
+                'grant_validity_version': 'v-test',
+            },
         )
         now = int(time.time())
         payload = {
@@ -122,7 +132,10 @@ class McpApprovalsCoreTests(TestCase):
     @patch('apps.connector.mcp_approvals.requests.post')
     def test_session_grant_cache_invalidated_on_revocation_fingerprint_change(self, post):
         fut = '2099-01-01T00:00:00+00:00'
-        post.return_value = MagicMock(status_code=200, json=lambda: {'session_allowed': True, 'expires_at': fut})
+        post.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {'session_allowed': True, 'expires_at': fut, 'grant_validity_version': 'v-test'},
+        )
         now = int(time.time())
         p = {
             **_BASE_PAYLOAD,
@@ -138,7 +151,11 @@ class McpApprovalsCoreTests(TestCase):
     def test_session_grant_cache_requires_matching_jti(self, post):
         post.return_value = MagicMock(
             status_code=200,
-            json=lambda: {'session_allowed': True, 'expires_at': '2099-01-01T00:00:00+00:00'},
+            json=lambda: {
+                'session_allowed': True,
+                'expires_at': '2099-01-01T00:00:00+00:00',
+                'grant_validity_version': 'v-test',
+            },
         )
         now = int(time.time())
         p1 = {**_BASE_PAYLOAD, '_agent_claims': {'iat': now, 'exp': now + 3600, 'jti': 'aa'}}
@@ -151,10 +168,17 @@ class McpApprovalsCoreTests(TestCase):
     def test_session_grant_cached_expiry_capped_by_access_token_wall_time(self, post):
         post.return_value = MagicMock(
             status_code=200,
-            json=lambda: {'session_allowed': True, 'expires_at': '2099-01-01T00:00:00+00:00'},
+            json=lambda: {
+                'session_allowed': True,
+                'expires_at': '2099-01-01T00:00:00+00:00',
+                'grant_validity_version': 'v-test',
+            },
         )
         now = int(time.time())
-        p = {**_BASE_PAYLOAD, '_agent_claims': {'iat': now, 'exp': now + 45, 'jti': 'wall-cap'}}
+        p = {
+            **_BASE_PAYLOAD,
+            '_agent_claims': {'iat': now, 'exp': now + 45, 'jti': 'wall-cap', 'grant_validity_version': 'v-test'},
+        }
         self.assertTrue(mcp_approvals.check_session_grant(p, connection_id='c2', is_destructive=False))
         post.assert_called_once()
         self.assertTrue(mcp_approvals.check_session_grant(p, connection_id='c2', is_destructive=False))
@@ -170,7 +194,11 @@ class McpApprovalsCoreTests(TestCase):
     def test_revoked_agent_cannot_use_positive_cache(self, post, revoked):
         post.return_value = MagicMock(
             status_code=200,
-            json=lambda: {'session_allowed': True, 'expires_at': '2099-01-01T00:00:00+00:00'},
+            json=lambda: {
+                'session_allowed': True,
+                'expires_at': '2099-01-01T00:00:00+00:00',
+                'grant_validity_version': 'v-test',
+            },
         )
         now = int(time.time())
         p = {**_BASE_PAYLOAD, '_agent_claims': {'iat': now, 'exp': now + 3600, 'jti': 'rvk'}}
@@ -178,3 +206,86 @@ class McpApprovalsCoreTests(TestCase):
         self.assertTrue(mcp_approvals.check_session_grant(p, connection_id='c3', is_destructive=False))
         revoked.return_value = True
         self.assertFalse(mcp_approvals.check_session_grant(p, connection_id='c3', is_destructive=False))
+
+    @patch('apps.connector.mcp_approvals.requests.post')
+    def test_invalid_company_id_uuid_rejected_before_identity(self, post):
+        now = int(time.time())
+        p = {
+            'agent_id': 'a1',
+            'company_id': str(uuid.uuid4()),
+            'service': 'storage',
+            'action': 'tool',
+            'arguments_hash': 'y' * 64,
+            '_agent_claims': {'iat': now, 'exp': now + 3600, 'jti': 'x'},
+        }
+        self.assertFalse(mcp_approvals.check_session_grant(p, connection_id='cx', is_destructive=False))
+        post.assert_not_called()
+
+    @patch('apps.connector.mcp_approvals.requests.post')
+    def test_session_grant_cache_invalidated_on_grant_version_change(self, post):
+        fut = '2099-01-01T00:00:00+00:00'
+
+        def _resp(version: str):
+            return MagicMock(
+                status_code=200,
+                json=lambda v=version: {
+                    'session_allowed': True,
+                    'expires_at': fut,
+                    'grant_validity_version': v,
+                },
+            )
+
+        post.side_effect = [_resp('v1'), _resp('v2')]
+        now = int(time.time())
+        p = {**_BASE_PAYLOAD, '_agent_claims': {'iat': now, 'exp': now + 3600, 'jti': 'gv'}}
+        self.assertTrue(mcp_approvals.check_session_grant(p, connection_id='c-gv', is_destructive=False))
+        self.assertTrue(mcp_approvals.check_session_grant(p, connection_id='c-gv', is_destructive=False))
+        self.assertEqual(post.call_count, 2)
+
+
+@override_settings(
+    AI_SERVICE_SIGNING_KEY=_SIGNING,
+    AI_SERVICE_ISSUER='https://ai.test',
+    IDENTITY_ISSUER='https://identity.test',
+    IDENTITY_SERVICE_URL='https://identity.test',
+    MCP_APPROVAL_ASSERTION_MAX_LIFETIME_SECONDS=900,
+    MCP_APPROVAL_SETUP_SESSION_TTL_MIN_SECONDS=600,
+    MCP_APPROVAL_SETUP_SESSION_TTL_MAX_SECONDS=900,
+    MCP_SESSION_GRANT_REQUIRES_ABSOLUTE_EXPIRES_AT=True,
+    CACHES={
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'mcp-approvals-core-tests-abs',
+        }
+    },
+)
+class McpSessionGrantAbsoluteExpiryTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        revoke = patch('apps.connector.mcp_approvals.agent_is_revoked', return_value=False)
+        revoke.start()
+        self.addCleanup(revoke.stop)
+        rf = patch('apps.connector.mcp_approvals.revocation_list_fingerprint', return_value='test-fp')
+        rf.start()
+        self.addCleanup(rf.stop)
+
+    @patch('apps.connector.mcp_approvals.requests.post')
+    def test_setup_flow_rejects_session_check_without_absolute_expires_at(self, post):
+        post.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {'session_allowed': True, 'grant_validity_version': 'v-abs'},
+        )
+        now = int(time.time())
+        payload = {
+            **_BASE_PAYLOAD,
+            '_agent_claims': {
+                'company_id': 10,
+                'setup_flow': True,
+                'mcp_session_ttl_seconds': 600,
+                'iat': now,
+                'exp': now + 900,
+                'jti': 'abs-1',
+            },
+        }
+        self.assertFalse(mcp_approvals.check_session_grant(payload, connection_id='c-abs', is_destructive=False))
+        post.assert_called_once()

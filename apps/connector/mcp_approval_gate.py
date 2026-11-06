@@ -33,6 +33,7 @@ from apps.connector import mcp_approval_copy as copy
 from apps.connector import mcp_approvals as approvals
 from apps.connector.mcp_company_label import resolve_company_label
 from apps.connector.mcp_identity import agent_is_revoked
+from apps.connector.mcp_company_id import strict_numeric_company_id
 from apps.connector.mcp_setup_context import approval_assertion_context_from_agent_claims
 
 logger = logging.getLogger(__name__)
@@ -233,7 +234,25 @@ def enforce_tool_call_approval(
     )
     connection_id = _connection_id(request)
     agent_id = str(agent_claims.get('agent_id') or '')
-    company_id = int(agent_claims.get('company_id') or 0)
+    cid = strict_numeric_company_id(agent_claims.get('company_id'))
+    if cid is None:
+        return GateOutcome(
+            proceed=False,
+            response=_approval_result(
+                req_id,
+                text='Invalid company scope.',
+                meta={'status': 'denied'},
+            ),
+            log=_log_entry(
+                agent_claims=agent_claims,
+                service=service_id,
+                tool=export_name,
+                method=method,
+                path=path,
+                log_result='denied',
+            ),
+        )
+    company_id = cid
 
     if not decision.needs_approval and decision.allowed:
         return GateOutcome(proceed=True)

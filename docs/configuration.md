@@ -40,6 +40,8 @@ Identity verifies delegation requests with `AI_SERVICE_JWKS` / `AI_SERVICE_JWKS_
 | `MCP_APPROVAL_SETUP_SESSION_TTL_MIN_SECONDS` | `600` | Lower bound for signed `mcp_session_ttl_seconds` during setup (must match identity). |
 | `MCP_APPROVAL_SETUP_SESSION_TTL_MAX_SECONDS` | `900` | Upper bound for the same. |
 | `MCP_SESSION_GRANT_INDEX_MAX_SECONDS` | `3600` | Max Django cache entry TTL for per-connection session-grant bookkeeping (used to invalidate all grants for an agent/company on revoke). |
+| `MCP_SETUP_REQUIRES_ABSOLUTE_EXPIRY` | `false` | When `true`, `setup_flow` assertions require `setup_expires_at` on the verified regional access token (enable after identity #135). |
+| `MCP_SESSION_GRANT_REQUIRES_ABSOLUTE_EXPIRES_AT` | `false` | When `true`, setup-mode session grants are rejected unless session-check returns an absolute `expires_at` (or a setup cap applies); use after identity #135. |
 
 ## Downstream services
 

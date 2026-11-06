@@ -10,8 +10,13 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone as dt_timezone
 
 from django.conf import settings
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
+
+from apps.connector.mcp_company_id import strict_numeric_company_id
 
 logger = logging.getLogger(__name__)
 
@@ -59,10 +64,32 @@ class ApprovalAssertionContext:
     lifetime_seconds: int
     setup_flow: bool = False
     mcp_session_ttl_seconds: int | None = None
+    setup_expires_at: timezone.datetime | None = None
 
 
 def _fallback_context() -> ApprovalAssertionContext:
     return ApprovalAssertionContext(lifetime_seconds=_DEFAULT_APPROVAL_ASSERTION_LIFETIME)
+
+
+def _parse_setup_expires_at_claim(raw: object, *, wall_max_exp: int) -> timezone.datetime | None:
+    """Parse identity-issued setup_expires_at; must be in (now, jwt exp]."""
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if not text:
+        return None
+    dt = parse_datetime(text)
+    if dt is None:
+        return None
+    if timezone.is_naive(dt):
+        dt = timezone.make_aware(dt, dt_timezone.utc)
+    now = timezone.now()
+    if dt <= now:
+        return None
+    wall_max = datetime.fromtimestamp(float(wall_max_exp), tz=dt_timezone.utc)
+    if dt > wall_max:
+        return None
+    return dt
 
 
 def approval_assertion_context_from_agent_claims(agent_claims: dict | None) -> ApprovalAssertionContext:
@@ -76,6 +103,14 @@ def approval_assertion_context_from_agent_claims(agent_claims: dict | None) -> A
         return _fallback_context()
 
     if not _truthy_setup_flow(agent_claims.get('setup_flow')):
+        return _fallback_context()
+
+    if strict_numeric_company_id(agent_claims.get('company_id')) is None:
+        logger.info(
+            'MCP setup assertion rejected (invalid company_id in agent claims): agent_id=%s company_id=%r',
+            agent_claims.get('agent_id'),
+            agent_claims.get('company_id'),
+        )
         return _fallback_context()
 
     raw_ttl = agent_claims.get('mcp_session_ttl_seconds')
@@ -98,6 +133,32 @@ def approval_assertion_context_from_agent_claims(agent_claims: dict | None) -> A
         max_from_jwt = None
 
     wall_remaining = _seconds_until_access_token_exp(agent_claims)
+
+    require_abs_setup_expiry = bool(
+        getattr(settings, 'MCP_SETUP_REQUIRES_ABSOLUTE_EXPIRY', False),
+    )
+    try:
+        wall_max_exp = int(agent_claims['exp'])
+    except (KeyError, TypeError, ValueError):
+        wall_max_exp = int(time.time())
+    setup_expires_at = _parse_setup_expires_at_claim(
+        agent_claims.get('setup_expires_at'),
+        wall_max_exp=wall_max_exp,
+    )
+    if require_abs_setup_expiry and setup_expires_at is None:
+        logger.info(
+            'MCP setup assertion rejected (absolute setup_expires_at required): company_id=%s agent_id=%s',
+            agent_claims.get('company_id'),
+            agent_claims.get('agent_id'),
+        )
+        return _fallback_context()
+    if agent_claims.get('setup_expires_at') is not None and setup_expires_at is None:
+        logger.info(
+            'MCP setup assertion rejected (invalid setup_expires_at): company_id=%s agent_id=%s',
+            agent_claims.get('company_id'),
+            agent_claims.get('agent_id'),
+        )
+        return _fallback_context()
 
     cap = _max_assertion_lifetime_seconds()
     if max_from_jwt is not None:
@@ -130,8 +191,19 @@ def approval_assertion_context_from_agent_claims(agent_claims: dict | None) -> A
     if lifetime < setup_ttl:
         return _fallback_context()
 
+    if setup_expires_at is not None:
+        cap_seconds = (setup_expires_at - timezone.now()).total_seconds()
+        if cap_seconds < setup_ttl:
+            logger.info(
+                'MCP setup assertion rejected (setup_expires_at before ttl window): company_id=%s agent_id=%s',
+                agent_claims.get('company_id'),
+                agent_claims.get('agent_id'),
+            )
+            return _fallback_context()
+
     return ApprovalAssertionContext(
         lifetime_seconds=lifetime,
         setup_flow=True,
         mcp_session_ttl_seconds=setup_ttl,
+        setup_expires_at=setup_expires_at,
     )

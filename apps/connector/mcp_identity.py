@@ -8,17 +8,24 @@ import logging
 import threading
 from typing import Any
 
+import jwt
 import requests
 from django.conf import settings
 from django.core.cache import cache
-
 from shellui_django.mcp.internal import (
+    REVOCATION_AUDIENCE,
     REVOCATION_CACHE_SECONDS,
+    REVOCATION_LIST_SCOPE,
     InternalAssertionError,
     build_mcp_call_log_assertion,
     build_mcp_revocation_assertion,
-    parse_trusted_revocation_poll_response,
 )
+from shellui_django.mcp.identity_jwks import (
+    get_jwks_document,
+    resolve_verification_key,
+)
+
+from apps.connector.mcp_company_id import strict_numeric_company_id
 
 logger = logging.getLogger(__name__)
 
@@ -61,18 +68,124 @@ def _revocation_verify_kwargs(origin: str) -> dict[str, Any]:
     return kwargs
 
 
+def _revocation_list_assertion_token(payload: dict[str, Any]) -> str:
+    token = payload.get('revocation_assertion') or payload.get('assertion')
+    if not token or not str(token).strip():
+        raise InternalAssertionError('Missing revocation list assertion.')
+    return str(token).strip()
+
+
+def verify_mcp_revocation_list_response_identity135(
+    payload: dict[str, Any],
+    *,
+    expected_issuer: str,
+    identity_jwks_url: str | None = None,
+    jwks: dict[str, Any] | None = None,
+    jwks_timeout: float = 10.0,
+) -> dict[str, Any]:
+    """Trusted revocation poll: RS256 + body/JWT alignment; exposes revocation_policy_version (identity #135)."""
+    issuer = (expected_issuer or '').strip().rstrip('/')
+    if not issuer:
+        raise InternalAssertionError('expected_issuer is required.')
+    jwks_url = identity_jwks_url
+    if not jwks_url and jwks is None:
+        from shellui_django.mcp.identity_jwks import identity_jwks_url_for_issuer
+
+        jwks_url = identity_jwks_url_for_issuer(issuer)
+    token = _revocation_list_assertion_token(payload)
+    document = get_jwks_document(jwks_url=jwks_url, jwks=jwks, timeout=jwks_timeout)
+    key = resolve_verification_key(token, document)
+    try:
+        claims = jwt.decode(
+            token,
+            key=key,
+            algorithms=['RS256'],
+            audience=REVOCATION_AUDIENCE,
+            issuer=issuer,
+            options={'require': ['exp', 'iat', 'sub', 'scope']},
+        )
+    except jwt.PyJWTError as exc:
+        raise InternalAssertionError('Invalid revocation list assertion.') from exc
+    if str(claims.get('scope') or '') != REVOCATION_LIST_SCOPE:
+        raise InternalAssertionError('Revocation list scope mismatch.')
+    if str(claims.get('sub') or '') != 'identity':
+        raise InternalAssertionError('Revocation list issuer subject mismatch.')
+    claimed_ids = [str(item) for item in (claims.get('revoked_agent_ids') or [])]
+    claimed_cache = int(claims.get('cache_seconds') or 0)
+    body_ids = payload.get('revoked_agent_ids')
+    if body_ids is not None:
+        normalized_body = [str(item) for item in body_ids]
+        if normalized_body != claimed_ids:
+            raise InternalAssertionError('Revocation list body mismatch.')
+    body_cache = payload.get('cache_seconds')
+    if body_cache is not None and int(body_cache) != claimed_cache:
+        raise InternalAssertionError('Revocation list cache mismatch.')
+    claimed_agents = claims.get('agents') or []
+    body_agents = payload.get('agents')
+    if body_agents is not None and body_agents != claimed_agents:
+        raise InternalAssertionError('Revocation list agents mismatch.')
+    policy_jwt = claims.get('revocation_policy_version')
+    policy_body = payload.get('revocation_policy_version')
+    if policy_body is not None and policy_jwt is None:
+        raise InternalAssertionError('Revocation policy version mismatch.')
+    if policy_body is not None:
+        if str(policy_jwt) != str(policy_body):
+            raise InternalAssertionError('Revocation policy version mismatch.')
+    elif policy_jwt is not None:
+        # Fail closed: JWT advertises a version but HTTP body omits it.
+        raise InternalAssertionError('Revocation policy version missing from body.')
+    out: dict[str, Any] = {
+        'revoked_agent_ids': claimed_ids,
+        'agents': claimed_agents,
+        'cache_seconds': claimed_cache,
+    }
+    if policy_jwt is not None:
+        out['revocation_policy_version'] = str(policy_jwt)
+    return out
+
+
+def parse_trusted_revocation_poll_response_identity135(
+    payload: dict[str, Any],
+    *,
+    expected_issuer: str,
+    identity_jwks_url: str | None = None,
+    jwks: dict[str, Any] | None = None,
+    jwks_timeout: float = 10.0,
+) -> tuple[frozenset[str], int, list[dict[str, Any]], str | None]:
+    trusted = verify_mcp_revocation_list_response_identity135(
+        payload,
+        expected_issuer=expected_issuer,
+        identity_jwks_url=identity_jwks_url,
+        jwks=jwks,
+        jwks_timeout=jwks_timeout,
+    )
+    ids = frozenset(trusted['revoked_agent_ids'])
+    cache_seconds = int(trusted['cache_seconds'] or REVOCATION_CACHE_SECONDS)
+    agents = list(trusted.get('agents') or [])
+    policy = trusted.get('revocation_policy_version')
+    policy_s = str(policy) if policy is not None else None
+    return ids, cache_seconds, agents, policy_s
+
+
 def _mark_revocation_untrusted() -> None:
     cache.delete(_REVOKED_CACHE_KEY)
     cache.set(_REVOKED_TRUST_KEY, False, timeout=REVOCATION_CACHE_SECONDS)
 
 
-def _store_trusted_revocation(*, revoked_ids: frozenset[str], agents: list[dict[str, Any]], cache_seconds: int) -> None:
+def _store_trusted_revocation(
+    *,
+    revoked_ids: frozenset[str],
+    agents: list[dict[str, Any]],
+    cache_seconds: int,
+    revocation_policy_version: str | None,
+) -> None:
     cache.set(
         _REVOKED_CACHE_KEY,
         {
             'revoked_ids': sorted(revoked_ids),
             'agents': agents,
             'cache_seconds': cache_seconds,
+            'revocation_policy_version': revocation_policy_version,
         },
         timeout=max(cache_seconds, REVOCATION_CACHE_SECONDS),
     )
@@ -103,10 +216,11 @@ def _agent_blocked_for_tenant(agent_id: str, *, company_id: int | None, payload:
         entry_company = entry.get('company_id')
         if entry_company is None:
             return True
-        try:
-            return int(entry_company) == int(company_id)
-        except (TypeError, ValueError):
-            return False
+        parsed = strict_numeric_company_id(entry_company)
+        if parsed is None:
+            # Fail closed: non-numeric / UUID-shaped company_id cannot be matched to regional int scope.
+            return True
+        return parsed == int(company_id)
     return False
 
 
@@ -138,14 +252,19 @@ def _refresh_revocations() -> bool:
         _mark_revocation_untrusted()
         return False
     try:
-        revoked_ids, cache_seconds, agents = parse_trusted_revocation_poll_response(
+        revoked_ids, cache_seconds, agents, policy_ver = parse_trusted_revocation_poll_response_identity135(
             body,
             **_revocation_verify_kwargs(origin),
         )
     except Exception:
         _mark_revocation_untrusted()
         return False
-    _store_trusted_revocation(revoked_ids=revoked_ids, agents=agents, cache_seconds=cache_seconds)
+    _store_trusted_revocation(
+        revoked_ids=revoked_ids,
+        agents=agents,
+        cache_seconds=cache_seconds,
+        revocation_policy_version=policy_ver,
+    )
     return True
 
 
@@ -156,7 +275,12 @@ def revocation_list_fingerprint() -> str | None:
         return None
     ids = sorted(str(x) for x in (payload.get('revoked_ids') or []))
     agents = payload.get('agents') or []
-    raw = json.dumps({'agent_ids': ids, 'agents': agents}, sort_keys=True, default=str)
+    policy = payload.get('revocation_policy_version')
+    raw = json.dumps(
+        {'agent_ids': ids, 'agents': agents, 'revocation_policy_version': policy},
+        sort_keys=True,
+        default=str,
+    )
     return hashlib.sha256(raw.encode()).hexdigest()[:40]
 
 
