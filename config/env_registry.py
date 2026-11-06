@@ -72,6 +72,13 @@ OPTIONAL = (
     Var('AI_PUBLIC_URL', '', 'Public origin of this gateway; the MCP URL is /c/<company_id>/mcp'),
     Var('MCP_GATEWAY_TOOLS_CACHE_TTL_SECONDS', '30', 'Aggregated MCP gateway'),
     Var('MCP_GATEWAY_DOWNSTREAM_TIMEOUT_SECONDS', '5'),
+    Var(
+        'MCP_APPROVAL_ASSERTION_MAX_LIFETIME_SECONDS',
+        '900',
+        'Max exp-iat on signed approval assertions to identity (setup flows need 600–900s)',
+    ),
+    Var('MCP_APPROVAL_SETUP_SESSION_TTL_MIN_SECONDS', '600', 'Setup session Allow lower bound (signed claims)'),
+    Var('MCP_APPROVAL_SETUP_SESSION_TTL_MAX_SECONDS', '900', 'Setup session Allow upper bound (signed claims)'),
     Var('MCP_RATE_LIMIT_AGENT', '120'),
     Var('CORS_ALLOW_ALL_ORIGINS', 'true', 'CORS and HTTPS'),
     Var('CORS_ALLOW_CREDENTIALS', 'false'),

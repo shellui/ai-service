@@ -68,7 +68,8 @@ def tools_from_schema(schema: dict[str, Any]) -> list[dict[str, Any]]:
     tools: list[dict[str, Any]] = []
     for (path, method, operation), name in zip(operations, unique_names, strict=True):
         legacy_name = legacy_slug_tool_name(method, path, operation.get('operationId'))
-        description = (operation.get('summary') or operation.get('description') or name).strip()
+        op_summary = (operation.get('summary') or operation.get('description') or '').strip()
+        description = op_summary or name
         path_params = path_parameter_names(path)
         query_props, query_required = _parameter_schemas(operation, schema, location='query')
         body_props, body_required = _body_schemas(operation, schema)
@@ -136,6 +137,7 @@ def tools_from_schema(schema: dict[str, Any]) -> list[dict[str, Any]]:
                 '_meta': {
                     'path': path,
                     'method': method.upper(),
+                    'operation_summary': op_summary[:500] if op_summary else None,
                     'operationId': operation.get('operationId'),
                     'legacy_tool_name': legacy_name,
                     'path_params': path_params,

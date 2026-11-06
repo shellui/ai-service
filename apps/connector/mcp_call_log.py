@@ -54,7 +54,10 @@ def mcp_call_result(
     log_result: str | None = None,
 ) -> str:
     if log_result:
-        return str(log_result)[:32]
+        lr = str(log_result).strip().lower()[:32]
+        if lr == 'pending':
+            return 'pending_approval'
+        return lr
     if is_error is True:
         return 'error'
     if is_error is False:

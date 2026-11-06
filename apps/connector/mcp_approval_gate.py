@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextvars
 import hashlib
 import json
+import logging
 from dataclasses import dataclass
 from typing import Any
 
@@ -30,7 +31,15 @@ def patched_decide_write(**kwargs: Any) -> WriteGateDecision:
 
 from apps.connector import mcp_approval_copy as copy
 from apps.connector import mcp_approvals as approvals
+from apps.connector.mcp_approvals import DecideResult
+
+from apps.connector.mcp_call_audit import build_call_audit_log
 from apps.connector.mcp_company_label import resolve_company_label
+from apps.connector.mcp_identity import agent_is_revoked
+from apps.connector.mcp_company_id import strict_numeric_company_id
+from apps.connector.mcp_setup_context import approval_assertion_context_from_agent_claims
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +51,24 @@ class GateOutcome:
 
 def access_mode_from_claims(agent_claims: dict[str, Any]) -> str:
     return str(agent_claims.get('mcp_access') or 'ask')
+
+
+def _log_result_from_decide(decided: DecideResult, *, fallback: str) -> str:
+    """Map Identity decide response to stable gateway log tokens (activity outcomes)."""
+    if not decided.ok:
+        return 'error'
+    ap = str(decided.approval_status or '').strip().lower()
+    aud = str(decided.audit_status or '').strip().lower()
+    # HTTP 200 JSON can still be a non-success human flow (e.g. pending); never map that to authority success.
+    if ap == 'approved' and aud in {'', 'ok', 'approved', 'success'}:
+        return 'identity_approved'
+    if aud in {'pending', 'pending_approval'}:
+        return aud
+    if aud in {'denied', 'client_denied', 'expired', 'error'}:
+        return aud
+    if ap in {'denied'}:
+        return 'denied'
+    return aud or fallback
 
 
 def _arguments_hash(arguments: dict[str, Any]) -> str:
@@ -113,7 +140,6 @@ def build_elicitation_meta(
     destructive: bool,
     agent_claims: dict[str, Any],
     approval_id: str,
-    short_action_summary: str = '',
     tool_count: int = 1,
 ) -> dict[str, Any]:
     agent_name = _agent_display_name(agent_claims)
@@ -132,6 +158,10 @@ def build_elicitation_meta(
     buttons: dict[str, str] = {'allow': 'Allow', 'deny': 'Deny'}
     if not destructive:
         buttons['session_allow'] = 'Allow for this session'
+    ctx = approval_assertion_context_from_agent_claims(agent_claims)
+    session_seconds = (
+        ctx.mcp_session_ttl_seconds if ctx.setup_flow and ctx.mcp_session_ttl_seconds else copy.SESSION_SECONDS
+    )
     payload: dict[str, Any] = {
         'approval_id': approval_id,
         'status': 'pending',
@@ -139,15 +169,13 @@ def build_elicitation_meta(
             'title': title,
             'body': body,
             'buttons': buttons,
-            'session_seconds': copy.SESSION_SECONDS,
+            'session_seconds': session_seconds,
         },
         'settings_url': approvals.approval_settings_url(approval_id),
         'approvals_list_url': approvals.approval_settings_url(),
     }
-    if short_action_summary:
-        payload['elicitation']['detail'] = short_action_summary
     if not destructive:
-        payload['elicitation']['session_helper'] = copy.session_helper_text()
+        payload['elicitation']['session_helper'] = copy.session_helper_text(seconds=session_seconds)
     return payload
 
 
@@ -170,26 +198,48 @@ def _approval_result(
     )
 
 
+def _audit_status_from_log_result(log_result: str) -> tuple[int, bool | None]:
+    lr = str(log_result or '').strip().lower()
+    if lr in {'denied', 'client_denied'}:
+        return 403, True
+    if lr in {'pending', 'pending_approval'}:
+        return 202, None
+    if lr in {'expired'}:
+        return 410, True
+    if lr in {'error'}:
+        return 500, True
+    if lr in {'success', 'approved', 'client_allowed', 'client_session_allowed', 'identity_approved'}:
+        return 200, False
+    return 200, None
+
+
 def _log_entry(
     *,
     agent_claims: dict[str, Any],
     service: str,
-    tool: str,
+    export_name: str,
+    tool: dict[str, Any] | None,
     method: str,
     path: str,
     log_result: str,
+    approval_id: str | None = None,
 ) -> dict[str, Any]:
-    return {
-        'agent_id': agent_claims.get('agent_id'),
-        'company_id': agent_claims.get('company_id'),
-        'service': service,
-        'tool': tool,
-        'method': method,
-        'path': path,
-        'status': 200,
-        'is_error': log_result not in {'success', 'client_allowed', 'client_session_allowed', 'approved'},
-        'log_result': log_result,
-    }
+    status, is_error = _audit_status_from_log_result(log_result)
+    row = build_call_audit_log(
+        agent_claims=agent_claims,
+        service_id=service,
+        export_name=export_name,
+        tool=tool,
+        method=method,
+        path=path,
+        log_result=str(log_result),
+        status=status,
+        is_error=is_error,
+        approval_id=approval_id,
+    )
+    row['_mcp_audit_ready'] = True
+    row['duration_ms'] = 0
+    return row
 
 
 def enforce_tool_call_approval(
@@ -207,16 +257,43 @@ def enforce_tool_call_approval(
 ) -> GateOutcome:
     read_only, destructive = tool_traits_from_export(tool, method=method)
     access = access_mode_from_claims(agent_claims)
+    allow_destructive_flag = bool(agent_claims.get('mcp_destructive'))
+    if destructive and allow_destructive_flag:
+        logger.info(
+            'MCP gateway ignoring mcp_destructive for destructive tool (approval required): company_id=%s agent_id=%s export=%s',
+            agent_claims.get('company_id'),
+            agent_claims.get('agent_id'),
+            export_name,
+        )
     decision = decide_write(
         method=method,
         access_mode=access,
         destructive=destructive,
-        allow_destructive_without_asking=bool(agent_claims.get('mcp_destructive')),
+        allow_destructive_without_asking=(allow_destructive_flag and not destructive),
         tool_read_only=read_only,
     )
     connection_id = _connection_id(request)
     agent_id = str(agent_claims.get('agent_id') or '')
-    company_id = int(agent_claims.get('company_id') or 0)
+    cid = strict_numeric_company_id(agent_claims.get('company_id'))
+    if cid is None:
+        return GateOutcome(
+            proceed=False,
+            response=_approval_result(
+                req_id,
+                text='Invalid company scope.',
+                meta={'status': 'denied'},
+            ),
+            log=_log_entry(
+                agent_claims=agent_claims,
+                service=service_id,
+                export_name=export_name,
+                tool=tool,
+                method=method,
+                path=path,
+                log_result='denied',
+            ),
+        )
+    company_id = cid
 
     if not decision.needs_approval and decision.allowed:
         return GateOutcome(proceed=True)
@@ -232,7 +309,8 @@ def enforce_tool_call_approval(
             log=_log_entry(
                 agent_claims=agent_claims,
                 service=service_id,
-                tool=export_name,
+                export_name=export_name,
+                tool=tool,
                 method=method,
                 path=path,
                 log_result='denied',
@@ -245,18 +323,9 @@ def enforce_tool_call_approval(
         'company_id': company_id,
         'service': service_id,
         'action': export_name,
-        'arguments': arguments,
         'arguments_hash': args_hash,
-        'path': path,
-        'method': method,
+        '_agent_claims': agent_claims,
     }
-
-    if approvals.session_grant_covers_write(
-        approval_payload,
-        connection_id=connection_id,
-        is_destructive=destructive,
-    ):
-        return GateOutcome(proceed=True)
 
     client_decision, client_approval_id = parse_client_decision(params)
     actor_email = str(agent_claims.get('email') or '').strip() or None
@@ -283,14 +352,43 @@ def enforce_tool_call_approval(
             log=_log_entry(
                 agent_claims=agent_claims,
                 service=service_id,
-                tool=export_name,
+                export_name=export_name,
+                tool=tool,
                 method=method,
                 path=path,
                 log_result=log_result,
+                approval_id=client_approval_id,
             ),
         )
 
-    if client_decision == 'session_allow' and client_approval_id:
+    if approvals.session_grant_covers_write(
+        approval_payload,
+        connection_id=connection_id,
+        is_destructive=destructive,
+    ):
+        if agent_is_revoked(agent_id, company_id):
+            return GateOutcome(
+                proceed=False,
+                response=_approval_result(
+                    req_id,
+                    text='Agent access was revoked.',
+                    meta={'status': 'denied'},
+                ),
+                log=_log_entry(
+                    agent_claims=agent_claims,
+                    service=service_id,
+                    export_name=export_name,
+                    tool=tool,
+                    method=method,
+                    path=path,
+                    log_result='denied',
+                ),
+            )
+        return GateOutcome(proceed=True)
+
+    # Identity rejects session allow on destructive rows (409). Do not consume or
+    # record session_used; fall through so a duplicate executed row stays failed.
+    if client_decision == 'session_allow' and client_approval_id and not destructive:
         decided = _decide(client_approval_id, 'allow_session')
         if decided.status_code == 409 or not decided.ok:
             return GateOutcome(
@@ -302,13 +400,14 @@ def enforce_tool_call_approval(
                 ),
             )
         if approvals.approval_consume(client_approval_id, approval_payload):
-            log_result = decided.audit_status or 'client_session_allowed'
+            log_result = _log_result_from_decide(decided, fallback='client_session_allowed')
             return GateOutcome(
                 proceed=True,
                 log=_log_entry(
                     agent_claims=agent_claims,
                     service=service_id,
-                    tool=export_name,
+                    export_name=export_name,
+                    tool=tool,
                     method=method,
                     path=path,
                     log_result=log_result,
@@ -317,6 +416,29 @@ def enforce_tool_call_approval(
 
     state = approvals.approval_state(approval_payload)
     if state == 'expired':
+        if client_approval_id:
+            duplicate = approvals.approval_consume_detail(client_approval_id, approval_payload)
+            if duplicate.already_consumed:
+                # Identity #138 accepts failed plus the executed approval id. Denial must not
+                # drop that id, and this is not a second execution.
+                return GateOutcome(
+                    proceed=False,
+                    response=_approval_result(
+                        req_id,
+                        text=copy.expired_text(),
+                        meta={'shellui_approval': {'status': 'expired', 'consumed': False}},
+                    ),
+                    log=_log_entry(
+                        agent_claims=agent_claims,
+                        service=service_id,
+                        export_name=export_name,
+                        tool=tool,
+                        method=method,
+                        path=path,
+                        log_result='error',
+                        approval_id=client_approval_id,
+                    ),
+                )
         return GateOutcome(
             proceed=False,
             response=_approval_result(
@@ -327,7 +449,8 @@ def enforce_tool_call_approval(
             log=_log_entry(
                 agent_claims=agent_claims,
                 service=service_id,
-                tool=export_name,
+                export_name=export_name,
+                tool=tool,
                 method=method,
                 path=path,
                 log_result='expired',
@@ -344,27 +467,52 @@ def enforce_tool_call_approval(
             log=_log_entry(
                 agent_claims=agent_claims,
                 service=service_id,
-                tool=export_name,
+                export_name=export_name,
+                tool=tool,
                 method=method,
                 path=path,
                 log_result='denied',
+                approval_id=client_approval_id,
             ),
         )
     if state == 'approved':
         approval_id = str(approval_payload.get('approval_id') or client_approval_id or '')
-        if approval_id and approvals.approval_consume(approval_id, approval_payload):
-            log_result = 'approved'
-            return GateOutcome(
-                proceed=True,
-                log=_log_entry(
-                    agent_claims=agent_claims,
-                    service=service_id,
-                    tool=export_name,
-                    method=method,
-                    path=path,
-                    log_result=log_result,
-                ),
-            )
+        if approval_id:
+            consumed = approvals.approval_consume_detail(approval_id, approval_payload)
+            if consumed.consumed:
+                log_result = 'identity_approved'
+                return GateOutcome(
+                    proceed=True,
+                    log=_log_entry(
+                        agent_claims=agent_claims,
+                        service=service_id,
+                        export_name=export_name,
+                        tool=tool,
+                        method=method,
+                        path=path,
+                        log_result=log_result,
+                        approval_id=approval_id,
+                    ),
+                )
+            if consumed.already_consumed:
+                return GateOutcome(
+                    proceed=False,
+                    response=_approval_result(
+                        req_id,
+                        text=copy.expired_text(),
+                        meta={'shellui_approval': {'status': 'expired', 'consumed': False}},
+                    ),
+                    log=_log_entry(
+                        agent_claims=agent_claims,
+                        service=service_id,
+                        export_name=export_name,
+                        tool=tool,
+                        method=method,
+                        path=path,
+                        log_result='error',
+                        approval_id=approval_id,
+                    ),
+                )
         return GateOutcome(
             proceed=False,
             response=_approval_result(
@@ -375,7 +523,8 @@ def enforce_tool_call_approval(
             log=_log_entry(
                 agent_claims=agent_claims,
                 service=service_id,
-                tool=export_name,
+                export_name=export_name,
+                tool=tool,
                 method=method,
                 path=path,
                 log_result='expired',
@@ -385,13 +534,14 @@ def enforce_tool_call_approval(
     if client_decision == 'allow' and client_approval_id:
         decided = _decide(client_approval_id, 'allow')
         if decided.ok and approvals.approval_consume(client_approval_id, approval_payload):
-            log_result = decided.audit_status or 'client_allowed'
+            log_result = _log_result_from_decide(decided, fallback='client_allowed')
             return GateOutcome(
                 proceed=True,
                 log=_log_entry(
                     agent_claims=agent_claims,
                     service=service_id,
-                    tool=export_name,
+                    export_name=export_name,
+                    tool=tool,
                     method=method,
                     path=path,
                     log_result=log_result,
@@ -429,10 +579,12 @@ def enforce_tool_call_approval(
                 log=_log_entry(
                     agent_claims=agent_claims,
                     service=service_id,
-                    tool=export_name,
+                    export_name=export_name,
+                    tool=tool,
                     method=method,
                     path=path,
-                    log_result='pending',
+                    log_result='pending_approval',
+                    approval_id=approval_id,
                 ),
             )
         settings_url = approvals.approval_settings_url(approval_id)
@@ -453,10 +605,12 @@ def enforce_tool_call_approval(
             log=_log_entry(
                 agent_claims=agent_claims,
                 service=service_id,
-                tool=export_name,
+                export_name=export_name,
+                tool=tool,
                 method=method,
                 path=path,
-                log_result='pending',
+                log_result='pending_approval',
+                approval_id=approval_id,
             ),
         )
 
@@ -484,10 +638,12 @@ def enforce_tool_call_approval(
             log=_log_entry(
                 agent_claims=agent_claims,
                 service=service_id,
-                tool=export_name,
+                export_name=export_name,
+                tool=tool,
                 method=method,
                 path=path,
-                log_result='pending',
+                log_result='pending_approval',
+                approval_id=approval_id,
             ),
         )
     settings_url = approvals.approval_settings_url(approval_id)
@@ -507,9 +663,11 @@ def enforce_tool_call_approval(
         log=_log_entry(
             agent_claims=agent_claims,
             service=service_id,
-            tool=export_name,
+            export_name=export_name,
+            tool=tool,
             method=method,
             path=path,
-            log_result='pending',
+            log_result='pending_approval',
+            approval_id=approval_id,
         ),
     )

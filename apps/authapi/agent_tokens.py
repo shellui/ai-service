@@ -81,19 +81,33 @@ def agent_scope_allows_ai(claims: dict) -> bool:
     return 'ai' in parts
 
 
+def _truthy_claim(raw: object) -> bool:
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, str):
+        return raw.strip().lower() in {'1', 'true', 'yes', 'on'}
+    return False
+
+
 def principal_from_agent_claims(claims: dict) -> StoragePrincipal:
     company_id = claims.get('company_id')
     try:
         cid = int(company_id)
     except (TypeError, ValueError) as exc:
         raise ValueError('Agent token is missing a numeric company_id.') from exc
+    meta = claims.get('user_metadata')
+    if not isinstance(meta, dict):
+        meta = {}
+    is_owner = _truthy_claim(
+        claims.get('is_company_owner', meta.get('is_company_owner', False)),
+    )
     return StoragePrincipal(
         user_id=0,
         company_id=cid,
         email='',
         username=f"agent:{claims.get('agent_id')}",
         is_staff=False,
-        is_company_owner=True,
+        is_company_owner=is_owner,
         access_global_metrics=False,
         claims=claims,
     )

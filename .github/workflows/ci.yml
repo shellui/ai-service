@@ -75,32 +75,33 @@ jobs:
       - name: Run tests
         run: uv run python manage.py test --verbosity=1
 
+      # Optional repo variable IDENTITY_SERVICE_REF (commit SHA or branch) to test against identity changes not yet on develop.
       - name: Checkout identity-service (develop)
         uses: actions/checkout@v4
         with:
           repository: shellui/identity-service
-          ref: develop
+          ref: ${{ vars.IDENTITY_SERVICE_REF || 'develop' }}
           path: .e2e-identity
 
       - name: Checkout storage-service (develop)
         uses: actions/checkout@v4
         with:
           repository: shellui/storage-service
-          ref: develop
+          ref: ${{ vars.STORAGE_SERVICE_REF || 'develop' }}
           path: .e2e-storage-service
 
       - name: Checkout hosting-service (develop)
         uses: actions/checkout@v4
         with:
           repository: shellui/hosting-service
-          ref: develop
+          ref: ${{ vars.HOSTING_SERVICE_REF || 'develop' }}
           path: .e2e-hosting-service
 
       - name: Checkout email-service (develop)
         uses: actions/checkout@v4
         with:
           repository: shellui/email-service
-          ref: develop
+          ref: ${{ vars.EMAIL_SERVICE_REF || 'develop' }}
           path: .e2e-email-service
 
       - name: Checkout saas-service (develop)
@@ -108,7 +109,7 @@ jobs:
         continue-on-error: true
         with:
           repository: shellui/saas-service
-          ref: develop
+          ref: ${{ vars.SAAS_SERVICE_REF || 'develop' }}
           path: .e2e-saas-service
 
       - name: MCP tool schema audit (all services)
@@ -233,7 +234,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: shellui/identity-service
-          ref: develop
+          ref: ${{ vars.IDENTITY_SERVICE_REF || 'develop' }}
           path: identity-service
 
       - name: Install uv
