@@ -392,8 +392,10 @@ class PrefixingMcpServer(AggregatingMcpServer):
         downstream = raw[len(prefix) :]
         if not downstream:
             return None
-        local_names = {str(t.get('name') or '') for t in tools_from_schema(self.schema_provider())}
-        return downstream if downstream in local_names else None
+        # Gateway only emits ``ai_*`` for this service's own catalog—never use a membership
+        # snapshot here: a transient or alternate schema view must not turn a real local call
+        # into ``unknown_tool`` (e2e: ``ai_list_services`` must resolve like ``list_services``).
+        return downstream
 
     def handle(self, request: HttpRequest, *, agent_claims: dict | None):
         return handle_mcp_gateway_request(self, request, agent_claims=agent_claims)
@@ -415,6 +417,8 @@ class PrefixingMcpServer(AggregatingMcpServer):
             for tool in tools_from_schema(self.schema_provider()):
                 if str(tool.get('name') or '') == local_name:
                     return normalize_mcp_tool(tool)
+            # Explicit local export prefix but no matching OpenAPI MCP tool.
+            return None
         service_id = self._service_id_from_export_name(export_name)
         if service_id is None:
             return None
