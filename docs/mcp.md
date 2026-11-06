@@ -74,7 +74,7 @@ On **`tools/call`**, when approval is required, the gateway returns MCP content 
 - **Binding:** grant must match **agent_id**, **numeric company_id**, **service**, **`action` (export name)**, **`arguments_hash`**, and sanitized **`connection_id`**.
 - **Revocation:** if the agent is revoked for that tenant in the trusted revocation snapshot, deny.
 - **Delegated global:** response must echo **`global_company_id`**, **`grant_version`**, and **`company_binding_version`** exactly as in the trusted regional JWT claims; partial triples or version mismatch → deny. **Do not** add a default grant version for global-cap tokens that never went through Identity’s delegated binding. Before relying on the revocation snapshot alone, the gateway also calls Identity’s **live** internal check **`POST /api/v1/mcp/internal/mcp-agent-delegated-authority`** (assertion **`aud`:** `shellui-mcp-agent-delegated-authority`, **`scope`:** `mcp.agent.delegated.authority.read`); **200** requires **`authorized`** true with **`revoked`** false and **`paused`** false (see [mcp-handbook.md](./mcp-handbook.md)).
-- **Setup flow:** `setup_flow` and **`setup_expires_at`** from Identity’s response are enforced; the gateway does **not** trust a setup **`true`** in an **old** JWT alone as authoritative—persisted setup state is **Identity’s** (session-check / consume contract). **Refresh** may **narrow** expiry but must not extend past caps (JWT wall, ordinary ~60s grant for non-setup, setup TTL ceiling).
+- **Setup flow:** `setup_flow` and **`setup_expires_at`** from Identity’s response are enforced; the gateway does **not** trust a setup **`true`** in an **old** JWT alone as authoritative. Persisted setup state is **Identity’s** (session-check / consume contract). **Refresh** may **narrow** expiry but must not extend past caps (JWT wall, ordinary ~60s grant for non-setup, setup TTL ceiling).
 - **Deny/supersede:** a **deny** or **revoke** invalidates prior allows; **pause** / **narrow** changes should invalidate earlier session decisions (enforced by Identity + version checks on the gateway side).
 
 ### `connection_id` (sanitized for Identity only)
@@ -89,7 +89,7 @@ Internal approval assertions are built with **`build_mcp_approval_assertion`** (
 
 Logic lives in `apps/connector/mcp_setup_context.py`:
 
-- **Global delegated** only when **`global_company_id`** is a canonical UUID **and** **`grant_version`** **and** **`company_binding_version`** are each a **non‑negative int** (including **`0`**).
+- **Global delegated** only when **`global_company_id`** is a canonical UUID **and** **`grant_version`** **and** **`company_binding_version`** are each a **non-negative int** (including **`0`**).
 - **Reject** on any **partial** triple or malformed UUID string.
 - **`personal_token_id`** may appear on delegated tokens; **do not** infer delegation from it alone.
 
@@ -103,8 +103,8 @@ Logic lives in `apps/connector/mcp_setup_context.py`:
 
 Internal `forward_call_log` maps gateway bookkeeping to Identity’s **`outcome`** using a fixed set (see **`OUTCOMES`** in `mcp_call_audit.py`):
 
-- **`pending_approval`** — from internal log tokens like `pending_approval` (or legacy `pending` mapped before forward).
-- **`allowed`**, **`denied`**, **`failed`**, **`session_used`** — from `outcome_from_audit` rules.
+- **`pending_approval`:** from internal log tokens like `pending_approval` (or legacy `pending` mapped before forward).
+- **`allowed`**, **`denied`**, **`failed`**, **`session_used`:** from `outcome_from_audit` rules.
 - Unknown provider strings do **not** map to “allowed”; they collapse to safe **`failed`** semantics with allowlisted metadata only.
 
 HTTP **200** with unknown `log_result` and **`is_error` unset** is treated as **`failed`** (fail closed). **`is_error: false`** is required to record **`allowed`** on success-class HTTP status.
@@ -121,13 +121,13 @@ The legacy **`result`** field uses Identity’s whitelist (`success`, `error`, `
 - **`error_code`:** only if in the allowlist (`mcp_audit_codes.py`).
 - **No** raw tool arguments, provider exception text, or arbitrary client paths in the forwarded body.
 
-A downstream HTTP **2xx** alone does **not** imply **`allowed`** if the gateway classified the operation as an error (`is_error`, audit `log_result`, etc.)—see **`outcome_from_audit`**.
+A downstream HTTP **2xx** alone does **not** imply **`allowed`** if the gateway classified the operation as an error (`is_error`, audit `log_result`, etc.). See **`outcome_from_audit`**.
 
 ### Approvals: state before create, retry, and bodies
 
 On each gated **`tools/call`**, the gateway calls **`mcp-approval-state`** first (empty JSON body; binding is **only** in the signed assertion). If Identity returns **`pending`** or **`approved`**, the **`id`** is stored so the client can **`allow`** / **`deny`** / **`session_allow`** without creating a second row for the same binding.
 
-- **Create** (`mcp-approval-requests`): JSON body is **`{ "is_destructive": <bool> }`** only—never `arguments`, `arguments_redacted`, `path`, `method`, or **`short_action_summary`**.
+- **Create** (`mcp-approval-requests`): JSON body is **`{ "is_destructive": <bool> }`** only. Never add `arguments`, `arguments_redacted`, `path`, `method`, or **`short_action_summary`**.
 - **Decide** (`mcp-approval-decide`): includes `approval_id`, `decision`, sanitized `connection_id`, optional `actor_email`.
 - **Consume** (`mcp-approval-consume`): JSON **`{ "approval_id": "…" }`** only.
 
@@ -140,7 +140,7 @@ Other service gateways that write MCP approvals or forward activity to Identity 
 ## Client conformance and CI
 
 - **Conformance and audits:** [mcp-e2e-conformance.md](./mcp-e2e-conformance.md), [mcp-tool-schema-audit.md](./mcp-tool-schema-audit.md).
-- **MCP e2e scope:** the `tools/mcp-e2e` compose stack does **not** include real storage, hosting, or email downstream URLs (they are empty in compose) and uses a **SaaS mock**—see the “What this stack is (and is not)” section in [mcp-e2e-conformance.md](./mcp-e2e-conformance.md). Do not treat a green **MCP client conformance** job as full-stack or regional-delegated-downstream proof.
+- **MCP e2e scope:** the `tools/mcp-e2e` compose stack leaves storage, hosting, and email URLs empty by default and uses a **SaaS mock**. See [mcp-e2e-conformance.md](./mcp-e2e-conformance.md). You may set `STORAGE_SERVICE_URL`, `HOSTING_SERVICE_URL`, `EMAIL_SERVICE_URL`, or `SAAS_SERVICE_URL` in the environment before `docker compose` for local full-path checks. Do not treat a green **MCP client conformance** job as full-stack or regional-delegated-downstream proof unless CI is extended and you document the refs you pinned.
 - **CI** checks out **`shellui/identity-service`** at **`develop`** by default unless the repository variable **`IDENTITY_SERVICE_REF`** is set (branch name or full SHA). To align with **identity PR #135** while it is open, pin that PR’s **current** `headRefOid` from GitHub (it moves with pushes). Record the **exact ref you validated** in the **pull request description** for traceability.
 
 ## Unsupported / transport notes

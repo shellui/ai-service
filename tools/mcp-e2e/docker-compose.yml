@@ -95,10 +95,10 @@ services:
       AI_SERVICE_ISSUER: http://localhost:8006
       AI_SERVICE_SIGNING_KEY_FILE: /run/e2e/signing.pem
       AI_SERVICE_SIGNING_KID: ${E2E_AI_SIGNING_KID}
-      STORAGE_SERVICE_URL: ''
-      HOSTING_SERVICE_URL: ''
-      EMAIL_SERVICE_URL: ''
-      SAAS_SERVICE_URL: http://saas-mock:8000
+      STORAGE_SERVICE_URL: ${STORAGE_SERVICE_URL:-}
+      HOSTING_SERVICE_URL: ${HOSTING_SERVICE_URL:-}
+      EMAIL_SERVICE_URL: ${EMAIL_SERVICE_URL:-}
+      SAAS_SERVICE_URL: ${SAAS_SERVICE_URL:-http://saas-mock:8000}
       SAAS_SERVICE_PUBLIC_URL: http://localhost:8010
       ALLOWED_HOSTS: localhost,127.0.0.1,ai,identity,host.docker.internal,saas-mock
       CSRF_TRUSTED_ORIGINS: http://localhost:8006,http://127.0.0.1:8006
