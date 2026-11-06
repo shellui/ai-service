@@ -498,7 +498,15 @@ class PrefixingMcpServer(AggregatingMcpServer):
         export_name = str((params or {}).get('name') or '')
         local_name = self._local_tool_export_name(export_name)
         if local_name is not None:
-            return self._tools_call(request, req_id, call_params, agent_claims)
+            # Keep the gateway export name (e.g. ``ai_list_services``) for gating/audit; ``call_params``
+            # already maps to the OpenAPI local tool name (``list_services``) for execution.
+            return self._tools_call(
+                request,
+                req_id,
+                call_params,
+                agent_claims,
+                gateway_export_name=export_name,
+            )
 
         self._ensure_routes_for_export(export_name, agent_claims)
         route = self._lookup_route(export_name)
@@ -577,11 +585,19 @@ class PrefixingMcpServer(AggregatingMcpServer):
         self.on_call(audit)
         return response
 
-    def _tools_call(self, request, req_id, params, agent_claims):
+    def _tools_call(
+        self,
+        request,
+        req_id,
+        params,
+        agent_claims,
+        *,
+        gateway_export_name: str | None = None,
+    ):
         call_params, error = self._prepare_tool_call_params(params, agent_claims, req_id)
         if error is not None:
             return error
-        export_name = str((params or {}).get('name') or '')
+        export_name = str(gateway_export_name or (params or {}).get('name') or '')
         local_name = str(call_params.get('name') or '')
         arguments = call_params.get('arguments') if isinstance(call_params.get('arguments'), dict) else {}
         blocked = self._gate_tool_call(

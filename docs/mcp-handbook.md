@@ -23,6 +23,16 @@ The gateway treats **partial** triples as **`blocked_assertion`**: no signed int
 
 Internal approval and session assertions are **RS256** JWTs (`AI_SERVICE_SIGNING_KEY`, `AI_SERVICE_ISSUER`); binding fields (`company_id`, `agent_id`, `service`, `action`, `arguments_hash`) live in those signed claims—**not** in untrusted JSON bodies.
 
+### Live delegated binding (Identity internal, canonical)
+
+For **global-delegated** regional tokens (full `global_company_id` + `grant_version` + `company_binding_version`), the gateway also calls Identity’s live row check—**not** revocation polling alone:
+
+- **URL:** `POST /api/v1/mcp/internal/mcp-agent-delegated-authority` (spellings like `mcp-delegated-agent-authority` are **not** supported).
+- **Authorization:** `Bearer` RS256 assertion with **`aud`:** `shellui-mcp-agent-delegated-authority`, **`scope`:** `mcp.agent.delegated.authority.read`, **`target`:** Identity issuer (same pattern as other internal MCP routes).
+- **JSON body:** `agent_id` (uuid string), `company_id` (positive int), `global_company_id` (uuid string), `grant_version`, `company_binding_version` (non‑negative JSON integers).
+
+**200** with **`authorized`: true** requires strict **`revoked`: false** and **`paused`: false** on the response. **403** / **404** / transport errors → fail closed for delegated paths.
+
 ## JSON-RPC examples
 
 ### `initialize`

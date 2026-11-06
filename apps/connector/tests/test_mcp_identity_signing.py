@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from django.core.cache import cache
 from django.test import SimpleTestCase, override_settings
@@ -21,6 +21,7 @@ from apps.authapi.ai_service_jwks import (
     load_ai_service_signing_key,
 )
 from apps.connector import mcp_identity
+from apps.connector.mcp_identity import DELEGATED_AGENT_AUTHORITY_AUDIENCE, DELEGATED_AGENT_AUTHORITY_SCOPE
 
 _PRIVATE, _PUBLIC = generate_rsa_key_pair(key_size=2048)
 _SIGNING = load_ai_service_signing_key(private_pem=_PRIVATE, kid=compute_rsa_kid(_PUBLIC))
@@ -97,6 +98,24 @@ class McpIdentitySigningTests(SimpleTestCase):
         self.assertEqual(body['outcome'], 'pending_approval')
         self.assertEqual(body['path'], '/api/r')
         self.assertEqual(body['result'], 'pending')
+
+    def test_delegated_authority_internal_assertion_shape(self):
+        with patch('apps.connector.mcp_identity.requests.post') as post:
+            post.return_value = MagicMock(status_code=200, json=lambda: {'authorized': True, 'revoked': False, 'paused': False})
+            ok = mcp_identity.verify_live_delegated_agent_authority(
+                agent_id='11111111-1111-4111-8111-111111111111',
+                company_id=10,
+                global_company_id='22222222-2222-4222-8222-222222222222',
+                grant_version=1,
+                company_binding_version=2,
+            )
+        self.assertTrue(ok)
+        claims = self._verify(
+            _bearer(post.call_args),
+            audience=DELEGATED_AGENT_AUTHORITY_AUDIENCE,
+            scope=DELEGATED_AGENT_AUTHORITY_SCOPE,
+        )
+        self.assertEqual(claims.get('sub'), 'service')
 
     @override_settings(AI_SERVICE_SIGNING_KEY=None)
     def test_without_signing_key_revocation_fails_closed(self):

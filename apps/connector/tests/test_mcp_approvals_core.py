@@ -72,6 +72,9 @@ class McpApprovalsCoreTests(TestCase):
         revoke = patch('apps.connector.mcp_approvals.agent_is_revoked', return_value=False)
         revoke.start()
         self.addCleanup(revoke.stop)
+        live = patch('apps.connector.mcp_identity.verify_live_delegated_agent_authority', return_value=True)
+        live.start()
+        self.addCleanup(live.stop)
 
     @patch('apps.connector.mcp_approvals.requests.post')
     def test_assertion_includes_setup_claims_when_agent_claims_setup(self, post):
@@ -483,6 +486,9 @@ class McpSessionGrantSetupFlowTests(TestCase):
         revoke = patch('apps.connector.mcp_approvals.agent_is_revoked', return_value=False)
         revoke.start()
         self.addCleanup(revoke.stop)
+        live = patch('apps.connector.mcp_identity.verify_live_delegated_agent_authority', return_value=True)
+        live.start()
+        self.addCleanup(live.stop)
 
     @patch('apps.connector.mcp_approvals.requests.post')
     def test_setup_requires_setup_expires_at_on_response(self, post):

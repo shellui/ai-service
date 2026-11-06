@@ -6,8 +6,11 @@ import hashlib
 import json
 import logging
 import threading
+import time
+import uuid
 from typing import Any
 
+import jwt
 import requests
 from django.conf import settings
 from django.core.cache import cache
@@ -25,6 +28,12 @@ from apps.connector.mcp_company_id import strict_numeric_company_id
 from apps.connector.mcp_revocation import revocation_fingerprint_material
 
 logger = logging.getLogger(__name__)
+
+# Identity canonical live delegated-agent binding (commit 17f09487+); do not use alternate URL spellings.
+DELEGATED_AGENT_AUTHORITY_PATH = '/api/v1/mcp/internal/mcp-agent-delegated-authority'
+DELEGATED_AGENT_AUTHORITY_AUDIENCE = 'shellui-mcp-agent-delegated-authority'
+DELEGATED_AGENT_AUTHORITY_SCOPE = 'mcp.agent.delegated.authority.read'
+DELEGATED_AGENT_AUTHORITY_ASSERTION_TTL_SECONDS = 60
 
 _REVOKED_CACHE_KEY = 'mcp:revoked_trusted_payload'
 _REVOKED_TRUST_KEY = 'mcp:revoked_list_trusted'
@@ -46,6 +55,94 @@ def _signing_kwargs() -> dict[str, str]:
     if signing is None or not settings.AI_SERVICE_ISSUER:
         raise InternalAssertionError('Service assertion signing is not configured.', status=503)
     return {'private_key_pem': signing.private_pem, 'kid': signing.kid, 'issuer': settings.AI_SERVICE_ISSUER}
+
+
+def _build_delegated_agent_authority_assertion(*, audience_url: str) -> str:
+    """RS256 internal assertion for ``POST .../mcp-agent-delegated-authority`` (Identity #135+)."""
+    signing = _signing_kwargs()
+    now = int(time.time())
+    ttl = min(DELEGATED_AGENT_AUTHORITY_ASSERTION_TTL_SECONDS, 60)
+    claims: dict[str, Any] = {
+        'iss': str(signing['issuer']).strip().rstrip('/'),
+        'aud': DELEGATED_AGENT_AUTHORITY_AUDIENCE,
+        'sub': 'service',
+        'scope': DELEGATED_AGENT_AUTHORITY_SCOPE,
+        'target': audience_url,
+        'iat': now,
+        'exp': now + ttl,
+        'jti': uuid.uuid4().hex,
+    }
+    pem = signing['private_key_pem']
+    kid = (signing.get('kid') or '').strip()
+    headers: dict[str, str] | None = {'kid': kid} if kid else None
+    token = jwt.encode(claims, pem, algorithm='RS256', headers=headers)
+    return token.decode('utf-8') if isinstance(token, bytes) else str(token)
+
+
+def verify_live_delegated_agent_authority(
+    *,
+    agent_id: str,
+    company_id: int,
+    global_company_id: str,
+    grant_version: int,
+    company_binding_version: int,
+) -> bool:
+    """
+    Live delegated binding check against Identity (not revocation-cache alone).
+
+    **200** with ``authorized: true`` only when the regional agent row matches the binding triple.
+    **403** / **404** / malformed body → deny. Transport failure → deny (fail closed).
+    """
+    origin = _identity_origin()
+    if not origin:
+        logger.warning('MCP delegated authority check skipped: Identity is not configured')
+        return False
+    audience = _identity_audience(origin)
+    try:
+        assertion = _build_delegated_agent_authority_assertion(audience_url=audience)
+    except InternalAssertionError:
+        logger.warning('MCP delegated authority check skipped: service assertion signing is not configured')
+        return False
+    url = f'{origin.rstrip("/")}{DELEGATED_AGENT_AUTHORITY_PATH}'
+    body: dict[str, Any] = {
+        'agent_id': str(agent_id).strip(),
+        'company_id': int(company_id),
+        'global_company_id': str(global_company_id).strip(),
+        'grant_version': int(grant_version),
+        'company_binding_version': int(company_binding_version),
+    }
+    try:
+        response = requests.post(
+            url,
+            json=body,
+            headers={'Authorization': f'Bearer {assertion}', 'Content-Type': 'application/json'},
+            timeout=5,
+        )
+    except requests.RequestException as exc:
+        logger.warning('MCP delegated authority check transport error: %s', type(exc).__name__)
+        return False
+    if response.status_code != 200:
+        logger.info(
+            'MCP delegated authority rejected: status=%s agent_id=%s company_id=%s',
+            response.status_code,
+            agent_id,
+            company_id,
+        )
+        return False
+    try:
+        data = response.json()
+    except ValueError:
+        return False
+    if not isinstance(data, dict):
+        return False
+    if data.get('authorized') is not True:
+        return False
+    # Strict booleans on success (Identity contract); reject missing or wrong types.
+    if data.get('revoked') is not False:
+        return False
+    if data.get('paused') is not False:
+        return False
+    return True
 
 
 def _revocation_headers(origin: str) -> dict[str, str]:

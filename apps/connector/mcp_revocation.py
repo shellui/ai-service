@@ -47,9 +47,19 @@ def delegation_authority_consistent_with_revocation(
     jwt_gv, jwt_cbv, jwt_gcid = global_binding_triplet_from_claims(agent_claims)
     if jwt_gv is None or jwt_gcid is None or jwt_cbv is None:
         return False
+    from apps.connector.mcp_identity import verify_live_delegated_agent_authority
+
+    if not verify_live_delegated_agent_authority(
+        agent_id=str(agent_id),
+        company_id=int(company_id),
+        global_company_id=str(jwt_gcid),
+        grant_version=int(jwt_gv),
+        company_binding_version=int(jwt_cbv),
+    ):
+        return False
     payload = _cached_payload()
     if payload is None:
-        # No trusted snapshot yet (cache cold); higher layers already fail closed on revocation poll outage.
+        # No trusted snapshot yet (cache cold); live delegated-authority already validated binding.
         return True
     agents = payload.get('agents') or []
     if not isinstance(agents, list):
