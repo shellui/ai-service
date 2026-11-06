@@ -78,6 +78,28 @@ def _build_delegated_agent_authority_assertion(*, audience_url: str) -> str:
     return token.decode('utf-8') if isinstance(token, bytes) else str(token)
 
 
+# Identity ``d7fe351``+ ``_delegated_authority_fixed_payload``: exactly 15 keys on every **200** JSON (no extras).
+_DELEGATED_AUTHORITY_RESPONSE_KEYS = frozenset(
+    {
+        'authorized',
+        'active',
+        'revoked',
+        'paused',
+        'agent_id',
+        'company_id',
+        'global_agent_id',
+        'global_company_id',
+        'grant_version',
+        'company_binding_version',
+        'access_mode',
+        'read_level',
+        'allow_destructive',
+        'services_allowed',
+        'revoked_at',
+    }
+)
+
+
 def _delegated_authority_success_body_ok(
     data: dict[str, Any],
     *,
@@ -87,7 +109,19 @@ def _delegated_authority_success_body_ok(
     grant_version: int,
     company_binding_version: int,
 ) -> bool:
-    """Require Identity 200 JSON to echo the same binding the gateway asserted (shellui/identity-service ``McpInternalDelegatedAgentAuthorityView``)."""
+    """Require Identity **200** JSON to match ``_delegated_authority_fixed_payload`` (PR #135 head ``d7fe351``+)."""
+    if set(data.keys()) != _DELEGATED_AUTHORITY_RESPONSE_KEYS:
+        return False
+    if data.get('authorized') is not True:
+        return False
+    if data.get('active') is not True:
+        return False
+    if data.get('revoked') is not False:
+        return False
+    if data.get('paused') is not False:
+        return False
+    if data.get('allow_destructive') is not False:
+        return False
     try:
         aid = uuid.UUID(str(data.get('agent_id') or '').strip())
         expect_aid = uuid.UUID(str(agent_id).strip())
@@ -113,7 +147,6 @@ def _delegated_authority_success_body_ok(
         return False
     if int(gv_raw) != int(grant_version) or int(cb_raw) != int(company_binding_version):
         return False
-    # Delegated agents always have a global row id on success (identity PR #135 ``McpInternalDelegatedAgentAuthorityView``).
     ga_raw = data.get('global_agent_id')
     if not isinstance(ga_raw, str) or not ga_raw.strip():
         return False
@@ -121,9 +154,17 @@ def _delegated_authority_success_body_ok(
         uuid.UUID(ga_raw.strip())
     except (ValueError, TypeError, AttributeError):
         return False
-    if data.get('authorized') is not True:
+    if not isinstance(data.get('access_mode'), str) or not str(data.get('access_mode') or '').strip():
         return False
-    if data.get('revoked') is not False or data.get('paused') is not False:
+    if not isinstance(data.get('read_level'), str) or not str(data.get('read_level') or '').strip():
+        return False
+    svcs = data.get('services_allowed')
+    if not isinstance(svcs, list) or not all(isinstance(x, str) for x in svcs):
+        return False
+    if svcs != sorted(svcs):
+        return False
+    ra = data.get('revoked_at')
+    if ra is not None and not isinstance(ra, int):
         return False
     return True
 
@@ -139,10 +180,11 @@ def verify_live_delegated_agent_authority(
     """
     Live delegated binding check against Identity (not revocation-cache alone).
 
-    **200** with ``authorized: true`` and JSON echo of ``agent_id``, ``company_id``,
-    ``global_company_id``, ``grant_version``, and ``company_binding_version`` matching the request
-    (and ``revoked`` / ``paused`` false). Any mismatch, **403** / **404** / malformed body, or
-    transport error → deny (fail closed).
+    **200** responses use a **fixed 15-key** JSON object (see identity ``_delegated_authority_fixed_payload``).
+    The gateway accepts only when ``authorized`` and ``active`` are **true**, ``revoked`` / ``paused`` /
+    ``allow_destructive`` are **false**, binding fields match the request, ``services_allowed`` is a
+    sorted list of strings, and there are **no** extra keys. Mismatch can still be **HTTP 200** with
+    ``authorized: false``; the gateway treats that as deny. Transport errors and non-200 → deny.
     """
     origin = _identity_origin()
     if not origin:

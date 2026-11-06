@@ -29,9 +29,11 @@ For **global-delegated** regional tokens (full `global_company_id` + `grant_vers
 
 - **URL:** `POST /api/v1/mcp/internal/mcp-agent-delegated-authority` (spellings like `mcp-delegated-agent-authority` are **not** supported).
 - **Authorization:** `Bearer` RS256 assertion with **`aud`:** `shellui-mcp-agent-delegated-authority`, **`scope`:** `mcp.agent.delegated.authority.read`, **`target`:** Identity issuer (same pattern as other internal MCP routes).
-- **JSON body:** `agent_id` (uuid string), `company_id` (positive int), `global_company_id` (uuid string), `grant_version`, `company_binding_version` (non-negative JSON integers).
+- **JSON body (exactly five keys):** `agent_id` (uuid string), `company_id` (positive int), `global_company_id` (uuid string), `grant_version`, `company_binding_version` (non-negative JSON integers). Unknown keys → **400** from Identity.
 
-**200** with **`authorized`: true** requires strict **`revoked`: false** and **`paused`: false**, and the JSON must echo **`agent_id`**, **`company_id`**, **`global_agent_id`** (UUID string), **`global_company_id`**, **`grant_version`**, and **`company_binding_version`** as non‑string integers/UUIDs matching the request/binding—otherwise the gateway treats the response as invalid and fails closed (same as **403** / **404** / transport errors).
+**200** responses use a **fixed 15-key** JSON object (Identity `d7fe351`+ `_delegated_authority_fixed_payload`): **`authorized`**, **`active`**, **`revoked`**, **`paused`**, **`agent_id`**, **`company_id`**, **`global_agent_id`**, **`global_company_id`**, **`grant_version`**, **`company_binding_version`**, **`access_mode`**, **`read_level`**, **`allow_destructive`**, **`services_allowed`**, **`revoked_at`**. Extra keys → the gateway rejects the body.
+
+To count as **allow** here, Identity must return **`authorized`: true**, **`active`: true**, **`revoked`** / **`paused`** / **`allow_destructive`** each **false**, **`services_allowed`** a **sorted** list of strings (narrow list, not a global catch-all), binding fields matching the request, and well-typed **`access_mode`** / **`read_level`**. **`200`** with **`authorized`: false** (and typically **`active`: false**) is a valid **deny** from Identity—treated like non-200. Non-**200**, transport errors, or shape mismatch → fail closed (same as **403** / **404**).
 
 ## JSON-RPC examples
 

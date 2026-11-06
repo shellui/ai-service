@@ -38,20 +38,22 @@ export EMAIL_SERVICE_URL=http://host.docker.internal:9003/mcp
 
 Record the **exact SHAs or branch names** of identity, saas, storage, hosting, and email you used. **PR heads move**; re-check with `gh pr view <N> --repo shellui/<repo> --json headRefOid` before you pin a ref.
 
-**Open PR heads at last check (replace with your own `gh` output):**
+**Open PR heads at last check (re-run `gh pr view <N> --repo shellui/<repo> --json headRefOid` before you rely on a pin):**
 
-| Repo | PR | headRefOid (example) |
-|------|-----|----------------------|
-| shellui/identity-service | #135 | `d79d433278ac18695a6165448bf0b8cfe56c88a5` |
+| Repo | PR | headRefOid (last `gh` check in ai-service CI docs) |
+|------|-----|-----------------------------------------------------|
+| shellui/identity-service | #135 (delegated-authority payload) | `d7fe35128461d00c7dd2c5d270fe4d19e7d904a3` |
 | shellui/identity-service | #136 (`mcp-call-logs` allowlist) | `c05ea83082f484f01b147126e0f4e9e06382e375` |
-| shellui/saas-service | #34 | `a470938a76f453048acba61661847aa88466c318` |
-| shellui/storage-service | #59 | `cdd1c3a57d308c0bae7ea12f9618ed04f830c077` |
-| shellui/hosting-service | #78 | `cdd1c3a57d308c0bae7ea12f9618ed04f830c077` |
+| shellui/storage-service | #59 | `6db93f833fa1f0f747a686ede9c1c4e974301fea` |
+| shellui/hosting-service | #78 | `71403d9c3cd6ffa3a0ee6d561662070ad31e0581` |
 | shellui/email-service | #46 | `17c900d07938f5fbd15a0241ba6e58d8a704c9d0` |
+| saas-service (org private / not in public `gh` list) | #34 | Set `SAAS_SERVICE_REF` to the **current** PR head (maintainer-cited example: `1ca91a…` full SHA from your `gh pr view`) |
 
-**Storage PR #59 head you named:** `c2cb6ef05f5b5f697d15f849167c16c009885072` (replace the table cell if `gh pr view 59` shows a newer `headRefOid`).
+The **Tests** job checks out `shellui/saas-service` with `continue-on-error: true` because that repository may be unreadable from a token with only public-repo scope; schema audit then omits SaaS unless the checkout succeeds.
 
-CI **MCP client conformance** still uses empty downstream URLs and the SaaS mock unless you change the workflow; `IDENTITY_SERVICE_REF` (and sibling refs for the **Tests** job schema audit) stay the way to pin identity in GitHub Actions. For **`POST .../mcp-call-logs`** parity, run identity at **#136** (or merge) locally while you exercise tools; **#135** remains authoritative for delegated authority until its ownership fix lands.
+CI **MCP client conformance** still uses empty downstream URLs and the SaaS mock unless you change the workflow; `IDENTITY_SERVICE_REF` (and sibling refs for the **Tests** job schema audit) stay the way to pin identity in GitHub Actions. For **`POST .../mcp-call-logs`** parity, run identity at **#136** (or merge) locally while you exercise tools; **#135** head above is authoritative for the delegated-authority **200** JSON shape (`active`, **`services_allowed`**, **`allow_destructive`**, fixed key set).
+
+**Live HTTP proof (human OAuth, narrowed approval, masked activity)** is out of scope for default CI and was not run in this agent environment: terms/sign-up stay on the human SaaS shell; do not add one-off DB inserts or auto-approvals beyond sanctioned dev seeds.
 
 ## What the clients run
 

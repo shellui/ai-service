@@ -107,26 +107,27 @@ class McpIdentitySigningTests(SimpleTestCase):
         self.assertEqual(body['operation_result'], 'unavailable')
         self.assertEqual(body['path'], '/api/r')
 
-    def _delegated_ok_json(
-        self,
-        *,
-        agent_id='11111111-1111-4111-8111-111111111111',
-        company_id=10,
-        global_company_id='22222222-2222-4222-8222-222222222222',
-        grant_version=1,
-        company_binding_version=2,
-    ):
-        return {
+    def _delegated_ok_json(self, **overrides):
+        """Minimal valid **200** body matching identity ``d7fe351`` ``_delegated_authority_fixed_payload`` (15 keys)."""
+        base = {
             'authorized': True,
+            'active': True,
             'revoked': False,
             'paused': False,
-            'agent_id': agent_id,
-            'company_id': company_id,
+            'agent_id': '11111111-1111-4111-8111-111111111111',
+            'company_id': 10,
             'global_agent_id': '33333333-3333-4333-8333-333333333333',
-            'global_company_id': global_company_id,
-            'grant_version': grant_version,
-            'company_binding_version': company_binding_version,
+            'global_company_id': '22222222-2222-4222-8222-222222222222',
+            'grant_version': 1,
+            'company_binding_version': 2,
+            'access_mode': 'read',
+            'read_level': 'full',
+            'allow_destructive': False,
+            'services_allowed': ['ai', 'storage'],
+            'revoked_at': None,
         }
+        base.update(overrides)
+        return base
 
     def test_delegated_authority_internal_assertion_shape(self):
         with patch('apps.connector.mcp_identity.requests.post') as post:
@@ -151,7 +152,11 @@ class McpIdentitySigningTests(SimpleTestCase):
 
     def test_delegated_authority_rejects_global_company_echo_mismatch(self):
         with patch('apps.connector.mcp_identity.requests.post') as post:
-            bad = self._delegated_ok_json(global_company_id='33333333-3333-4333-8333-333333333333')
+            bad = self._delegated_ok_json(
+                authorized=False,
+                active=False,
+                global_company_id='33333333-3333-4333-8333-333333333333',
+            )
             post.return_value = MagicMock(status_code=200, json=lambda: bad)
             ok = mcp_identity.verify_live_delegated_agent_authority(
                 agent_id='11111111-1111-4111-8111-111111111111',
@@ -164,8 +169,7 @@ class McpIdentitySigningTests(SimpleTestCase):
 
     def test_delegated_authority_rejects_string_grant_version_in_json(self):
         with patch('apps.connector.mcp_identity.requests.post') as post:
-            bad = self._delegated_ok_json()
-            bad['grant_version'] = '1'
+            bad = self._delegated_ok_json(grant_version='1')
             post.return_value = MagicMock(status_code=200, json=lambda: bad)
             ok = mcp_identity.verify_live_delegated_agent_authority(
                 agent_id='11111111-1111-4111-8111-111111111111',
@@ -176,10 +180,10 @@ class McpIdentitySigningTests(SimpleTestCase):
             )
         self.assertFalse(ok)
 
-    def test_delegated_authority_requires_global_agent_id_echo(self):
+    def test_delegated_authority_requires_exactly_15_keys(self):
         with patch('apps.connector.mcp_identity.requests.post') as post:
             bad = self._delegated_ok_json()
-            del bad['global_agent_id']
+            bad['extra'] = 'nope'
             post.return_value = MagicMock(status_code=200, json=lambda: bad)
             ok = mcp_identity.verify_live_delegated_agent_authority(
                 agent_id='11111111-1111-4111-8111-111111111111',
