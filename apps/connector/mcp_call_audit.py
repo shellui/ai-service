@@ -39,6 +39,8 @@ def outcome_from_audit(*, log_result: str | None, status: int | None, is_error: 
     lr = str(log_result or '').strip().lower()
     if lr in {'client_session_allowed'}:
         return 'session_used'
+    if lr in {'identity_approved'}:
+        return 'allowed'
     if lr in {'approved', 'client_allowed', 'success'}:
         return 'allowed'
     if lr in {'pending'}:
@@ -48,6 +50,7 @@ def outcome_from_audit(*, log_result: str | None, status: int | None, is_error: 
     if lr in {'expired'}:
         return 'failed'
     code = int(status or 0)
+    # MCP JSON-RPC can return HTTP 200 with isError true; classify as failed, not allowed.
     if lr == 'error' or is_error is True:
         return 'failed'
     if 200 <= code < 400 and is_error is not True:

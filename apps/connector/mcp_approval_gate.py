@@ -31,6 +31,8 @@ def patched_decide_write(**kwargs: Any) -> WriteGateDecision:
 
 from apps.connector import mcp_approval_copy as copy
 from apps.connector import mcp_approvals as approvals
+from apps.connector.mcp_approvals import DecideResult
+
 from apps.connector.mcp_call_audit import build_call_audit_log
 from apps.connector.mcp_company_label import resolve_company_label
 from apps.connector.mcp_identity import agent_is_revoked
@@ -49,6 +51,15 @@ class GateOutcome:
 
 def access_mode_from_claims(agent_claims: dict[str, Any]) -> str:
     return str(agent_claims.get('mcp_access') or 'ask')
+
+
+def _log_result_from_decide(decided: DecideResult, *, fallback: str) -> str:
+    """Map Identity decide response to stable gateway log tokens (activity outcomes)."""
+    ap = str(decided.approval_status or '').strip().lower()
+    if ap == 'approved':
+        return 'identity_approved'
+    aud = str(decided.audit_status or '').strip().lower()
+    return aud or fallback
 
 
 def _arguments_hash(arguments: dict[str, Any]) -> str:
@@ -383,7 +394,7 @@ def enforce_tool_call_approval(
                 ),
             )
         if approvals.approval_consume(client_approval_id, approval_payload):
-            log_result = decided.audit_status or 'client_session_allowed'
+            log_result = _log_result_from_decide(decided, fallback='client_session_allowed')
             return GateOutcome(
                 proceed=True,
                 log=_log_entry(
@@ -471,7 +482,7 @@ def enforce_tool_call_approval(
     if client_decision == 'allow' and client_approval_id:
         decided = _decide(client_approval_id, 'allow')
         if decided.ok and approvals.approval_consume(client_approval_id, approval_payload):
-            log_result = decided.audit_status or 'client_allowed'
+            log_result = _log_result_from_decide(decided, fallback='client_allowed')
             return GateOutcome(
                 proceed=True,
                 log=_log_entry(

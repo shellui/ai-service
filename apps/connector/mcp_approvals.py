@@ -224,20 +224,9 @@ def create_approval_request(payload: dict[str, Any], *, is_destructive: bool = F
     if not origin or binding is None:
         return None
     url = f'{origin.rstrip("/")}{APPROVAL_REQUESTS_PATH}'
-    body: dict[str, Any] = {
-        'arguments': payload.get('arguments') or {},
-        'is_destructive': bool(is_destructive),
-    }
-    summary = str(payload.get('short_action_summary') or '').strip()
-    if summary:
-        body['short_action_summary'] = summary[:500]
-    method = str(payload.get('method') or '').strip()
-    path = str(payload.get('path') or '').strip()
-    if method and path:
-        body['method'] = method
-        body['path'] = path
-    elif path:
-        body['path'] = path
+    # Binding (agent, company, service, action, arguments_hash) is only in the signed assertion header.
+    # Never forward tool arguments, paths, methods, or client summaries in the JSON body.
+    body: dict[str, Any] = {'is_destructive': bool(is_destructive)}
     ctx = _assertion_context(payload)
     if ctx.blocked_assertion:
         logger.warning('MCP approval create skipped: blocked assertion (setup or global binding)')

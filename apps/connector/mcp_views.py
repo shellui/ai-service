@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import contextvars
 import json
+import logging
 
+import requests
 from django.conf import settings
 from django.http import HttpRequest, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -44,6 +46,9 @@ from apps.connector.mcp_tenant import apply_tenant_to_arguments, tenant_binding_
 from apps.connector.mcp_tool_presentation import apply_gateway_tool_presentation
 from apps.connector.services import configured_service_urls, downstream_resource_for
 from shellui_django.mcp.routing import McpToolArgumentError
+from shellui_django.mcp.server import McpServer
+
+logger = logging.getLogger(__name__)
 
 _TOOLS_LIST_CACHE_PREFIX = 'mcp_gateway:tools:'
 
@@ -175,23 +180,19 @@ class PrefixingMcpServer(AggregatingMcpServer):
         )
 
     def _meta_for_export_tool(self, export_name: str) -> dict:
-        local_name = self._local_tool_export_name(export_name)
-        if local_name is not None:
-            for tool in tools_from_schema(self.schema_provider()):
-                if str(tool.get('name') or '') == local_name:
-                    return tool.get('_meta') if isinstance(tool.get('_meta'), dict) else {}
+        """OpenAPI `_meta` for the export plus optional tenant binding (for argument injection)."""
+        tool_row = self._cached_export_tool(export_name)
+        meta = dict(tool_row.get('_meta') or {}) if isinstance(tool_row, dict) else {}
         route = self._lookup_route(export_name)
         if isinstance(route, dict) and isinstance(route.get('tenant'), dict):
             tenant = route['tenant']
-            meta: dict = {}
             if tenant.get('path_params'):
                 meta['tenant_path_params'] = tenant['path_params']
             if tenant.get('query'):
                 meta['tenant_query_fields'] = tenant['query']
             if tenant.get('body'):
                 meta['tenant_body_fields'] = tenant['body']
-            return meta
-        return {}
+        return meta
 
     def _inject_tool_call_arguments(
         self,
@@ -201,6 +202,56 @@ class PrefixingMcpServer(AggregatingMcpServer):
     ) -> dict:
         meta = self._meta_for_export_tool(export_name)
         return apply_tenant_to_arguments(arguments, agent_claims, meta)
+
+    def _trusted_tool_operation(
+        self,
+        export_name: str,
+        *,
+        service_id: str,
+        route: dict | None = None,
+    ) -> tuple[dict | None, str | None]:
+        """
+        Return (tool_row, error_detail) for approval gate and audit.
+
+        Uses only the gateway's registered tool catalog and route cache—never client path/method
+        from the tools/call arguments.
+        """
+        tool_row = self._cached_export_tool(export_name)
+        if not isinstance(tool_row, dict):
+            return None, 'unknown_tool'
+        meta = tool_row.get('_meta') if isinstance(tool_row.get('_meta'), dict) else {}
+        method_raw = str(meta.get('method') or '').strip().upper()
+        path_tmpl = str(meta.get('path') or '').strip()
+        if not method_raw or not path_tmpl:
+            return None, 'malformed_tool'
+        if isinstance(route, dict):
+            rsid = str(route.get('service_id') or '')
+            if rsid and rsid != str(service_id):
+                return None, 'route_mismatch'
+            dns = str(route.get('downstream_name') or '').strip()
+            if dns and service_id != self._gateway.local_service_id:
+                mcp_url = self._gateway.get_service_urls().get(service_id)
+                raw_list = self._cache().get(f'{_TOOLS_LIST_CACHE_PREFIX}{mcp_url}') if mcp_url else None
+                if not isinstance(raw_list, list):
+                    return None, 'route_mismatch'
+                enriched = [normalize_mcp_tool(t) if isinstance(t, dict) else t for t in raw_list]
+                expected = {str(nm) for nm, _exp, _rt in iter_gateway_remote_exports(enriched, service_id=service_id)}
+                if export_name not in expected:
+                    return None, 'route_mismatch'
+        return tool_row, None
+
+    def _tool_call_error_response(self, req_id, *, detail: str) -> JsonResponse:
+        """JSON-RPC tool error: HTTP 200, isError true, allowlisted error_code only."""
+        return JsonResponse(
+            McpServer._result(
+                req_id,
+                {
+                    'content': [{'type': 'text', 'text': 'Tool call rejected.'}],
+                    'isError': True,
+                    '_meta': {'error_code': 'mcp_tool_error', 'error_detail': detail},
+                },
+            )
+        )
 
     def _prepare_tool_call_params(self, params: dict | None, agent_claims: dict, req_id) -> tuple[dict, JsonResponse | None]:
         call_params = dict(params or {})
@@ -248,6 +299,51 @@ class PrefixingMcpServer(AggregatingMcpServer):
                 route['downstream_name'],
                 tenant=route.get('tenant'),
             )
+
+    def _fetch_remote_tools_list(self, *, mcp_url: str, bearer_token: str) -> list[dict] | None:
+        """
+        Fetch downstream tools/list and cache **normalized** tools (preserve `_meta` for routing/audit).
+
+        Parent ``public_mcp_tools`` strips `_meta` before cache; we need full registry metadata.
+        """
+        cache_key = f'{_TOOLS_LIST_CACHE_PREFIX}{mcp_url}'
+        cached = self._cache().get(cache_key)
+        if isinstance(cached, list) and cached:
+            first = cached[0]
+            if isinstance(first, dict) and isinstance(first.get('_meta'), dict):
+                return cached
+            # Legacy cache entries without `_meta`: refetch
+            self._cache().delete(cache_key)
+        payload = {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list', 'params': {}}
+        try:
+            response = requests.post(
+                mcp_url,
+                json=payload,
+                headers={
+                    'Authorization': f'Bearer {bearer_token}',
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+                timeout=self._gateway.downstream_timeout_seconds,
+            )
+        except (requests.RequestException, OSError) as exc:
+            logger.warning('MCP gateway tools/list transport error url=%s err=%s', mcp_url, type(exc).__name__)
+            return None
+        if response.status_code >= 400:
+            logger.warning('MCP gateway tools/list HTTP %s url=%s', response.status_code, mcp_url)
+            return None
+        try:
+            body = response.json()
+        except ValueError:
+            logger.warning('MCP gateway tools/list invalid JSON url=%s', mcp_url)
+            return None
+        tools = (body.get('result') or {}).get('tools')
+        if not isinstance(tools, list):
+            logger.warning('MCP gateway tools/list missing tools url=%s', mcp_url)
+            return None
+        normalized = [normalize_mcp_tool(tool) if isinstance(tool, dict) else tool for tool in tools]
+        self._cache().set(cache_key, normalized, self._gateway.tools_cache_ttl_seconds)
+        return normalized
 
     def _ensure_routes_for_export(self, export_name: str, agent_claims: dict) -> None:
         if self._lookup_route(export_name) is not None:
@@ -345,11 +441,34 @@ class PrefixingMcpServer(AggregatingMcpServer):
         service_id: str,
         arguments: dict,
     ) -> JsonResponse | None:
-        tool = self._cached_export_tool(export_name)
-        meta = tool.get('_meta') if isinstance(tool, dict) else {}
-        meta = meta if isinstance(meta, dict) else {}
-        method = str((arguments or {}).get('method') or meta.get('method') or 'GET').upper()
-        path = str((arguments or {}).get('path') or meta.get('path') or f'/mcp (forward {service_id})')
+        route = self._lookup_route(export_name)
+        tool_row, err_detail = self._trusted_tool_operation(
+            export_name,
+            service_id=service_id,
+            route=route if isinstance(route, dict) else None,
+        )
+        if err_detail is not None or tool_row is None:
+            audit = build_call_audit_log(
+                agent_claims=agent_claims,
+                service_id=service_id,
+                export_name=export_name,
+                tool=None,
+                method='GET',
+                path='',
+                log_result='error',
+                status=200,
+                is_error=True,
+                error_code='mcp_tool_error',
+            )
+            audit['outcome'] = 'failed'
+            audit['_mcp_audit_ready'] = True
+            audit['duration_ms'] = 0
+            if self.on_call:
+                self.on_call(dict(audit))
+            return self._tool_call_error_response(req_id, detail=err_detail or 'unknown_tool')
+        meta = tool_row.get('_meta') if isinstance(tool_row.get('_meta'), dict) else {}
+        method = str(meta.get('method') or 'GET').strip().upper()
+        path = str(meta.get('path') or '').strip()
         outcome = enforce_tool_call_approval(
             request,
             req_id,
@@ -357,7 +476,7 @@ class PrefixingMcpServer(AggregatingMcpServer):
             agent_claims=agent_claims,
             export_name=export_name,
             service_id=service_id,
-            tool=tool if isinstance(tool, dict) else None,
+            tool=tool_row,
             method=method,
             path=path,
             arguments=arguments if isinstance(arguments, dict) else {},
@@ -414,13 +533,32 @@ class PrefixingMcpServer(AggregatingMcpServer):
                 is_error = bool(result.get('isError'))
         except (ValueError, TypeError, AttributeError):
             is_error = response.status_code >= 400
-        tool_row = self._cached_export_tool(tool_name)
-        m = 'POST'
-        pth = f"/mcp (forward {route['service_id']})"
-        if tool_row and isinstance(tool_row.get('_meta'), dict):
-            m = str(tool_row['_meta'].get('method') or m).upper()
-            if tool_row['_meta'].get('path'):
-                pth = str(tool_row['_meta'].get('path') or pth)
+        tool_row, err_detail = self._trusted_tool_operation(
+            tool_name,
+            service_id=str(route['service_id']),
+            route=route,
+        )
+        if err_detail is not None or tool_row is None:
+            audit = build_call_audit_log(
+                agent_claims=agent_claims,
+                service_id=str(route['service_id']),
+                export_name=tool_name,
+                tool=None,
+                method='GET',
+                path='',
+                log_result='error',
+                status=int(response.status_code),
+                is_error=True,
+                error_code='mcp_tool_error',
+            )
+            audit['outcome'] = 'failed'
+            audit['_mcp_audit_ready'] = True
+            audit['duration_ms'] = 0
+            self.on_call(audit)
+            return response
+        meta = tool_row.get('_meta') if isinstance(tool_row.get('_meta'), dict) else {}
+        m = str(meta.get('method') or 'GET').strip().upper()
+        pth = str(meta.get('path') or '').strip()
         audit = build_call_audit_log(
             agent_claims=agent_claims,
             service_id=str(route['service_id']),

@@ -99,6 +99,8 @@ class McpApprovalsCoreTests(TestCase):
         }
         mcp_approvals.create_approval_request(payload)
         post.assert_called_once()
+        self.assertEqual(post.call_args.kwargs.get('json'), {'is_destructive': False})
+        self.assertNotIn('arguments', post.call_args.kwargs.get('json') or {})
         claims = jwt.decode(
             post.call_args.kwargs['headers']['Authorization'].split(' ', 1)[1],
             _SIGNING.public_pem,
@@ -113,6 +115,16 @@ class McpApprovalsCoreTests(TestCase):
         self.assertEqual(claims.get('grant_version'), _GV)
         self.assertEqual(claims.get('company_binding_version'), _CBV)
         self.assertEqual(claims.get('global_company_id'), _GLOBAL_CO)
+
+    @patch('apps.connector.mcp_approvals.requests.post')
+    def test_create_approval_request_json_body_is_destructive_only(self, post):
+        post.return_value = MagicMock(status_code=200, json=lambda: {'id': '1', 'status': 'pending'})
+        payload = {**_BASE_PAYLOAD, '_agent_claims': {'iat': int(time.time()), 'exp': int(time.time()) + 3600}}
+        mcp_approvals.create_approval_request(payload, is_destructive=True)
+        post.assert_called_once()
+        body = post.call_args.kwargs.get('json') or {}
+        self.assertEqual(body, {'is_destructive': True})
+        self.assertNotIn('arguments', body)
 
     def test_identity_connection_id_pipe_hashes(self):
         raw = 'a|b'

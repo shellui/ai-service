@@ -17,6 +17,7 @@ ALLOWED_ERROR_CODES = frozenset(
         'denied',
         'expired',
         'out_of_sync',
+        'mcp_tool_error',
     },
 )
 

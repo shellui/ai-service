@@ -236,10 +236,10 @@ class McpGatewayTests(TestCase):
         self.assertNotIn('storage_list_buckets', names)
 
     @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='mcp-test-token-leak-check')
-    @patch('shellui_django.mcp.gateway.requests.post', side_effect=ConnectionError('down'))
+    @patch('apps.connector.mcp_views.requests.post', side_effect=ConnectionError('down'))
     def test_gateway_logs_never_include_bearer_token(self, _post, _mint, _rev_ok):
         token = _agent_token(secret=self.secret, issuer=self.issuer, scope='ai storage')
-        with self.assertLogs('shellui_django.mcp.gateway', level='WARNING') as logs:
+        with self.assertLogs('apps.connector.mcp_views', level='WARNING') as logs:
             self.client.post(
                 '/c/10/mcp',
                 data=_rpc('tools/call', name='storage_list_buckets'),
@@ -335,10 +335,10 @@ class McpGatewayTests(TestCase):
         self.assertEqual(list_response.status_code, 200, list_response.content)
         names = {t['name'] for t in list_response.json()['result']['tools']}
         self.assertIn('email_list_messages', names)
-        self.assertIn('email_get_event_log', names)
+        self.assertIn('email_get_action_event_log', names)
 
         cache.delete('mcp_gateway:route:email_list_messages')
-        cache.delete('mcp_gateway:route:email_get_event_log')
+        cache.delete('mcp_gateway:route:email_get_action_event_log')
 
         call_response = self.client.post(
             '/c/10/mcp',
@@ -349,12 +349,12 @@ class McpGatewayTests(TestCase):
         self.assertEqual(call_response.status_code, 200, call_response.content)
         self.assertEqual(forwarded['name'], 'api_v1_messages_list')
 
-        cache.delete('mcp_gateway:route:email_get_event_log')
+        cache.delete('mcp_gateway:route:email_get_action_event_log')
         cache.delete('mcp_gateway:tools:https://email.test/mcp')
 
         self.client.post(
             '/c/10/mcp',
-            data=_rpc('tools/call', name='email_get_event_log', arguments={}),
+            data=_rpc('tools/call', name='email_get_action_event_log', arguments={}),
             content_type='application/json',
             **self._auth(token),
         )

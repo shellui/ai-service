@@ -9,7 +9,10 @@ from datetime import timedelta
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
-from apps.connector.mcp_setup_context import approval_assertion_context_from_agent_claims
+from apps.connector.mcp_setup_context import (
+    approval_assertion_context_from_agent_claims,
+    parse_int_version_claim,
+)
 
 _GV = 1
 _CBV = 1
@@ -17,6 +20,12 @@ _GLOBAL_CO = '11111111-1111-4111-8111-111111111111'
 
 
 class McpSetupContextTests(TestCase):
+    def test_parse_int_version_claim_rejects_string_and_float(self):
+        self.assertIsNone(parse_int_version_claim('1'))
+        self.assertIsNone(parse_int_version_claim(1.0))
+        self.assertIsNone(parse_int_version_claim(True))
+        self.assertEqual(parse_int_version_claim(0), 0)
+
     def test_default_no_setup_claims(self):
         now = int(time.time())
         ctx = approval_assertion_context_from_agent_claims(

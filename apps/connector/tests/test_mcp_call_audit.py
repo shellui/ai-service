@@ -20,8 +20,18 @@ class McpCallAuditOutcomeTests(SimpleTestCase):
             'session_used',
         )
 
+    def test_maps_identity_approved_human_status_to_allowed(self):
+        self.assertEqual(
+            outcome_from_audit(log_result='identity_approved', status=200, is_error=False),
+            'allowed',
+        )
+
     def test_maps_error_status_to_failed(self):
         self.assertEqual(outcome_from_audit(log_result=None, status=502, is_error=None), 'failed')
+
+    def test_http200_with_is_error_maps_to_failed(self):
+        """MCP JSON-RPC often uses HTTP 200 with result.isError true."""
+        self.assertEqual(outcome_from_audit(log_result=None, status=200, is_error=True), 'failed')
 
     def test_outcomes_set(self):
         self.assertEqual(OUTCOMES, {'allowed', 'failed', 'denied', 'pending', 'session_used'})
@@ -40,6 +50,21 @@ class McpCallAuditOutcomeTests(SimpleTestCase):
             error_code='provider_error DROP TABLE;',
         )
         self.assertEqual(row.get('error_code'), 'internal_error')
+
+    def test_mcp_tool_error_allowlisted(self):
+        row = build_call_audit_log(
+            agent_claims={'agent_id': 'a', 'company_id': 1},
+            service_id='storage',
+            export_name='x',
+            tool=None,
+            method='GET',
+            path='',
+            log_result='error',
+            status=200,
+            is_error=True,
+            error_code='mcp_tool_error',
+        )
+        self.assertEqual(row.get('error_code'), 'mcp_tool_error')
 
     def test_operation_title_neutral_when_broker_hint(self):
         tool = {'_meta': {'operation_summary': 'Ask broker queue', 'path': '/a'}, 'title': 'Name'}

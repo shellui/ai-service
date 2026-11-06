@@ -35,7 +35,7 @@ def _bool_claim(raw: object) -> bool:
 
 
 def parse_int_version_claim(raw: object) -> int | None:
-    """Strict nonnegative int from JWT only (commons #14: ``None`` vs ``0``; no string claims)."""
+    """Strict nonnegative int from JWT or JSON only: real ``int``, not bool/str/float."""
     if raw is None:
         return None
     if isinstance(raw, bool):

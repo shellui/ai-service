@@ -6,6 +6,8 @@ title: MCP gateway handbook
 
 This document describes how the **ai-service MCP gateway** behaves in this repository: URLs, tokens, approvals, session grants, tool naming, and what gets sent to Identity for activity. It is the operational reference for gateway code in `apps/connector/mcp_*.py`, not a status log for other projects.
 
+Longer backend-oriented examples and request field lists: [mcp-handbook.md](./mcp-handbook.md).
+
 ## Public URL and company scope
 
 - **Per-company MCP endpoint:** `POST /c/<company_id>/mcp` where `company_id` is the **numeric regional** company id (integer in the path and JWT `company_id` claim).
