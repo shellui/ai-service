@@ -27,8 +27,9 @@ _BASE_PAYLOAD = {
     'arguments_hash': 'y' * 64,
 }
 
-_GV = 'gv-1'
-_CBV = 'cbv-1'
+_GV = 1
+_CBV = 1
+_GLOBAL_CO = '11111111-1111-4111-8111-111111111111'
 
 
 def _claims_base(now: int) -> dict:
@@ -37,14 +38,15 @@ def _claims_base(now: int) -> dict:
         'exp': now + 3600,
         'grant_version': _GV,
         'company_binding_version': _CBV,
+        'global_company_id': _GLOBAL_CO,
     }
 
 
 def _session_ok_response(*, expires_at: str | None, setup_expires_at: str | None = None):
     body: dict = {
         'session_allowed': True,
-        'grant_version': _GV,
-        'company_binding_version': _CBV,
+        'grant_version': int(_GV),
+        'company_binding_version': int(_CBV),
     }
     if expires_at is not None:
         body['expires_at'] = expires_at
@@ -86,6 +88,7 @@ class McpApprovalsCoreTests(TestCase):
                 'mcp_session_ttl_seconds': 600,
                 'grant_version': _GV,
                 'company_binding_version': _CBV,
+                'global_company_id': _GLOBAL_CO,
                 'setup_expires_at': setup_exp.isoformat(),
                 'iat': now,
                 'exp': now + 900,
@@ -106,6 +109,7 @@ class McpApprovalsCoreTests(TestCase):
         self.assertEqual(claims['exp'] - claims['iat'], 600)
         self.assertEqual(claims.get('grant_version'), _GV)
         self.assertEqual(claims.get('company_binding_version'), _CBV)
+        self.assertEqual(claims.get('global_company_id'), _GLOBAL_CO)
 
     @patch('apps.connector.mcp_approvals.requests.post')
     def test_session_check_called_every_time_no_cache(self, post):
@@ -126,8 +130,9 @@ class McpApprovalsCoreTests(TestCase):
         self.assertEqual(post.call_count, 2)
         for call in post.call_args_list:
             jb = call.kwargs.get('json') or {}
-            self.assertEqual(jb.get('grant_version'), _GV)
-            self.assertEqual(jb.get('company_binding_version'), _CBV)
+            self.assertEqual(jb.get('grant_version'), int(_GV))
+            self.assertEqual(jb.get('company_binding_version'), int(_CBV))
+            self.assertEqual(jb.get('global_company_id'), _GLOBAL_CO)
             self.assertEqual(jb.get('arguments_hash'), 'z' * 64)
 
     @patch('apps.connector.mcp_approvals.requests.post')
@@ -187,7 +192,7 @@ class McpApprovalsCoreTests(TestCase):
         def _json():
             return {
                 'session_allowed': True,
-                'grant_version': 'other',
+                'grant_version': 99999,
                 'company_binding_version': _CBV,
                 'expires_at': fut,
             }
@@ -217,8 +222,8 @@ class McpApprovalsCoreTests(TestCase):
             status_code=200,
             json=lambda b=fut: {
                 'session_allowed': True,
-                'grant_version': '0',
-                'company_binding_version': '0',
+                'grant_version': 0,
+                'company_binding_version': 0,
                 'expires_at': b,
             },
         )
@@ -230,12 +235,14 @@ class McpApprovalsCoreTests(TestCase):
                 'exp': now + 3600,
                 'grant_version': 0,
                 'company_binding_version': 0,
+                'global_company_id': _GLOBAL_CO,
             },
         }
         self.assertTrue(mcp_approvals.check_session_grant(p, connection_id='cz', is_destructive=False))
         jb = post.call_args.kwargs.get('json') or {}
-        self.assertEqual(jb.get('grant_version'), '0')
-        self.assertEqual(jb.get('company_binding_version'), '0')
+        self.assertEqual(jb.get('grant_version'), 0)
+        self.assertEqual(jb.get('company_binding_version'), 0)
+        self.assertEqual(jb.get('global_company_id'), _GLOBAL_CO)
 
     @patch('apps.connector.mcp_approvals.requests.post')
     def test_personal_omits_version_keys_when_absent_on_token(self, post):
@@ -275,7 +282,7 @@ class McpApprovalsCoreTests(TestCase):
         post.assert_not_called()
 
     @patch('apps.connector.mcp_approvals.requests.post')
-    def test_assertion_jwt_includes_string_zero_versions(self, post):
+    def test_assertion_jwt_includes_integer_zero_versions(self, post):
         post.return_value = MagicMock(status_code=200, json=lambda: {'id': '1', 'status': 'pending'})
         now = int(time.time())
         payload = {
@@ -288,7 +295,8 @@ class McpApprovalsCoreTests(TestCase):
                 'iat': now,
                 'exp': now + 3600,
                 'grant_version': 0,
-                'company_binding_version': '0',
+                'company_binding_version': 0,
+                'global_company_id': _GLOBAL_CO,
             },
         }
         mcp_approvals.create_approval_request(payload)
@@ -302,8 +310,9 @@ class McpApprovalsCoreTests(TestCase):
             issuer='https://ai.test',
             options={'verify_aud': True},
         )
-        self.assertEqual(claims.get('grant_version'), '0')
-        self.assertEqual(claims.get('company_binding_version'), '0')
+        self.assertEqual(claims.get('grant_version'), 0)
+        self.assertEqual(claims.get('company_binding_version'), 0)
+        self.assertEqual(claims.get('global_company_id'), _GLOBAL_CO)
 
     @patch('apps.connector.mcp_approvals.requests.post')
     def test_create_skips_when_delegated_setup_claim_invalid(self, post):
@@ -322,12 +331,48 @@ class McpApprovalsCoreTests(TestCase):
                 'mcp_session_ttl_seconds': 600,
                 'grant_version': _GV,
                 'company_binding_version': _CBV,
+                'global_company_id': _GLOBAL_CO,
                 'setup_expires_at': setup_exp.isoformat(),
                 'iat': now - 3600,
                 'exp': now + 30,
             },
         }
         self.assertIsNone(mcp_approvals.create_approval_request(payload))
+        post.assert_not_called()
+
+    @patch('apps.connector.mcp_approvals.requests.post')
+    def test_delegated_missing_global_company_id_rejected(self, post):
+        fut = (timezone.now() + timedelta(seconds=30)).isoformat()
+        post.return_value = _session_ok_response(expires_at=fut)
+        now = int(time.time())
+        p = {
+            **_BASE_PAYLOAD,
+            '_agent_claims': {
+                'iat': now,
+                'exp': now + 3600,
+                'grant_version': _GV,
+                'company_binding_version': _CBV,
+            },
+        }
+        self.assertFalse(mcp_approvals.check_session_grant(p, connection_id='c-gc', is_destructive=False))
+        post.assert_not_called()
+
+    @patch('apps.connector.mcp_approvals.requests.post')
+    def test_delegated_string_grant_version_rejected(self, post):
+        fut = (timezone.now() + timedelta(seconds=30)).isoformat()
+        post.return_value = _session_ok_response(expires_at=fut)
+        now = int(time.time())
+        p = {
+            **_BASE_PAYLOAD,
+            '_agent_claims': {
+                'iat': now,
+                'exp': now + 3600,
+                'grant_version': 'not-an-int',
+                'company_binding_version': _CBV,
+                'global_company_id': _GLOBAL_CO,
+            },
+        }
+        self.assertFalse(mcp_approvals.check_session_grant(p, connection_id='c-sv', is_destructive=False))
         post.assert_not_called()
 
     @patch('apps.connector.mcp_approvals.requests.post')
@@ -372,8 +417,8 @@ class McpSessionGrantSetupFlowTests(TestCase):
             status_code=200,
             json=lambda: {
                 'session_allowed': True,
-                'grant_version': _GV,
-                'company_binding_version': _CBV,
+                'grant_version': int(_GV),
+                'company_binding_version': int(_CBV),
                 'expires_at': fut,
             },
         )
@@ -388,6 +433,7 @@ class McpSessionGrantSetupFlowTests(TestCase):
                 'mcp_session_ttl_seconds': 600,
                 'grant_version': _GV,
                 'company_binding_version': _CBV,
+                'global_company_id': _GLOBAL_CO,
                 'setup_expires_at': setup_exp.isoformat(),
                 'iat': now,
                 'exp': now + 900,
@@ -412,6 +458,7 @@ class McpSessionGrantSetupFlowTests(TestCase):
                 'mcp_session_ttl_seconds': 600,
                 'grant_version': _GV,
                 'company_binding_version': _CBV,
+                'global_company_id': _GLOBAL_CO,
                 'setup_expires_at': setup_claim.isoformat(),
                 'iat': now,
                 'exp': now + 900,

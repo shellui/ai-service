@@ -11,8 +11,9 @@ from django.utils import timezone
 
 from apps.connector.mcp_setup_context import approval_assertion_context_from_agent_claims
 
-_GV = 'grant-v1'
-_CBV = 'bind-v1'
+_GV = 1
+_CBV = 1
+_GLOBAL_CO = '11111111-1111-4111-8111-111111111111'
 
 
 class McpSetupContextTests(TestCase):
@@ -43,6 +44,7 @@ class McpSetupContextTests(TestCase):
                 'exp': now + 900,
                 'grant_version': _GV,
                 'company_binding_version': _CBV,
+                'global_company_id': _GLOBAL_CO,
                 'setup_expires_at': setup_exp.isoformat(),
             },
         )
@@ -65,6 +67,7 @@ class McpSetupContextTests(TestCase):
                 'mcp_session_ttl_seconds': 600,
                 'grant_version': _GV,
                 'company_binding_version': _CBV,
+                'global_company_id': _GLOBAL_CO,
                 'setup_expires_at': (timezone.now() + timedelta(seconds=650)).isoformat(),
                 'iat': now - 800,
                 'exp': now + 120,
@@ -72,6 +75,7 @@ class McpSetupContextTests(TestCase):
         )
         self.assertEqual(ctx.lifetime_seconds, 60)
         self.assertFalse(ctx.setup_flow)
+        self.assertTrue(ctx.blocked_assertion)
 
     @override_settings(
         MCP_APPROVAL_SETUP_SESSION_TTL_MIN_SECONDS=600,
@@ -88,6 +92,7 @@ class McpSetupContextTests(TestCase):
                 'mcp_session_ttl_seconds': 600,
                 'grant_version': _GV,
                 'company_binding_version': _CBV,
+                'global_company_id': _GLOBAL_CO,
                 'setup_expires_at': (timezone.now() + timedelta(seconds=650)).isoformat(),
                 'iat': now - 3600,
                 'exp': now + 30,
@@ -95,6 +100,7 @@ class McpSetupContextTests(TestCase):
         )
         self.assertEqual(ctx.lifetime_seconds, 60)
         self.assertFalse(ctx.setup_flow)
+        self.assertTrue(ctx.blocked_assertion)
 
     @override_settings(
         MCP_APPROVAL_SETUP_SESSION_TTL_MIN_SECONDS=600,
@@ -111,6 +117,7 @@ class McpSetupContextTests(TestCase):
                 'mcp_session_ttl_seconds': 120,
                 'grant_version': _GV,
                 'company_binding_version': _CBV,
+                'global_company_id': _GLOBAL_CO,
                 'setup_expires_at': (timezone.now() + timedelta(seconds=650)).isoformat(),
                 'iat': now,
                 'exp': now + 900,
@@ -118,6 +125,7 @@ class McpSetupContextTests(TestCase):
         )
         self.assertEqual(ctx.lifetime_seconds, 60)
         self.assertFalse(ctx.setup_flow)
+        self.assertTrue(ctx.blocked_assertion)
 
     @override_settings(
         MCP_APPROVAL_SETUP_SESSION_TTL_MIN_SECONDS=600,
@@ -134,12 +142,14 @@ class McpSetupContextTests(TestCase):
                 'mcp_session_ttl_seconds': 600,
                 'grant_version': _GV,
                 'company_binding_version': _CBV,
+                'global_company_id': _GLOBAL_CO,
                 'setup_expires_at': (timezone.now() + timedelta(seconds=650)).isoformat(),
                 'iat': now,
                 'exp': now + 900,
             },
         )
         self.assertFalse(ctx.setup_flow)
+        self.assertTrue(ctx.blocked_assertion)
 
     @override_settings(
         MCP_APPROVAL_SETUP_SESSION_TTL_MIN_SECONDS=600,
@@ -160,6 +170,7 @@ class McpSetupContextTests(TestCase):
                 'exp': exp_wall,
                 'grant_version': _GV,
                 'company_binding_version': _CBV,
+                'global_company_id': _GLOBAL_CO,
                 'setup_expires_at': setup_exp.isoformat(),
             },
         )
@@ -183,6 +194,7 @@ class McpSetupContextTests(TestCase):
                 'exp': now + 900,
                 'grant_version': _GV,
                 'company_binding_version': _CBV,
+                'global_company_id': _GLOBAL_CO,
             },
         )
         self.assertFalse(ctx.setup_flow)
@@ -206,6 +218,7 @@ class McpSetupContextTests(TestCase):
                 'exp': now + 900,
                 'grant_version': _GV,
                 'company_binding_version': _CBV,
+                'global_company_id': _GLOBAL_CO,
                 'setup_expires_at': setup_exp.isoformat(),
             },
         )
@@ -215,7 +228,14 @@ class McpSetupContextTests(TestCase):
     def test_integer_zero_versions_preserved_in_fallback(self):
         now = int(time.time())
         ctx = approval_assertion_context_from_agent_claims(
-            {'setup_flow': False, 'iat': now, 'exp': now + 3600, 'grant_version': 0, 'company_binding_version': 0},
+            {
+                'setup_flow': False,
+                'iat': now,
+                'exp': now + 3600,
+                'grant_version': 0,
+                'company_binding_version': 0,
+                'global_company_id': _GLOBAL_CO,
+            },
         )
-        self.assertEqual(ctx.grant_version, '0')
-        self.assertEqual(ctx.company_binding_version, '0')
+        self.assertEqual(ctx.grant_version, 0)
+        self.assertEqual(ctx.company_binding_version, 0)

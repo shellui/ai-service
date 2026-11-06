@@ -14,7 +14,6 @@ ALLOWED_ERROR_CODES = frozenset(
         'timeout',
         'upstream_error',
         'internal_error',
-        'unknown',
         'denied',
         'expired',
         'out_of_sync',
@@ -48,4 +47,4 @@ def error_code_from_http(*, status: int, is_error: bool | None) -> str | None:
         return 'timeout'
     if 500 <= code < 600:
         return 'upstream_error' if code >= 502 else 'internal_error'
-    return 'unknown'
+    return 'internal_error'

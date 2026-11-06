@@ -8,7 +8,9 @@ issued), never from tool arguments.
 from __future__ import annotations
 
 import logging
+import re
 import time
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone as dt_timezone
 
@@ -19,6 +21,12 @@ from django.utils.dateparse import parse_datetime
 from apps.connector.mcp_company_id import strict_numeric_company_id
 
 logger = logging.getLogger(__name__)
+
+# Lowercase UUID string for delegated global binding (identity / commons #14).
+_GLOBAL_COMPANY_UUID_RE = re.compile(
+    r'^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+    re.I,
+)
 
 # Default shellui-django internal assertion window for ordinary approvals.
 _DEFAULT_APPROVAL_ASSERTION_LIFETIME = 60
@@ -33,27 +41,49 @@ def _bool_claim(raw: object) -> bool:
     return False
 
 
-def _truthy_setup_flow(raw: object) -> bool:
-    return _bool_claim(raw)
-
-
 def _is_personal_agent_claims(agent_claims: dict | None) -> bool:
-    """True when the regional token is a personal-agent token (identity personal flow)."""
+    """Personal regional agent: verified token carries ``personal_token_id`` (not inferred from HTTP)."""
     if not isinstance(agent_claims, dict):
         return False
     return bool(str(agent_claims.get('personal_token_id') or '').strip())
 
 
-def norm_version_claim(raw: object) -> str | None:
-    """Normalize grant/binding version for assertions and session-check (``0`` and ``'0'`` preserved)."""
+def parse_int_version_claim(raw: object) -> int | None:
+    """Canonical non-negative integer grant/binding version (``None`` vs ``0`` vs malformed). Reject bool, float, aliases."""
     if raw is None:
         return None
     if isinstance(raw, bool):
         return None
+    if isinstance(raw, float):
+        return None
     if isinstance(raw, int):
-        return str(raw)
-    s = str(raw).strip()
-    return s if s else None
+        return raw if raw >= 0 else None
+    if isinstance(raw, str):
+        s = raw.strip()
+        if not s:
+            return None
+        try:
+            v = int(s, 10)
+        except ValueError:
+            return None
+        return v if v >= 0 else None
+    return None
+
+
+def parse_global_company_id(raw: object) -> str | None:
+    """Delegated global company id: lowercase UUID string only (no legacy slug aliases)."""
+    if raw is None:
+        return None
+    s = str(raw).strip().lower()
+    if not s:
+        return None
+    if not _GLOBAL_COMPANY_UUID_RE.match(s):
+        return None
+    try:
+        u = uuid.UUID(s)
+    except ValueError:
+        return None
+    return str(u)
 
 
 def session_allow_ttl_bounds() -> tuple[int, int]:
@@ -89,10 +119,21 @@ class ApprovalAssertionContext:
     setup_flow: bool = False
     mcp_session_ttl_seconds: int | None = None
     setup_expires_at: timezone.datetime | None = None
-    grant_version: str | None = None
-    company_binding_version: str | None = None
+    grant_version: int | None = None
+    company_binding_version: int | None = None
+    global_company_id: str | None = None
     is_personal_agent: bool = False
     blocked_assertion: bool = False
+
+
+def _delegated_binding_incomplete(agent_claims: dict | None) -> bool:
+    """Delegated (non-personal) tokens require integer versions + global_company_id UUID."""
+    if not isinstance(agent_claims, dict) or _is_personal_agent_claims(agent_claims):
+        return False
+    gv = parse_int_version_claim(agent_claims.get('grant_version'))
+    cbv = parse_int_version_claim(agent_claims.get('company_binding_version'))
+    gcid = parse_global_company_id(agent_claims.get('global_company_id'))
+    return gv is None or cbv is None or gcid is None
 
 
 def _fallback_context(
@@ -100,17 +141,24 @@ def _fallback_context(
     *,
     setup_claim_rejected: bool = False,
 ) -> ApprovalAssertionContext:
-    gv: str | None = None
-    cbv: str | None = None
+    gv: int | None = None
+    cbv: int | None = None
+    gcid: str | None = None
     is_personal = _is_personal_agent_claims(agent_claims)
     if isinstance(agent_claims, dict):
-        gv = norm_version_claim(agent_claims.get('grant_version'))
-        cbv = norm_version_claim(agent_claims.get('company_binding_version'))
-    blocked = bool(setup_claim_rejected and not is_personal)
+        gv = parse_int_version_claim(agent_claims.get('grant_version'))
+        cbv = parse_int_version_claim(agent_claims.get('company_binding_version'))
+        gcid = parse_global_company_id(agent_claims.get('global_company_id'))
+    incomplete = _delegated_binding_incomplete(agent_claims)
+    blocked = bool(
+        (setup_claim_rejected and not is_personal)
+        or (incomplete and not is_personal),
+    )
     return ApprovalAssertionContext(
         lifetime_seconds=_DEFAULT_APPROVAL_ASSERTION_LIFETIME,
         grant_version=gv,
         company_binding_version=cbv,
+        global_company_id=gcid,
         is_personal_agent=is_personal,
         blocked_assertion=blocked,
     )
@@ -149,11 +197,11 @@ def approval_assertion_context_from_agent_claims(agent_claims: dict | None) -> A
 
     is_personal = _is_personal_agent_claims(agent_claims)
 
-    if not _truthy_setup_flow(agent_claims.get('setup_flow')):
+    if agent_claims.get('setup_flow') is not True:
         return _fallback_context(agent_claims)
 
     # Long setup session is only for the new-company delegation grant (identity #135 snapshot).
-    if not _bool_claim(agent_claims.get('mcp_new_company_grant')):
+    if agent_claims.get('mcp_new_company_grant') is not True:
         logger.info(
             'MCP setup assertion rejected (not a new-company grant): agent_id=%s',
             agent_claims.get('agent_id'),
@@ -168,11 +216,12 @@ def approval_assertion_context_from_agent_claims(agent_claims: dict | None) -> A
         )
         return _fallback_context(agent_claims, setup_claim_rejected=True)
 
-    gv = norm_version_claim(agent_claims.get('grant_version'))
-    cbv = norm_version_claim(agent_claims.get('company_binding_version'))
-    if not gv or not cbv:
+    gv = parse_int_version_claim(agent_claims.get('grant_version'))
+    cbv = parse_int_version_claim(agent_claims.get('company_binding_version'))
+    gcid = parse_global_company_id(agent_claims.get('global_company_id'))
+    if gv is None or cbv is None or gcid is None:
         logger.info(
-            'MCP setup assertion rejected (missing grant_version or company_binding_version): agent_id=%s',
+            'MCP setup assertion rejected (missing grant_version, company_binding_version, or global_company_id): agent_id=%s',
             agent_claims.get('agent_id'),
         )
         return _fallback_context(agent_claims, setup_claim_rejected=True)
@@ -278,6 +327,7 @@ def approval_assertion_context_from_agent_claims(agent_claims: dict | None) -> A
         setup_expires_at=setup_expires_at,
         grant_version=gv,
         company_binding_version=cbv,
+        global_company_id=gcid,
         is_personal_agent=is_personal,
         blocked_assertion=False,
     )

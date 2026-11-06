@@ -30,7 +30,8 @@ from apps.connector.mcp_identity import (
 from apps.connector.mcp_setup_context import (
     ApprovalAssertionContext,
     approval_assertion_context_from_agent_claims,
-    norm_version_claim,
+    parse_global_company_id,
+    parse_int_version_claim,
     session_allow_ttl_bounds,
 )
 
@@ -115,9 +116,11 @@ def _build_approval_assertion_jwt(*, binding: dict[str, Any], ctx: ApprovalAsser
         'jti': uuid.uuid4().hex,
     }
     if ctx.grant_version is not None:
-        claims['grant_version'] = str(ctx.grant_version)
+        claims['grant_version'] = int(ctx.grant_version)
     if ctx.company_binding_version is not None:
-        claims['company_binding_version'] = str(ctx.company_binding_version)
+        claims['company_binding_version'] = int(ctx.company_binding_version)
+    if ctx.global_company_id is not None:
+        claims['global_company_id'] = str(ctx.global_company_id)
     if ctx.setup_flow and ctx.mcp_session_ttl_seconds is not None:
         claims['setup_flow'] = True
         claims['mcp_session_ttl_seconds'] = int(ctx.mcp_session_ttl_seconds)
@@ -342,14 +345,18 @@ def _str_claim(agent_claims: dict[str, Any], key: str) -> str:
     return str(agent_claims.get(key) or '').strip()
 
 
-def _expected_versions_from_agent_claims(agent_claims: dict[str, Any]) -> tuple[str | None, str | None]:
-    return norm_version_claim(agent_claims.get('grant_version')), norm_version_claim(
+def _expected_versions_from_agent_claims(
+    agent_claims: dict[str, Any],
+) -> tuple[int | None, int | None]:
+    return parse_int_version_claim(agent_claims.get('grant_version')), parse_int_version_claim(
         agent_claims.get('company_binding_version'),
     )
 
 
-def _session_response_versions(data: dict[str, Any]) -> tuple[str | None, str | None]:
-    return norm_version_claim(data.get('grant_version')), norm_version_claim(data.get('company_binding_version'))
+def _session_response_versions(data: dict[str, Any]) -> tuple[int | None, int | None]:
+    return parse_int_version_claim(data.get('grant_version')), parse_int_version_claim(
+        data.get('company_binding_version'),
+    )
 
 
 def _parse_setup_expires_at_from_response(raw: object, *, wall_max_exp: int) -> timezone.datetime | None:
@@ -423,15 +430,16 @@ def check_session_grant(
         return False
     ag = _agent_claims_from_payload(payload)
     expected_gv, expected_cbv = _expected_versions_from_agent_claims(ag)
+    expected_gcid = parse_global_company_id(ag.get('global_company_id'))
     ctx = _assertion_context(payload)
     if ctx.blocked_assertion:
         return False
     personal = ctx.is_personal_agent
     if not personal:
-        if not expected_gv or not expected_cbv:
+        if expected_gv is None or expected_cbv is None or expected_gcid is None:
             return False
     else:
-        if bool(expected_gv) != bool(expected_cbv):
+        if (expected_gv is None) != (expected_cbv is None):
             return False
     try:
         wall_max_exp = int(ag['exp'])
@@ -457,9 +465,11 @@ def check_session_grant(
         'arguments_hash': arguments_hash,
     }
     if expected_gv is not None:
-        body['grant_version'] = expected_gv
+        body['grant_version'] = int(expected_gv)
     if expected_cbv is not None:
-        body['company_binding_version'] = expected_cbv
+        body['company_binding_version'] = int(expected_cbv)
+    if expected_gcid is not None:
+        body['global_company_id'] = str(expected_gcid)
     try:
         response = requests.post(url, json=body, headers=headers, timeout=5)
     except requests.RequestException:
