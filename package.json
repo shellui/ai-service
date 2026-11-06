@@ -3,7 +3,7 @@
   "private": true,
   "description": "Tailwind CSS build for storage-service landing templates",
   "scripts": {
-    "build:css": "tailwindcss -i ./assets/css/input.css -o ./static/css/site.css --minify && python3 -c \"from pathlib import Path; p=Path('static/css/site.css'); b=p.read_bytes(); p.write_bytes(b.rstrip(b'\\r\\n')+b'\\n')\"",
+    "build:css": "tailwindcss -i ./assets/css/input.css -o ./static/css/site.css --minify && node -e \"const fs=require('fs');const p='static/css/site.css';let b=fs.readFileSync(p);while(b.length&&(b[b.length-1]===0x0a||b[b.length-1]===0x0d))b=b.subarray(0,-1);fs.writeFileSync(p,Buffer.concat([b,Buffer.from('\\n')]))\"",
     "watch:css": "tailwindcss -i ./assets/css/input.css -o ./static/css/site.css --watch",
     "dev:css": "npm run watch:css"
   },
