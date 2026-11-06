@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import json
 import time
+from datetime import timedelta
 from unittest.mock import Mock, patch
 
 import jwt
 from django.core.cache import cache
 from django.test import Client, TestCase, override_settings
+from django.utils import timezone
 
 from apps.authapi.ai_service_jwks import (
     build_jwks_document,
@@ -333,6 +335,7 @@ class McpApprovalCopyTests(TestCase):
     )
     def test_elicitation_meta_setup_session_seconds(self):
         now = int(time.time())
+        setup_exp = timezone.now() + timedelta(seconds=650)
         meta = build_elicitation_meta(
             tool_name='storage_create_bucket',
             destructive=False,
@@ -343,6 +346,9 @@ class McpApprovalCopyTests(TestCase):
                 'company_id': 10,
                 'setup_flow': True,
                 'mcp_session_ttl_seconds': 600,
+                'grant_version': 'gv-setup',
+                'company_binding_version': 'cbv-setup',
+                'setup_expires_at': setup_exp.isoformat(),
                 'iat': now,
                 'exp': now + 900,
             },

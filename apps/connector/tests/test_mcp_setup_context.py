@@ -11,6 +11,9 @@ from django.utils import timezone
 
 from apps.connector.mcp_setup_context import approval_assertion_context_from_agent_claims
 
+_GV = 'grant-v1'
+_CBV = 'bind-v1'
+
 
 class McpSetupContextTests(TestCase):
     def test_default_no_setup_claims(self):
@@ -29,6 +32,7 @@ class McpSetupContextTests(TestCase):
     )
     def test_valid_setup_from_claims(self):
         now = int(time.time())
+        setup_exp = timezone.now() + timedelta(seconds=650)
         ctx = approval_assertion_context_from_agent_claims(
             {
                 'company_id': 10,
@@ -36,6 +40,9 @@ class McpSetupContextTests(TestCase):
                 'mcp_session_ttl_seconds': 600,
                 'iat': now,
                 'exp': now + 900,
+                'grant_version': _GV,
+                'company_binding_version': _CBV,
+                'setup_expires_at': setup_exp.isoformat(),
             },
         )
         self.assertTrue(ctx.setup_flow)
@@ -133,6 +140,8 @@ class McpSetupContextTests(TestCase):
                 'mcp_session_ttl_seconds': 600,
                 'iat': now,
                 'exp': exp_wall,
+                'grant_version': _GV,
+                'company_binding_version': _CBV,
                 'setup_expires_at': setup_exp.isoformat(),
             },
         )
@@ -154,6 +163,8 @@ class McpSetupContextTests(TestCase):
                 'mcp_session_ttl_seconds': 600,
                 'iat': now,
                 'exp': now + 900,
+                'grant_version': _GV,
+                'company_binding_version': _CBV,
             },
         )
         self.assertFalse(ctx.setup_flow)

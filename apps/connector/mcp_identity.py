@@ -316,7 +316,7 @@ def personal_agent_bearer_valid(claims: dict) -> bool:
 
 
 _OUTCOMES = frozenset({'allowed', 'failed', 'denied', 'pending', 'session_used'})
-_ACCESS_LEVELS = frozenset({'read', 'write', 'destructive'})
+_ACCESS_KINDS = frozenset({'read', 'write', 'destructive'})
 
 
 def forward_call_log(entry: dict) -> None:
@@ -331,8 +331,8 @@ def forward_call_log(entry: dict) -> None:
         return
     outcome_raw = str(entry.get('outcome') or '').strip().lower()
     outcome = outcome_raw if outcome_raw in _OUTCOMES else ''
-    access_raw = str(entry.get('access_level') or '').strip().lower()
-    access_level = access_raw if access_raw in _ACCESS_LEVELS else ''
+    access_raw = str(entry.get('access_kind') or entry.get('access_level') or '').strip().lower()
+    access_kind = access_raw if access_raw in _ACCESS_KINDS else ''
     op_title = str(entry.get('operation_title') or '').strip()[:200]
     resource_label = str(entry.get('resource_label') or '').strip()[:200]
     tool_export_id = str(entry.get('tool_export_id') or entry.get('tool') or '')[:256]
@@ -350,8 +350,8 @@ def forward_call_log(entry: dict) -> None:
     }
     if outcome:
         body['outcome'] = outcome
-    if access_level:
-        body['access_level'] = access_level
+    if access_kind:
+        body['access_kind'] = access_kind
     ro = entry.get('read_only_hint')
     if isinstance(ro, bool):
         body['read_only_hint'] = ro
@@ -368,9 +368,9 @@ def forward_call_log(entry: dict) -> None:
     an = str(entry.get('agent_name') or '').strip()[:200]
     if an:
         body['agent_name'] = an
-    aid = str(entry.get('approval_request_id') or '').strip()[:64]
+    aid = str(entry.get('approval_id') or entry.get('approval_request_id') or '').strip()[:64]
     if aid:
-        body['approval_request_id'] = aid
+        body['approval_id'] = aid
     duration = entry.get('duration_ms')
     if isinstance(duration, (int, float)) and duration >= 0:
         body['duration_ms'] = int(duration)

@@ -73,7 +73,7 @@ def _tool_traits(tool: dict[str, Any] | None, *, method: str) -> tuple[bool, boo
     return read_only, destructive
 
 
-def access_level_from_tool(tool: dict[str, Any] | None, *, method: str) -> str:
+def access_kind_from_tool(tool: dict[str, Any] | None, *, method: str) -> str:
     read_only, destructive = _tool_traits(tool, method=method)
     m = str(method or 'GET').upper()
     if destructive and m not in {'GET', 'HEAD', 'OPTIONS'}:
@@ -118,14 +118,19 @@ def build_call_audit_log(
     log_result: str | None,
     status: int,
     is_error: bool | None = None,
-    approval_request_id: str | None = None,
+    approval_id: str | None = None,
     legacy_result: str | None = None,
 ) -> dict[str, Any]:
     cid = strict_numeric_company_id(agent_claims.get('company_id'))
-    outcome = outcome_from_audit(log_result=log_result, status=status, is_error=is_error)
-    access_level = access_level_from_tool(tool, method=method)
+    claim_service = str(agent_claims.get('service') or '').strip()
+    svc = str(service_id or '').strip()
+    if claim_service and svc and claim_service != svc:
+        outcome = 'failed'
+    else:
+        outcome = outcome_from_audit(log_result=log_result, status=status, is_error=is_error)
+    access_kind = access_kind_from_tool(tool, method=method)
     op_title = _openapi_operation_title(tool)
-    rid = str(approval_request_id or '').strip()
+    rid = str(approval_id or '').strip()
     agent_name = str(agent_claims.get('agent_name') or '').strip()[:200]
     company_name = str(agent_claims.get('company_name') or '').strip()[:200]
 
@@ -141,13 +146,13 @@ def build_call_audit_log(
         'method': str(method or '')[:16],
         'path': str(path or '')[:512],
         'resource_label': resource_label_safe(method=method, path=path),
-        'access_level': access_level,
+        'access_kind': access_kind,
         'status': int(status),
         'outcome': outcome if outcome in OUTCOMES else 'failed',
         'duration_ms': 0,
     }
     if rid:
-        entry['approval_request_id'] = rid[:64]
+        entry['approval_id'] = rid[:64]
     lr = str(legacy_result or '').strip()[:32]
     if lr:
         entry['result'] = lr

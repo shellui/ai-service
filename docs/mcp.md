@@ -33,7 +33,13 @@ On `tools/call`, the gateway enforces the agent `mcp_access` mode (`read_only`, 
 - **In-chat (elicitation):** the tool result includes `_meta.shellui_approval` with Wilson v1 copy and buttons Allow, Deny, and Allow for this session (non-destructive only). The client retries `tools/call` with `params._meta.shellui_approval.decision` set to `allow`, `deny`, or `session_allow`. The gateway records the decision through identity `POST /api/v1/mcp/internal/mcp-approval-decide` (`allow`, `deny`, or `allow_session`; `409` when session allow is requested for a destructive tool).
 - **Settings fallback:** when the MCP session did not advertise elicitation, the result points at identity `GET /api/v1/mcp/approvals` (list) and the specific approval id under `/api/v1/mcp/approvals/{id}`.
 
-Session allow skips re-prompts for **non-destructive** writes for **60 seconds** on the same `Mcp-Session-Id` connection. Identity tracks grants; the gateway checks `POST /api/v1/mcp/internal/mcp-approval-session-check` (and can revoke with `mcp-approval-session-revoke`). Approved one-shot calls still use `mcp-approval-consume`.
+Session allow skips re-prompts for **non-destructive** writes on the same `Mcp-Session-Id` connection. **Every** eligible `tools/call` performs `POST /api/v1/mcp/internal/mcp-approval-session-check` (the gateway does not cache a local “already allowed” boolean). A grant is honored only when **all** of the following hold:
+
+- Response `session_allowed` is true **and** `grant_version` and `company_binding_version` match the verified regional access token (aliases such as `grant_validity_version` are not accepted).
+- Response includes an absolute `expires_at` within **60 seconds** of “now” for ordinary sessions; setup sessions use the **600–900** second window from signed claims and also require `setup_expires_at` on the response, capped by JWT wall time and signed setup expiry.
+- Destructive tools never use session allow (even when `mcp_access` is `full` or `mcp_destructive` is set).
+
+Revoke with `mcp-approval-session-revoke`. Approved one-shot calls still use `mcp-approval-consume`.
 
 ### Call logs (personal activity / audit)
 
@@ -42,19 +48,21 @@ Gateway forwards `POST /api/v1/mcp/internal/mcp-call-logs` with RS256 assertions
 | Field | Notes |
 | ----- | ----- |
 | `outcome` | `allowed` \| `failed` \| `denied` \| `pending` \| `session_used` — derived from gateway decisions / HTTP status, not from raw error text |
-| `access_level` | `read` \| `write` \| `destructive` from tool annotations + HTTP method |
+| `access_kind` | `read` \| `write` \| `destructive` from tool annotations + HTTP method |
 | `read_only_hint`, `destructive_hint` | Mirrors MCP tool annotations |
 | `operation_title` | OpenAPI/registry title when present (stripped presentation noise); otherwise empty (UI may fall back to tool id) |
 | `tool_export_id` | Same as gateway export name (`tool`) |
 | `resource_label` | Short `METHOD path` (no arguments) |
 | `company_name`, `agent_name` | From validated access-token claims when present |
-| `approval_request_id` | Set when a real approval row id is known (e.g. pending elicitation) |
+| `approval_id` | Set when a real approval row id is known (e.g. pending elicitation) |
 | `result` | Legacy short token (`success` / `error` / `denied` / `pending`) for backward compatibility |
 | `duration_ms` | Unchanged |
 
+`company_id` always matches the token; if the tool call’s service id and a `service` claim on the token both exist and differ, `outcome` is `failed` (no cross-service leakage).
+
 Arguments, query bodies, provider response text, and headers are **never** forwarded.
 
-Requires identity PR **#134** (or equivalent) for decide and session-check endpoints; create, state, and consume match identity `develop` today.
+Identity must implement the internal approval and session-check contract (`grant_version`, `company_binding_version`, `setup_expires_at` when setup); create, state, consume, decide, session-check, and call logs align with identity `develop` after merge.
 
 ## Client conformance
 

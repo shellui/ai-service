@@ -205,7 +205,7 @@ def _log_entry(
     method: str,
     path: str,
     log_result: str,
-    approval_request_id: str | None = None,
+    approval_id: str | None = None,
 ) -> dict[str, Any]:
     status, is_error = _audit_status_from_log_result(log_result)
     row = build_call_audit_log(
@@ -218,7 +218,7 @@ def _log_entry(
         log_result=str(log_result),
         status=status,
         is_error=is_error,
-        approval_request_id=approval_request_id,
+        approval_id=approval_id,
     )
     row['_mcp_audit_ready'] = True
     row['duration_ms'] = 0
@@ -521,7 +521,7 @@ def enforce_tool_call_approval(
                     method=method,
                     path=path,
                     log_result='pending',
-                    approval_request_id=approval_id,
+                    approval_id=approval_id,
                 ),
             )
         settings_url = approvals.approval_settings_url(approval_id)
@@ -547,7 +547,7 @@ def enforce_tool_call_approval(
                 method=method,
                 path=path,
                 log_result='pending',
-                approval_request_id=approval_id,
+                approval_id=approval_id,
             ),
         )
 
@@ -580,7 +580,7 @@ def enforce_tool_call_approval(
                 method=method,
                 path=path,
                 log_result='pending',
-                approval_request_id=approval_id,
+                approval_id=approval_id,
             ),
         )
     settings_url = approvals.approval_settings_url(approval_id)
@@ -605,6 +605,6 @@ def enforce_tool_call_approval(
             method=method,
             path=path,
             log_result='pending',
-            approval_request_id=approval_id,
+            approval_id=approval_id,
         ),
     )

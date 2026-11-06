@@ -95,7 +95,7 @@ def _record_mcp_call(entry: dict) -> None:
         log_result=str(log_result) if log_result else None,
         status=status_code,
         is_error=is_error,
-        approval_request_id=None,
+        approval_id=None,
     )
     audit['client_ip'] = entry.get('client_ip') or client_ip_from_request(request)
     audit['result'] = legacy_result_token(outcome=str(audit.get('outcome') or 'failed'))

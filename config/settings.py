@@ -415,14 +415,12 @@ MCP_APPROVAL_SETUP_SESSION_TTL_MAX_SECONDS = max(
     MCP_APPROVAL_SETUP_SESSION_TTL_MIN_SECONDS,
     _env_int('MCP_APPROVAL_SETUP_SESSION_TTL_MAX_SECONDS', 900),
 )
-# Cap Django cache TTL for per-connection session-grant maps (revocation index bookkeeping).
-MCP_SESSION_GRANT_INDEX_MAX_SECONDS = max(60, _env_int('MCP_SESSION_GRANT_INDEX_MAX_SECONDS', 3600))
-# Identity #135: require ``setup_expires_at`` on regional tokens during setup (enable after contract merge).
-MCP_SETUP_REQUIRES_ABSOLUTE_EXPIRY = _env_bool('MCP_SETUP_REQUIRES_ABSOLUTE_EXPIRY', False)
-# Fail closed when setup flow has no absolute expires_at from session-check (enable after identity contract merge).
+# Identity #135: require ``setup_expires_at`` on regional tokens during setup.
+MCP_SETUP_REQUIRES_ABSOLUTE_EXPIRY = _env_bool('MCP_SETUP_REQUIRES_ABSOLUTE_EXPIRY', True)
+# Fail closed when session-check omits absolute ``expires_at`` (or setup grant fields when setup).
 MCP_SESSION_GRANT_REQUIRES_ABSOLUTE_EXPIRES_AT = _env_bool(
     'MCP_SESSION_GRANT_REQUIRES_ABSOLUTE_EXPIRES_AT',
-    False,
+    True,
 )
 
 # Connected Shellui services (origins only; MCP paths are appended in code).

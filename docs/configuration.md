@@ -39,9 +39,8 @@ Identity verifies delegation requests with `AI_SERVICE_JWKS` / `AI_SERVICE_JWKS_
 | `MCP_APPROVAL_ASSERTION_MAX_LIFETIME_SECONDS` | `900` | Maximum `exp - iat` for RS256 approval assertions to identity (setup flows need 600–900s; align with identity `MCP_APPROVAL_ASSERTION_MAX_LIFETIME_SECONDS`). |
 | `MCP_APPROVAL_SETUP_SESSION_TTL_MIN_SECONDS` | `600` | Lower bound for signed `mcp_session_ttl_seconds` during setup (must match identity). |
 | `MCP_APPROVAL_SETUP_SESSION_TTL_MAX_SECONDS` | `900` | Upper bound for the same. |
-| `MCP_SESSION_GRANT_INDEX_MAX_SECONDS` | `3600` | Max Django cache entry TTL for per-connection session-grant bookkeeping (used to invalidate all grants for an agent/company on revoke). |
-| `MCP_SETUP_REQUIRES_ABSOLUTE_EXPIRY` | `false` | When `true`, `setup_flow` assertions require `setup_expires_at` on the verified regional access token (enable after identity #135). |
-| `MCP_SESSION_GRANT_REQUIRES_ABSOLUTE_EXPIRES_AT` | `false` | When `true`, setup-mode session grants are rejected unless session-check returns an absolute `expires_at` (or a setup cap applies); use after identity #135. |
+| `MCP_SETUP_REQUIRES_ABSOLUTE_EXPIRY` | `true` | `setup_flow` approval assertions require `setup_expires_at` on the verified regional access token. |
+| `MCP_SESSION_GRANT_REQUIRES_ABSOLUTE_EXPIRES_AT` | `true` | Session grants require an absolute `expires_at` from session-check; setup flows also require `setup_expires_at` on the response. |
 
 ## Downstream services
 
