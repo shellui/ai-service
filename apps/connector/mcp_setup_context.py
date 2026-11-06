@@ -86,12 +86,19 @@ def parse_setup_expires_at_claim(raw: object, *, wall_max_exp: int) -> timezone.
 
 
 def parse_global_company_id(raw: object) -> str | None:
-    """Delegated global company id: canonical UUID string (commons #14 / strict parse)."""
-    if raw is None:
+    """Delegated global company id: canonical UUID string (commons #14 ``_normalize_uuid_string`` alignment).
+
+    Accepts only ``str`` or ``uuid.UUID`` (after strip for strings). Rejects arbitrary objects
+    coerced via ``str()`` so only real UUID text or a ``UUID`` instance normalizes to
+    ``str(parsed)`` (whitespace around UUID text is stripped; output is canonical hex with hyphens).
+    """
+    if raw is None or isinstance(raw, bool):
         return None
-    if isinstance(raw, bool):
+    if isinstance(raw, uuid.UUID):
+        return str(raw)
+    if not isinstance(raw, str):
         return None
-    s = str(raw).strip()
+    s = raw.strip()
     if not s:
         return None
     try:

@@ -529,17 +529,16 @@ def check_session_grant(
     if exp_dt is None:
         return False
 
-    now = timezone.now()
-    ordinary_window_end = now + timedelta(seconds=int(SESSION_GRANT_SECONDS))
     version_mismatch = resp_gv != expected_gv or resp_cbv != expected_cbv
     if not personal:
-        if resp_gcid is not None and expected_gcid is not None and resp_gcid != expected_gcid:
+        # Delegated: Identity session-check must echo the token's canonical global id and both
+        # nonnegative int versions exactly (no drift / no optional fields). Compare to regional JWT only.
+        if resp_gcid is None or expected_gcid is None or resp_gcid != expected_gcid:
+            return False
+        if resp_gv is None or resp_cbv is None:
             return False
         if version_mismatch:
-            if ctx.setup_flow:
-                return False
-            if not (exp_dt <= ordinary_window_end):
-                return False
+            return False
     elif expected_gv is not None or expected_cbv is not None:
         if version_mismatch:
             return False

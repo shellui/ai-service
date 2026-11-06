@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import uuid
 from typing import Any
 
 from django.core.cache import cache
@@ -70,9 +69,8 @@ def delegation_authority_consistent_with_revocation(
         row_gcid = row.get('global_company_id')
         if row_gcid is None:
             return True
-        try:
-            row_uuid = str(uuid.UUID(str(row_gcid).strip()))
-        except ValueError:
+        row_uuid = parse_global_company_id(row_gcid)
+        if row_uuid is None:
             return False
         if row_uuid != jwt_gcid:
             return False

@@ -37,7 +37,7 @@ On `tools/call`, the gateway enforces the agent `mcp_access` mode (`read_only`, 
 
 Session allow skips re-prompts for **non-destructive** writes on the same `Mcp-Session-Id` connection. **Every** eligible `tools/call` performs `POST /api/v1/mcp/internal/mcp-approval-session-check` (the gateway does not cache a local “already allowed” boolean). The JSON body always includes `connection_id`, `agent_id`, `company_id`, `service`, `action`, `arguments_hash`, and `is_destructive`.
 
-**Versions and global binding (identity #135 / commons #14):** `grant_version` and `company_binding_version` are **non-negative integers** on the verified regional JWT (`None` vs `0` are distinct; strings that are not decimal integers, floats, and booleans are rejected). **Delegated** regional agents (no `personal_token_id` on the verified token—this is not inferred from the HTTP request) **must** carry **`global_company_id`** as a canonical UUID string (the global Shell UI company id), plus both integer versions. The session-check body includes `global_company_id`, `grant_version`, and `company_binding_version` when those claims are present on the token.
+**Versions and global binding (identity #135 / commons #14):** `grant_version` and `company_binding_version` are **non-negative integers** on the verified regional JWT (`None` vs `0` are distinct; strings, floats, and booleans are rejected—only JSON numbers / Python `int`). **`global_company_id`** is parsed like commons `_normalize_uuid_string`: **string** (leading/trailing whitespace allowed) or **`uuid.UUID`** instance only—arbitrary objects are not coerced. The canonical form echoed in assertions and compared on session-check is `str(UUID(...))` (lowercase hex with hyphens).
 
 **Personal** tokens (`personal_token_id` present) may omit `grant_version` / `company_binding_version` / `global_company_id` when not yet issued; if exactly one of the two version integers is present, the check fails closed.
 
@@ -45,7 +45,7 @@ Signed approval assertions to identity use the same integer types for `grant_ver
 
 A grant is honored only when **all** of the following hold:
 
-- Response `session_allowed` is true **and** (for **personal** tokens that carry version claims, or any **setup** flow) `grant_version` and `company_binding_version` **exactly** match the verified regional access token (no alias keys). For **delegated** ordinary (non-setup) sessions, identity may return **newer** version numbers after a revocation bump; if the session grant’s absolute `expires_at` still falls within the ordinary **~60s** window from “now”, that pre-existing grant is **grandfathered** (JWT `exp` and caps still bound the session).
+- Response `session_allowed` is true. **Delegated** agents (no `personal_token_id`): `global_company_id`, `grant_version`, and `company_binding_version` on the session-check response **must** be present and **must** equal the verified regional JWT claims exactly (canonical UUID string; nonnegative ints including `0`). No drift is accepted for ordinary or setup. **Personal** tokens: if either version appears on the token, both must appear and must match the response.
 - Response includes an absolute `expires_at` within **60 seconds** of “now” for ordinary sessions.
 - **Setup** (long allow) applies only when the token includes `setup_flow: true`, `mcp_new_company_grant: true`, signed `mcp_session_ttl_seconds` in **600–900**, absolute `setup_expires_at` on the token, **and** matching `setup_expires_at` on the session-check response; if the access token has **≤600s** wall time remaining, setup long-allow is **not** used (fall back to ordinary 60s rules). Caps still include JWT `exp` wall and signed setup expiry.
 - Destructive tools never use session allow (even when `mcp_access` is `full` or `mcp_destructive` is set).
@@ -62,7 +62,7 @@ Gateway forwards `POST /api/v1/mcp/internal/mcp-call-logs` with RS256 assertions
 
 | Field | Notes |
 | ----- | ----- |
-| `outcome` | Gateway uses `allowed` \| `failed` \| `denied` \| `pending` \| `session_used`. Forwarded to identity as `pending_approval` when the gateway outcome is `pending` (identity region activity schema). |
+| `outcome` | Gateway uses `allowed` \| `failed` \| `denied` \| `pending` \| `session_used`. Forwarded to identity as `pending_approval` when the gateway outcome is `pending` (identity region activity schema). A tool can return **HTTP 200** with `is_error: true` (e.g. upstream `not_found`); `outcome` is still **`failed`** with an **allowlisted** `error_code`, not the upstream’s raw message. |
 | `access_kind` | `read` if method is GET/HEAD/OPTIONS **or** explicit `readOnlyHint` / `_meta.read_only`; `destructive` if explicit `destructiveHint` / `_meta.destructive` (non-safe method); else `write` — not inferred from name or substring heuristics |
 | `read_only_hint`, `destructive_hint` | Mirrors MCP tool annotations |
 | `operation_title` | Trusted OpenAPI `summary` from registry `_meta.operation_summary` (or presentation `title` when non-sensitive); if missing or unsafe, neutral `Operation {export_name}` (never raw provider exception text) |
@@ -79,7 +79,7 @@ Gateway forwards `POST /api/v1/mcp/internal/mcp-call-logs` with RS256 assertions
 
 Arguments, query bodies, provider response text, and headers are **never** forwarded.
 
-Identity must implement the internal approval and session-check contract described here; ai-service tracks that contract in PR **#24** (merge into `develop` — this doc is the gateway contract as implemented in that PR, not a future branch guess).
+Identity must implement the internal approval and session-check contract described here; **do not merge gateway changes that depend on identity #135 until identity’s branch with the matching contract is ready** — then validate with integration tests on real request payloads. ai-service tracks the gateway side in PR **#24** (this doc reflects gateway behavior, not identity internals).
 
 ## Client conformance
 

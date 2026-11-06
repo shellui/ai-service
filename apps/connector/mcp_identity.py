@@ -258,7 +258,6 @@ def personal_agent_bearer_valid(claims: dict) -> bool:
     return bool(str(claims.get('jti') or '').strip())
 
 
-_OUTCOMES = frozenset({'allowed', 'failed', 'denied', 'pending', 'session_used'})
 _ACCESS_KINDS = frozenset({'read', 'write', 'destructive'})
 _RESULT_WHITELIST = frozenset({'success', 'error', 'denied', 'pending'})
 
@@ -276,7 +275,7 @@ def forward_call_log(entry: dict) -> None:
     outcome_raw = str(entry.get('outcome') or '').strip().lower()
     if outcome_raw == 'pending':
         outcome = 'pending_approval'
-    elif outcome_raw in _OUTCOMES:
+    elif outcome_raw in OUTCOMES:
         outcome = outcome_raw
     else:
         outcome = ''
