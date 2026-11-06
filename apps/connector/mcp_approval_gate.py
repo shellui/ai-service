@@ -31,6 +31,7 @@ def patched_decide_write(**kwargs: Any) -> WriteGateDecision:
 
 from apps.connector import mcp_approval_copy as copy
 from apps.connector import mcp_approvals as approvals
+from apps.connector.mcp_call_audit import build_call_audit_log
 from apps.connector.mcp_company_label import resolve_company_label
 from apps.connector.mcp_identity import agent_is_revoked
 from apps.connector.mcp_company_id import strict_numeric_company_id
@@ -180,26 +181,48 @@ def _approval_result(
     )
 
 
+def _audit_status_from_log_result(log_result: str) -> tuple[int, bool | None]:
+    lr = str(log_result or '').strip().lower()
+    if lr in {'denied', 'client_denied'}:
+        return 403, True
+    if lr in {'pending'}:
+        return 202, None
+    if lr in {'expired'}:
+        return 410, True
+    if lr in {'error'}:
+        return 500, True
+    if lr in {'success', 'approved', 'client_allowed', 'client_session_allowed'}:
+        return 200, False
+    return 200, None
+
+
 def _log_entry(
     *,
     agent_claims: dict[str, Any],
     service: str,
-    tool: str,
+    export_name: str,
+    tool: dict[str, Any] | None,
     method: str,
     path: str,
     log_result: str,
+    approval_request_id: str | None = None,
 ) -> dict[str, Any]:
-    return {
-        'agent_id': agent_claims.get('agent_id'),
-        'company_id': agent_claims.get('company_id'),
-        'service': service,
-        'tool': tool,
-        'method': method,
-        'path': path,
-        'status': 200,
-        'is_error': log_result not in {'success', 'client_allowed', 'client_session_allowed', 'approved'},
-        'log_result': log_result,
-    }
+    status, is_error = _audit_status_from_log_result(log_result)
+    row = build_call_audit_log(
+        agent_claims=agent_claims,
+        service_id=service,
+        export_name=export_name,
+        tool=tool,
+        method=method,
+        path=path,
+        log_result=str(log_result),
+        status=status,
+        is_error=is_error,
+        approval_request_id=approval_request_id,
+    )
+    row['_mcp_audit_ready'] = True
+    row['duration_ms'] = 0
+    return row
 
 
 def enforce_tool_call_approval(
@@ -246,7 +269,8 @@ def enforce_tool_call_approval(
             log=_log_entry(
                 agent_claims=agent_claims,
                 service=service_id,
-                tool=export_name,
+                export_name=export_name,
+                tool=tool,
                 method=method,
                 path=path,
                 log_result='denied',
@@ -268,7 +292,8 @@ def enforce_tool_call_approval(
             log=_log_entry(
                 agent_claims=agent_claims,
                 service=service_id,
-                tool=export_name,
+                export_name=export_name,
+                tool=tool,
                 method=method,
                 path=path,
                 log_result='denied',
@@ -304,7 +329,8 @@ def enforce_tool_call_approval(
                 log=_log_entry(
                     agent_claims=agent_claims,
                     service=service_id,
-                    tool=export_name,
+                    export_name=export_name,
+                    tool=tool,
                     method=method,
                     path=path,
                     log_result='denied',
@@ -337,7 +363,8 @@ def enforce_tool_call_approval(
             log=_log_entry(
                 agent_claims=agent_claims,
                 service=service_id,
-                tool=export_name,
+                export_name=export_name,
+                tool=tool,
                 method=method,
                 path=path,
                 log_result=log_result,
@@ -362,7 +389,8 @@ def enforce_tool_call_approval(
                 log=_log_entry(
                     agent_claims=agent_claims,
                     service=service_id,
-                    tool=export_name,
+                    export_name=export_name,
+                    tool=tool,
                     method=method,
                     path=path,
                     log_result=log_result,
@@ -381,7 +409,8 @@ def enforce_tool_call_approval(
             log=_log_entry(
                 agent_claims=agent_claims,
                 service=service_id,
-                tool=export_name,
+                export_name=export_name,
+                tool=tool,
                 method=method,
                 path=path,
                 log_result='expired',
@@ -398,7 +427,8 @@ def enforce_tool_call_approval(
             log=_log_entry(
                 agent_claims=agent_claims,
                 service=service_id,
-                tool=export_name,
+                export_name=export_name,
+                tool=tool,
                 method=method,
                 path=path,
                 log_result='denied',
@@ -413,7 +443,8 @@ def enforce_tool_call_approval(
                 log=_log_entry(
                     agent_claims=agent_claims,
                     service=service_id,
-                    tool=export_name,
+                    export_name=export_name,
+                    tool=tool,
                     method=method,
                     path=path,
                     log_result=log_result,
@@ -429,7 +460,8 @@ def enforce_tool_call_approval(
             log=_log_entry(
                 agent_claims=agent_claims,
                 service=service_id,
-                tool=export_name,
+                export_name=export_name,
+                tool=tool,
                 method=method,
                 path=path,
                 log_result='expired',
@@ -445,7 +477,8 @@ def enforce_tool_call_approval(
                 log=_log_entry(
                     agent_claims=agent_claims,
                     service=service_id,
-                    tool=export_name,
+                    export_name=export_name,
+                    tool=tool,
                     method=method,
                     path=path,
                     log_result=log_result,
@@ -483,10 +516,12 @@ def enforce_tool_call_approval(
                 log=_log_entry(
                     agent_claims=agent_claims,
                     service=service_id,
-                    tool=export_name,
+                    export_name=export_name,
+                    tool=tool,
                     method=method,
                     path=path,
                     log_result='pending',
+                    approval_request_id=approval_id,
                 ),
             )
         settings_url = approvals.approval_settings_url(approval_id)
@@ -507,10 +542,12 @@ def enforce_tool_call_approval(
             log=_log_entry(
                 agent_claims=agent_claims,
                 service=service_id,
-                tool=export_name,
+                export_name=export_name,
+                tool=tool,
                 method=method,
                 path=path,
                 log_result='pending',
+                approval_request_id=approval_id,
             ),
         )
 
@@ -538,10 +575,12 @@ def enforce_tool_call_approval(
             log=_log_entry(
                 agent_claims=agent_claims,
                 service=service_id,
-                tool=export_name,
+                export_name=export_name,
+                tool=tool,
                 method=method,
                 path=path,
                 log_result='pending',
+                approval_request_id=approval_id,
             ),
         )
     settings_url = approvals.approval_settings_url(approval_id)
@@ -561,9 +600,11 @@ def enforce_tool_call_approval(
         log=_log_entry(
             agent_claims=agent_claims,
             service=service_id,
-            tool=export_name,
+            export_name=export_name,
+            tool=tool,
             method=method,
             path=path,
             log_result='pending',
+            approval_request_id=approval_id,
         ),
     )

@@ -315,6 +315,10 @@ def personal_agent_bearer_valid(claims: dict) -> bool:
     return bool(str(claims.get('jti') or '').strip())
 
 
+_OUTCOMES = frozenset({'allowed', 'failed', 'denied', 'pending', 'session_used'})
+_ACCESS_LEVELS = frozenset({'read', 'write', 'destructive'})
+
+
 def forward_call_log(entry: dict) -> None:
     origin = _identity_origin()
     if not origin:
@@ -325,17 +329,48 @@ def forward_call_log(entry: dict) -> None:
     except InternalAssertionError:
         logger.warning('MCP call log skipped: service assertion signing is not configured')
         return
-    body = {
+    outcome_raw = str(entry.get('outcome') or '').strip().lower()
+    outcome = outcome_raw if outcome_raw in _OUTCOMES else ''
+    access_raw = str(entry.get('access_level') or '').strip().lower()
+    access_level = access_raw if access_raw in _ACCESS_LEVELS else ''
+    op_title = str(entry.get('operation_title') or '').strip()[:200]
+    resource_label = str(entry.get('resource_label') or '').strip()[:200]
+    tool_export_id = str(entry.get('tool_export_id') or entry.get('tool') or '')[:256]
+    body: dict[str, Any] = {
         'agent_id': entry.get('agent_id'),
         'company_id': entry.get('company_id'),
-        'service': entry.get('service') or 'ai',
-        'tool': entry.get('tool') or '',
-        'method': entry.get('method') or '',
-        'path': entry.get('path') or '',
+        'service': str(entry.get('service') or 'ai')[:64],
+        'tool': str(entry.get('tool') or '')[:256],
+        'tool_export_id': tool_export_id,
+        'method': str(entry.get('method') or '')[:16],
+        'path': str(entry.get('path') or '')[:512],
         'status': int(entry.get('status') or 0),
         'client_ip': str(entry.get('client_ip') or '')[:45],
         'result': str(entry.get('result') or '')[:32],
     }
+    if outcome:
+        body['outcome'] = outcome
+    if access_level:
+        body['access_level'] = access_level
+    ro = entry.get('read_only_hint')
+    if isinstance(ro, bool):
+        body['read_only_hint'] = ro
+    dh = entry.get('destructive_hint')
+    if isinstance(dh, bool):
+        body['destructive_hint'] = dh
+    if op_title:
+        body['operation_title'] = op_title
+    if resource_label:
+        body['resource_label'] = resource_label
+    cn = str(entry.get('company_name') or '').strip()[:200]
+    if cn:
+        body['company_name'] = cn
+    an = str(entry.get('agent_name') or '').strip()[:200]
+    if an:
+        body['agent_name'] = an
+    aid = str(entry.get('approval_request_id') or '').strip()[:64]
+    if aid:
+        body['approval_request_id'] = aid
     duration = entry.get('duration_ms')
     if isinstance(duration, (int, float)) and duration >= 0:
         body['duration_ms'] = int(duration)

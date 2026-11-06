@@ -33,7 +33,26 @@ On `tools/call`, the gateway enforces the agent `mcp_access` mode (`read_only`, 
 - **In-chat (elicitation):** the tool result includes `_meta.shellui_approval` with Wilson v1 copy and buttons Allow, Deny, and Allow for this session (non-destructive only). The client retries `tools/call` with `params._meta.shellui_approval.decision` set to `allow`, `deny`, or `session_allow`. The gateway records the decision through identity `POST /api/v1/mcp/internal/mcp-approval-decide` (`allow`, `deny`, or `allow_session`; `409` when session allow is requested for a destructive tool).
 - **Settings fallback:** when the MCP session did not advertise elicitation, the result points at identity `GET /api/v1/mcp/approvals` (list) and the specific approval id under `/api/v1/mcp/approvals/{id}`.
 
-Session allow skips re-prompts for **non-destructive** writes for **60 seconds** on the same `Mcp-Session-Id` connection. Identity tracks grants; the gateway checks `POST /api/v1/mcp/internal/mcp-approval-session-check` (and can revoke with `mcp-approval-session-revoke`). Approved one-shot calls still use `mcp-approval-consume`. Call logs forwarded to identity include audit-style `result` values such as `client_allowed`, `client_denied`, `client_session_allowed`, `approved`, `denied`, `expired`, and `pending`.
+Session allow skips re-prompts for **non-destructive** writes for **60 seconds** on the same `Mcp-Session-Id` connection. Identity tracks grants; the gateway checks `POST /api/v1/mcp/internal/mcp-approval-session-check` (and can revoke with `mcp-approval-session-revoke`). Approved one-shot calls still use `mcp-approval-consume`.
+
+### Call logs (personal activity / audit)
+
+Gateway forwards `POST /api/v1/mcp/internal/mcp-call-logs` with RS256 assertions. The JSON body extends the historical shape with **allowlisted** audit fields (identity **#135** must persist them for the personal activity API):
+
+| Field | Notes |
+| ----- | ----- |
+| `outcome` | `allowed` \| `failed` \| `denied` \| `pending` \| `session_used` — derived from gateway decisions / HTTP status, not from raw error text |
+| `access_level` | `read` \| `write` \| `destructive` from tool annotations + HTTP method |
+| `read_only_hint`, `destructive_hint` | Mirrors MCP tool annotations |
+| `operation_title` | OpenAPI/registry title when present (stripped presentation noise); otherwise empty (UI may fall back to tool id) |
+| `tool_export_id` | Same as gateway export name (`tool`) |
+| `resource_label` | Short `METHOD path` (no arguments) |
+| `company_name`, `agent_name` | From validated access-token claims when present |
+| `approval_request_id` | Set when a real approval row id is known (e.g. pending elicitation) |
+| `result` | Legacy short token (`success` / `error` / `denied` / `pending`) for backward compatibility |
+| `duration_ms` | Unchanged |
+
+Arguments, query bodies, provider response text, and headers are **never** forwarded.
 
 Requires identity PR **#134** (or equivalent) for decide and session-check endpoints; create, state, and consume match identity `develop` today.
 

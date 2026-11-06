@@ -30,6 +30,7 @@ from apps.connector.mcp_approval_gate import (
     patched_decide_write,
     reset_shellui_write_gate,
 )
+from apps.connector.mcp_call_audit import build_call_audit_log, legacy_result_token
 from apps.connector.mcp_call_log import apply_duration_ms, client_ip_from_request, mcp_call_result
 from apps.connector.mcp_identity import agent_is_revoked, forward_call_log, identity_revocation_unavailable
 from apps.connector.mcp_urls import (
@@ -50,20 +51,56 @@ _server: AggregatingMcpServer | None = None
 _mcp_http_request: contextvars.ContextVar[HttpRequest | None] = contextvars.ContextVar(
     'mcp_http_request', default=None
 )
+_mcp_agent_claims: contextvars.ContextVar[dict | None] = contextvars.ContextVar('mcp_agent_claims', default=None)
 
 
 def _record_mcp_call(entry: dict) -> None:
     apply_duration_ms(entry)
     request = _mcp_http_request.get()
+    claims = _mcp_agent_claims.get() or {}
     entry['client_ip'] = client_ip_from_request(request)
     status_code = int(entry.get('status') or 0)
     is_error = entry.pop('is_error', None)
     log_result = entry.pop('log_result', None)
-    entry['result'] = mcp_call_result(
+    legacy = mcp_call_result(
         status_code=status_code,
         is_error=is_error,
         log_result=str(log_result) if log_result else None,
     )
+    if entry.get('_mcp_audit_ready') is True:
+        entry['result'] = legacy_result_token(outcome=str(entry.get('outcome') or 'failed'))
+        entry.pop('_mcp_audit_ready', None)
+        entry.pop('arguments', None)
+        forward_call_log(entry)
+        return
+
+    server = _get_server()
+    tool_name = str(entry.get('tool') or '')
+    service_id = str(entry.get('service') or 'ai')
+    tool_row = server._cached_export_tool(tool_name) if hasattr(server, '_cached_export_tool') else None
+    method = str(entry.get('method') or 'GET')
+    path = str(entry.get('path') or '')
+    if tool_row and isinstance(tool_row.get('_meta'), dict):
+        meta = tool_row['_meta']
+        method = str(meta.get('method') or method).upper()
+        if meta.get('path'):
+            path = str(meta.get('path') or path)
+    audit = build_call_audit_log(
+        agent_claims=claims,
+        service_id=service_id,
+        export_name=tool_name,
+        tool=tool_row,
+        method=method,
+        path=path,
+        log_result=str(log_result) if log_result else None,
+        status=status_code,
+        is_error=is_error,
+        approval_request_id=None,
+    )
+    audit['client_ip'] = entry.get('client_ip') or client_ip_from_request(request)
+    audit['result'] = legacy_result_token(outcome=str(audit.get('outcome') or 'failed'))
+    entry.clear()
+    entry.update(audit)
     entry.pop('arguments', None)
     forward_call_log(entry)
 
@@ -326,7 +363,7 @@ class PrefixingMcpServer(AggregatingMcpServer):
             arguments=arguments if isinstance(arguments, dict) else {},
         )
         if outcome.log and self.on_call:
-            self.on_call(outcome.log)
+            self.on_call(dict(outcome.log))
         if not outcome.proceed:
             return outcome.response
         return None
@@ -377,18 +414,25 @@ class PrefixingMcpServer(AggregatingMcpServer):
                 is_error = bool(result.get('isError'))
         except (ValueError, TypeError, AttributeError):
             is_error = response.status_code >= 400
-        self.on_call(
-            {
-                'agent_id': agent_claims.get('agent_id'),
-                'company_id': agent_claims.get('company_id'),
-                'service': route['service_id'],
-                'tool': tool_name,
-                'method': 'POST',
-                'path': f"/mcp (forward {route['service_id']})",
-                'status': response.status_code,
-                'is_error': is_error,
-            }
+        tool_row = self._cached_export_tool(tool_name)
+        m = 'POST'
+        pth = f"/mcp (forward {route['service_id']})"
+        if tool_row and isinstance(tool_row.get('_meta'), dict):
+            m = str(tool_row['_meta'].get('method') or m).upper()
+            if tool_row['_meta'].get('path'):
+                pth = str(tool_row['_meta'].get('path') or pth)
+        audit = build_call_audit_log(
+            agent_claims=agent_claims,
+            service_id=str(route['service_id']),
+            export_name=tool_name,
+            tool=tool_row,
+            method=m,
+            path=pth,
+            log_result=None,
+            status=int(response.status_code),
+            is_error=is_error,
         )
+        self.on_call(audit)
         return response
 
     def _tools_call(self, request, req_id, params, agent_claims):
@@ -544,11 +588,13 @@ def mcp_endpoint(request: HttpRequest, company_id: int):
     if claims is not None and identity_revocation_unavailable():
         return JsonResponse({'error': 'identity_unavailable'}, status=503)
     token = _mcp_http_request.set(request)
+    claims_token = _mcp_agent_claims.set(claims)
     try:
         return _get_server().handle(request, agent_claims=claims)
     except DownstreamTokenError:
         return JsonResponse({'error': 'downstream_token_unavailable'}, status=503)
     finally:
+        _mcp_agent_claims.reset(claims_token)
         _mcp_http_request.reset(token)
 
 
