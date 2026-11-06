@@ -101,6 +101,8 @@ _OP_TITLE_BROKER_RE = re.compile(r'\b(broker|queue|ask)\b', re.I)
 
 def _neutral_operation_title(export_name: str) -> str:
     base = str(export_name or '').strip() or 'tool'
+    if re.match(r'^operation\b', base, re.I):
+        return base[:200]
     return f'Operation {base}'[:200]
 
 

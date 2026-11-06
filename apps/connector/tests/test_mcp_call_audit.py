@@ -86,3 +86,9 @@ class McpCallAuditOutcomeTests(SimpleTestCase):
             operation_title_for_audit(tool, export_name='svc_list_users', method='GET'),
             'List all users',
         )
+
+    def test_neutral_title_not_doubled_when_export_starts_with_operation(self):
+        self.assertEqual(
+            operation_title_for_audit(None, export_name='Operation list_users', method='POST'),
+            'Operation list_users',
+        )

@@ -30,6 +30,7 @@ from apps.connector.mcp_identity import (
 from apps.connector.mcp_setup_context import (
     ApprovalAssertionContext,
     approval_assertion_context_from_agent_claims,
+    norm_version_claim,
     session_allow_ttl_bounds,
 )
 
@@ -113,9 +114,9 @@ def _build_approval_assertion_jwt(*, binding: dict[str, Any], ctx: ApprovalAsser
         'exp': now + int(ctx.lifetime_seconds),
         'jti': uuid.uuid4().hex,
     }
-    if ctx.grant_version:
+    if ctx.grant_version is not None:
         claims['grant_version'] = str(ctx.grant_version)
-    if ctx.company_binding_version:
+    if ctx.company_binding_version is not None:
         claims['company_binding_version'] = str(ctx.company_binding_version)
     if ctx.setup_flow and ctx.mcp_session_ttl_seconds is not None:
         claims['setup_flow'] = True
@@ -189,6 +190,9 @@ def create_approval_request(payload: dict[str, Any], *, is_destructive: bool = F
     elif path:
         body['path'] = path
     ctx = _assertion_context(payload)
+    if ctx.blocked_assertion:
+        logger.warning('MCP approval create skipped: invalid setup claims for delegated token')
+        return None
     try:
         headers = _approval_headers(binding, ctx=ctx)
     except InternalAssertionError:
@@ -228,6 +232,8 @@ def fetch_approval_state(payload: dict[str, Any]) -> tuple[str | None, str | Non
         return None, None
     url = f'{origin.rstrip("/")}{APPROVAL_STATE_PATH}'
     ctx = _assertion_context(payload)
+    if ctx.blocked_assertion:
+        return None, None
     try:
         headers = _approval_headers(binding, ctx=ctx)
     except InternalAssertionError:
@@ -258,6 +264,8 @@ def consume_approval(approval_id: str, payload: dict[str, Any]) -> bool:
         return False
     url = f'{origin.rstrip("/")}{APPROVAL_CONSUME_PATH}'
     ctx = _assertion_context(payload)
+    if ctx.blocked_assertion:
+        return False
     try:
         headers = _approval_headers(binding, ctx=ctx)
     except InternalAssertionError:
@@ -295,6 +303,8 @@ def decide_approval(
         return DecideResult(ok=False, status_code=503)
     url = f'{origin.rstrip("/")}{APPROVAL_DECIDE_PATH}'
     ctx = _assertion_context(payload)
+    if ctx.blocked_assertion:
+        return DecideResult(ok=False, status_code=503)
     try:
         headers = _approval_headers(binding, ctx=ctx)
     except InternalAssertionError:
@@ -332,8 +342,14 @@ def _str_claim(agent_claims: dict[str, Any], key: str) -> str:
     return str(agent_claims.get(key) or '').strip()
 
 
-def _expected_versions_from_agent_claims(agent_claims: dict[str, Any]) -> tuple[str, str]:
-    return _str_claim(agent_claims, 'grant_version'), _str_claim(agent_claims, 'company_binding_version')
+def _expected_versions_from_agent_claims(agent_claims: dict[str, Any]) -> tuple[str | None, str | None]:
+    return norm_version_claim(agent_claims.get('grant_version')), norm_version_claim(
+        agent_claims.get('company_binding_version'),
+    )
+
+
+def _session_response_versions(data: dict[str, Any]) -> tuple[str | None, str | None]:
+    return norm_version_claim(data.get('grant_version')), norm_version_claim(data.get('company_binding_version'))
 
 
 def _parse_setup_expires_at_from_response(raw: object, *, wall_max_exp: int) -> timezone.datetime | None:
@@ -407,8 +423,16 @@ def check_session_grant(
         return False
     ag = _agent_claims_from_payload(payload)
     expected_gv, expected_cbv = _expected_versions_from_agent_claims(ag)
-    if not expected_gv or not expected_cbv:
+    ctx = _assertion_context(payload)
+    if ctx.blocked_assertion:
         return False
+    personal = ctx.is_personal_agent
+    if not personal:
+        if not expected_gv or not expected_cbv:
+            return False
+    else:
+        if bool(expected_gv) != bool(expected_cbv):
+            return False
     try:
         wall_max_exp = int(ag['exp'])
     except (KeyError, TypeError, ValueError):
@@ -419,7 +443,6 @@ def check_session_grant(
     if not origin or binding is None:
         return False
     url = f'{origin.rstrip("/")}{SESSION_CHECK_PATH}'
-    ctx = _assertion_context(payload)
     try:
         headers = _approval_headers(binding, ctx=ctx)
     except InternalAssertionError:
@@ -432,9 +455,11 @@ def check_session_grant(
         'service': service,
         'action': action,
         'arguments_hash': arguments_hash,
-        'grant_version': expected_gv,
-        'company_binding_version': expected_cbv,
     }
+    if expected_gv is not None:
+        body['grant_version'] = expected_gv
+    if expected_cbv is not None:
+        body['company_binding_version'] = expected_cbv
     try:
         response = requests.post(url, json=body, headers=headers, timeout=5)
     except requests.RequestException:
@@ -449,10 +474,13 @@ def check_session_grant(
         return False
     if not data.get('session_allowed'):
         return False
-    resp_gv = _str_claim(data, 'grant_version')
-    resp_cbv = _str_claim(data, 'company_binding_version')
-    if resp_gv != expected_gv or resp_cbv != expected_cbv:
-        return False
+    resp_gv, resp_cbv = _session_response_versions(data)
+    if not personal:
+        if resp_gv != expected_gv or resp_cbv != expected_cbv:
+            return False
+    elif expected_gv is not None or expected_cbv is not None:
+        if resp_gv != expected_gv or resp_cbv != expected_cbv:
+            return False
 
     expires_at = data.get('expires_at')
     exp_dt = _parse_iso_expires_at(expires_at)
@@ -472,12 +500,8 @@ def check_session_grant(
     if wall is not None and wall <= 0:
         return False
 
-    require_abs = bool(getattr(settings, 'MCP_SESSION_GRANT_REQUIRES_ABSOLUTE_EXPIRES_AT', True))
-    if require_abs:
-        if exp_dt is None:
-            return False
-        if ctx.setup_flow and setup_resp_dt is None:
-            return False
+    if exp_dt is None:
+        return False
 
     cap_dt = _cap_session_expiry(exp_dt, ag=ag, ctx=ctx, setup_resp_dt=setup_resp_dt)
     if cap_dt is None or cap_dt <= timezone.now():
@@ -503,6 +527,8 @@ def revoke_session_grant(payload: dict[str, Any], *, connection_id: str) -> bool
         return False
     url = f'{origin.rstrip("/")}{SESSION_REVOKE_PATH}'
     ctx = _assertion_context(payload)
+    if ctx.blocked_assertion:
+        return False
     try:
         headers = _approval_headers(binding, ctx=ctx)
     except InternalAssertionError:

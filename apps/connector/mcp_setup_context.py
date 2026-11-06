@@ -37,6 +37,25 @@ def _truthy_setup_flow(raw: object) -> bool:
     return _bool_claim(raw)
 
 
+def _is_personal_agent_claims(agent_claims: dict | None) -> bool:
+    """True when the regional token is a personal-agent token (identity personal flow)."""
+    if not isinstance(agent_claims, dict):
+        return False
+    return bool(str(agent_claims.get('personal_token_id') or '').strip())
+
+
+def norm_version_claim(raw: object) -> str | None:
+    """Normalize grant/binding version for assertions and session-check (``0`` and ``'0'`` preserved)."""
+    if raw is None:
+        return None
+    if isinstance(raw, bool):
+        return None
+    if isinstance(raw, int):
+        return str(raw)
+    s = str(raw).strip()
+    return s if s else None
+
+
 def session_allow_ttl_bounds() -> tuple[int, int]:
     """Bounds for ``mcp_session_ttl_seconds`` during setup (must match identity-service)."""
     lo = int(getattr(settings, 'MCP_APPROVAL_SETUP_SESSION_TTL_MIN_SECONDS', 600) or 600)
@@ -72,18 +91,28 @@ class ApprovalAssertionContext:
     setup_expires_at: timezone.datetime | None = None
     grant_version: str | None = None
     company_binding_version: str | None = None
+    is_personal_agent: bool = False
+    blocked_assertion: bool = False
 
 
-def _fallback_context(agent_claims: dict | None = None) -> ApprovalAssertionContext:
+def _fallback_context(
+    agent_claims: dict | None = None,
+    *,
+    setup_claim_rejected: bool = False,
+) -> ApprovalAssertionContext:
     gv: str | None = None
     cbv: str | None = None
+    is_personal = _is_personal_agent_claims(agent_claims)
     if isinstance(agent_claims, dict):
-        gv = str(agent_claims.get('grant_version') or '').strip() or None
-        cbv = str(agent_claims.get('company_binding_version') or '').strip() or None
+        gv = norm_version_claim(agent_claims.get('grant_version'))
+        cbv = norm_version_claim(agent_claims.get('company_binding_version'))
+    blocked = bool(setup_claim_rejected and not is_personal)
     return ApprovalAssertionContext(
         lifetime_seconds=_DEFAULT_APPROVAL_ASSERTION_LIFETIME,
         grant_version=gv,
         company_binding_version=cbv,
+        is_personal_agent=is_personal,
+        blocked_assertion=blocked,
     )
 
 
@@ -118,6 +147,8 @@ def approval_assertion_context_from_agent_claims(agent_claims: dict | None) -> A
     if not isinstance(agent_claims, dict):
         return _fallback_context()
 
+    is_personal = _is_personal_agent_claims(agent_claims)
+
     if not _truthy_setup_flow(agent_claims.get('setup_flow')):
         return _fallback_context(agent_claims)
 
@@ -127,7 +158,7 @@ def approval_assertion_context_from_agent_claims(agent_claims: dict | None) -> A
             'MCP setup assertion rejected (not a new-company grant): agent_id=%s',
             agent_claims.get('agent_id'),
         )
-        return _fallback_context(agent_claims)
+        return _fallback_context(agent_claims, setup_claim_rejected=True)
 
     if strict_numeric_company_id(agent_claims.get('company_id')) is None:
         logger.info(
@@ -135,26 +166,26 @@ def approval_assertion_context_from_agent_claims(agent_claims: dict | None) -> A
             agent_claims.get('agent_id'),
             agent_claims.get('company_id'),
         )
-        return _fallback_context(agent_claims)
+        return _fallback_context(agent_claims, setup_claim_rejected=True)
 
-    gv = str(agent_claims.get('grant_version') or '').strip()
-    cbv = str(agent_claims.get('company_binding_version') or '').strip()
+    gv = norm_version_claim(agent_claims.get('grant_version'))
+    cbv = norm_version_claim(agent_claims.get('company_binding_version'))
     if not gv or not cbv:
         logger.info(
             'MCP setup assertion rejected (missing grant_version or company_binding_version): agent_id=%s',
             agent_claims.get('agent_id'),
         )
-        return _fallback_context(agent_claims)
+        return _fallback_context(agent_claims, setup_claim_rejected=True)
 
     raw_ttl = agent_claims.get('mcp_session_ttl_seconds')
     try:
         setup_ttl = int(raw_ttl)
     except (TypeError, ValueError):
-        return _fallback_context(agent_claims)
+        return _fallback_context(agent_claims, setup_claim_rejected=True)
 
     lo, hi = session_allow_ttl_bounds()
     if setup_ttl < lo or setup_ttl > hi:
-        return _fallback_context(agent_claims)
+        return _fallback_context(agent_claims, setup_claim_rejected=True)
 
     max_from_jwt: int | None = None
     try:
@@ -176,33 +207,28 @@ def approval_assertion_context_from_agent_claims(agent_claims: dict | None) -> A
             agent_claims.get('agent_id'),
             wall_remaining,
         )
-        return _fallback_context(agent_claims)
+        return _fallback_context(agent_claims, setup_claim_rejected=True)
 
-    require_abs_setup_expiry = bool(
-        getattr(settings, 'MCP_SETUP_REQUIRES_ABSOLUTE_EXPIRY', False),
-    )
     try:
         wall_max_exp = int(agent_claims['exp'])
     except (KeyError, TypeError, ValueError):
         wall_max_exp = int(time.time())
-    setup_expires_at = _parse_setup_expires_at_claim(
-        agent_claims.get('setup_expires_at'),
-        wall_max_exp=wall_max_exp,
-    )
-    if require_abs_setup_expiry and setup_expires_at is None:
+    raw_setup_exp = agent_claims.get('setup_expires_at')
+    if raw_setup_exp is None or (isinstance(raw_setup_exp, str) and not str(raw_setup_exp).strip()):
         logger.info(
-            'MCP setup assertion rejected (absolute setup_expires_at required): company_id=%s agent_id=%s',
+            'MCP setup assertion rejected (missing setup_expires_at): company_id=%s agent_id=%s',
             agent_claims.get('company_id'),
             agent_claims.get('agent_id'),
         )
-        return _fallback_context(agent_claims)
-    if agent_claims.get('setup_expires_at') is not None and setup_expires_at is None:
+        return _fallback_context(agent_claims, setup_claim_rejected=True)
+    setup_expires_at = _parse_setup_expires_at_claim(raw_setup_exp, wall_max_exp=wall_max_exp)
+    if setup_expires_at is None:
         logger.info(
             'MCP setup assertion rejected (invalid setup_expires_at): company_id=%s agent_id=%s',
             agent_claims.get('company_id'),
             agent_claims.get('agent_id'),
         )
-        return _fallback_context(agent_claims)
+        return _fallback_context(agent_claims, setup_claim_rejected=True)
 
     cap = _max_assertion_lifetime_seconds()
     if max_from_jwt is not None:
@@ -218,7 +244,7 @@ def approval_assertion_context_from_agent_claims(agent_claims: dict | None) -> A
             setup_ttl,
             cap,
         )
-        return _fallback_context(agent_claims)
+        return _fallback_context(agent_claims, setup_claim_rejected=True)
 
     # JWT lifetime must cover the session TTL identity will grant (<= exp - iat).
     lifetime = max(_DEFAULT_APPROVAL_ASSERTION_LIFETIME, setup_ttl)
@@ -231,9 +257,9 @@ def approval_assertion_context_from_agent_claims(agent_claims: dict | None) -> A
             lifetime,
             wall_remaining,
         )
-        return _fallback_context(agent_claims)
+        return _fallback_context(agent_claims, setup_claim_rejected=True)
     if lifetime < setup_ttl:
-        return _fallback_context(agent_claims)
+        return _fallback_context(agent_claims, setup_claim_rejected=True)
 
     if setup_expires_at is not None:
         cap_seconds = (setup_expires_at - timezone.now()).total_seconds()
@@ -243,7 +269,7 @@ def approval_assertion_context_from_agent_claims(agent_claims: dict | None) -> A
                 agent_claims.get('company_id'),
                 agent_claims.get('agent_id'),
             )
-            return _fallback_context(agent_claims)
+            return _fallback_context(agent_claims, setup_claim_rejected=True)
 
     return ApprovalAssertionContext(
         lifetime_seconds=lifetime,
@@ -252,4 +278,6 @@ def approval_assertion_context_from_agent_claims(agent_claims: dict | None) -> A
         setup_expires_at=setup_expires_at,
         grant_version=gv,
         company_binding_version=cbv,
+        is_personal_agent=is_personal,
+        blocked_assertion=False,
     )

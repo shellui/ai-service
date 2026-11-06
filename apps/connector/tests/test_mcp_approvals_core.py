@@ -211,6 +211,126 @@ class McpApprovalsCoreTests(TestCase):
         post.assert_not_called()
 
     @patch('apps.connector.mcp_approvals.requests.post')
+    def test_integer_zero_versions_match_string_response(self, post):
+        fut = (timezone.now() + timedelta(seconds=30)).isoformat()
+        post.return_value = MagicMock(
+            status_code=200,
+            json=lambda b=fut: {
+                'session_allowed': True,
+                'grant_version': '0',
+                'company_binding_version': '0',
+                'expires_at': b,
+            },
+        )
+        now = int(time.time())
+        p = {
+            **_BASE_PAYLOAD,
+            '_agent_claims': {
+                'iat': now,
+                'exp': now + 3600,
+                'grant_version': 0,
+                'company_binding_version': 0,
+            },
+        }
+        self.assertTrue(mcp_approvals.check_session_grant(p, connection_id='cz', is_destructive=False))
+        jb = post.call_args.kwargs.get('json') or {}
+        self.assertEqual(jb.get('grant_version'), '0')
+        self.assertEqual(jb.get('company_binding_version'), '0')
+
+    @patch('apps.connector.mcp_approvals.requests.post')
+    def test_personal_omits_version_keys_when_absent_on_token(self, post):
+        fut = (timezone.now() + timedelta(seconds=30)).isoformat()
+        post.return_value = MagicMock(status_code=200, json=lambda: {'session_allowed': True, 'expires_at': fut})
+        now = int(time.time())
+        p = {
+            **_BASE_PAYLOAD,
+            '_agent_claims': {
+                'iat': now,
+                'exp': now + 3600,
+                'personal_token_id': 'pt-1',
+                'jti': 'jt-1',
+            },
+        }
+        self.assertTrue(mcp_approvals.check_session_grant(p, connection_id='cp', is_destructive=False))
+        jb = post.call_args.kwargs.get('json') or {}
+        self.assertNotIn('grant_version', jb)
+        self.assertNotIn('company_binding_version', jb)
+
+    @patch('apps.connector.mcp_approvals.requests.post')
+    def test_personal_one_version_without_other_rejected(self, post):
+        fut = (timezone.now() + timedelta(seconds=30)).isoformat()
+        post.return_value = _session_ok_response(expires_at=fut)
+        now = int(time.time())
+        p = {
+            **_BASE_PAYLOAD,
+            '_agent_claims': {
+                'iat': now,
+                'exp': now + 3600,
+                'personal_token_id': 'pt-1',
+                'jti': 'jt-1',
+                'grant_version': _GV,
+            },
+        }
+        self.assertFalse(mcp_approvals.check_session_grant(p, connection_id='c1v', is_destructive=False))
+        post.assert_not_called()
+
+    @patch('apps.connector.mcp_approvals.requests.post')
+    def test_assertion_jwt_includes_string_zero_versions(self, post):
+        post.return_value = MagicMock(status_code=200, json=lambda: {'id': '1', 'status': 'pending'})
+        now = int(time.time())
+        payload = {
+            'agent_id': 'a1',
+            'company_id': 10,
+            'service': 'storage',
+            'action': 'x',
+            'arguments_hash': 'h' * 64,
+            '_agent_claims': {
+                'iat': now,
+                'exp': now + 3600,
+                'grant_version': 0,
+                'company_binding_version': '0',
+            },
+        }
+        mcp_approvals.create_approval_request(payload)
+        post.assert_called_once()
+        token = post.call_args.kwargs['headers']['Authorization'].split(' ', 1)[1]
+        claims = jwt.decode(
+            token,
+            _SIGNING.public_pem,
+            algorithms=['RS256'],
+            audience=APPROVAL_AUDIENCE,
+            issuer='https://ai.test',
+            options={'verify_aud': True},
+        )
+        self.assertEqual(claims.get('grant_version'), '0')
+        self.assertEqual(claims.get('company_binding_version'), '0')
+
+    @patch('apps.connector.mcp_approvals.requests.post')
+    def test_create_skips_when_delegated_setup_claim_invalid(self, post):
+        now = int(time.time())
+        setup_exp = timezone.now() + timedelta(seconds=650)
+        payload = {
+            'agent_id': 'a1',
+            'company_id': 10,
+            'service': 'storage',
+            'action': 'x',
+            'arguments_hash': 'h' * 64,
+            '_agent_claims': {
+                'company_id': 10,
+                'setup_flow': True,
+                'mcp_new_company_grant': True,
+                'mcp_session_ttl_seconds': 600,
+                'grant_version': _GV,
+                'company_binding_version': _CBV,
+                'setup_expires_at': setup_exp.isoformat(),
+                'iat': now - 3600,
+                'exp': now + 30,
+            },
+        }
+        self.assertIsNone(mcp_approvals.create_approval_request(payload))
+        post.assert_not_called()
+
+    @patch('apps.connector.mcp_approvals.requests.post')
     def test_session_allowed_boolean_alone_insufficient(self, post):
         post.return_value = MagicMock(
             status_code=200,

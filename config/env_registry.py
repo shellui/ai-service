@@ -79,16 +79,6 @@ OPTIONAL = (
     ),
     Var('MCP_APPROVAL_SETUP_SESSION_TTL_MIN_SECONDS', '600', 'Setup session Allow lower bound (signed claims)'),
     Var('MCP_APPROVAL_SETUP_SESSION_TTL_MAX_SECONDS', '900', 'Setup session Allow upper bound (signed claims)'),
-    Var(
-        'MCP_SETUP_REQUIRES_ABSOLUTE_EXPIRY',
-        'true',
-        'Reject setup_flow approval assertions without setup_expires_at on the regional token',
-    ),
-    Var(
-        'MCP_SESSION_GRANT_REQUIRES_ABSOLUTE_EXPIRES_AT',
-        'true',
-        'Reject session grants unless session-check returns absolute expires_at (and setup fields when setup)',
-    ),
     Var('MCP_RATE_LIMIT_AGENT', '120'),
     Var('CORS_ALLOW_ALL_ORIGINS', 'true', 'CORS and HTTPS'),
     Var('CORS_ALLOW_CREDENTIALS', 'false'),

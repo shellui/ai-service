@@ -170,9 +170,8 @@ class McpSetupContextTests(TestCase):
         MCP_APPROVAL_SETUP_SESSION_TTL_MIN_SECONDS=600,
         MCP_APPROVAL_SETUP_SESSION_TTL_MAX_SECONDS=900,
         MCP_APPROVAL_ASSERTION_MAX_LIFETIME_SECONDS=900,
-        MCP_SETUP_REQUIRES_ABSOLUTE_EXPIRY=True,
     )
-    def test_absolute_setup_expiry_required_when_flag_set(self):
+    def test_setup_requires_setup_expires_at_on_token(self):
         now = int(time.time())
         ctx = approval_assertion_context_from_agent_claims(
             {
@@ -187,6 +186,7 @@ class McpSetupContextTests(TestCase):
             },
         )
         self.assertFalse(ctx.setup_flow)
+        self.assertTrue(ctx.blocked_assertion)
 
     @override_settings(
         MCP_APPROVAL_SETUP_SESSION_TTL_MIN_SECONDS=600,
@@ -210,3 +210,12 @@ class McpSetupContextTests(TestCase):
             },
         )
         self.assertFalse(ctx.setup_flow)
+        self.assertTrue(ctx.blocked_assertion)
+
+    def test_integer_zero_versions_preserved_in_fallback(self):
+        now = int(time.time())
+        ctx = approval_assertion_context_from_agent_claims(
+            {'setup_flow': False, 'iat': now, 'exp': now + 3600, 'grant_version': 0, 'company_binding_version': 0},
+        )
+        self.assertEqual(ctx.grant_version, '0')
+        self.assertEqual(ctx.company_binding_version, '0')
