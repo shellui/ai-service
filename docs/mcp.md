@@ -116,6 +116,7 @@ The legacy **`result`** field uses Identity’s whitelist (`success`, `error`, `
 - **`operation_title`:** **only** from registry **`_meta.operation_summary`** when present; otherwise a neutral `Operation …` title (**not** from tool `title` or downstream bodies).
 - **`path`** / **`resource_label`:** **only** from registry **`_meta.path`** templates (query stripped). If no template is registered, **`path`** is omitted/empty and **`resource_label`** uses a stable `gateway:<export_name>` id (no raw request paths, query strings, or interpolated ids).
 - **`path` on forward:** `forward_call_log` applies the same query/fragment stripping to whatever path is in the audit row before POSTing to Identity, so a mistaken `?…` segment never leaves the gateway in the call-log body.
+- **Labels:** **`company_name`** and **`agent_name`** are **not** forwarded to Identity (JWT display strings are not server-enforced registry data).
 - **`access_kind`:** **`read`**, **`write`**, or **`destructive`** from tool traits and HTTP method (`access_kind_from_tool`), not from guesswork on names.
 - **`error_code`:** only if in the allowlist (`mcp_audit_codes.py`).
 - **No** raw tool arguments, provider exception text, or arbitrary client paths in the forwarded body.

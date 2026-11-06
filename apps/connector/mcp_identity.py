@@ -114,6 +114,14 @@ def _delegated_authority_success_body_ok(
         return False
     if int(gv_raw) != int(grant_version) or int(cb_raw) != int(company_binding_version):
         return False
+    # Delegated agents always have a global row id on success (identity PR #135 ``McpInternalDelegatedAgentAuthorityView``).
+    ga_raw = data.get('global_agent_id')
+    if not isinstance(ga_raw, str) or not ga_raw.strip():
+        return False
+    try:
+        uuid.UUID(ga_raw.strip())
+    except (ValueError, TypeError, AttributeError):
+        return False
     if data.get('authorized') is not True:
         return False
     if data.get('revoked') is not False or data.get('paused') is not False:
@@ -469,12 +477,7 @@ def forward_call_log(entry: dict) -> None:
         body['operation_title'] = op_title
     if resource_label:
         body['resource_label'] = resource_label
-    cn = str(entry.get('company_name') or '').strip()[:200]
-    if cn:
-        body['company_name'] = cn
-    an = str(entry.get('agent_name') or '').strip()[:200]
-    if an:
-        body['agent_name'] = an
+    # Do not forward JWT ``company_name`` / ``agent_name`` (unverified display strings).
     aid = str(entry.get('approval_id') or entry.get('approval_request_id') or '').strip()[:64]
     if aid:
         body['approval_id'] = aid
