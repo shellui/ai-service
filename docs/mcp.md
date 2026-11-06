@@ -109,12 +109,13 @@ Internal `forward_call_log` maps gateway bookkeeping to Identity’s **`outcome`
 
 HTTP **200** with unknown `log_result` and **`is_error` unset** is treated as **`failed`** (fail closed). **`is_error: false`** is required to record **`allowed`** on success-class HTTP status.
 
-The legacy **`result`** field uses a small whitelist (`success`, `error`, `denied`, `pending`); other values are derived via **`legacy_result_token`** from the outcome (see code), not from raw downstream text.
+The legacy **`result`** field uses Identity’s whitelist (`success`, `error`, `denied`, `pending_approval`); legacy internal `pending` is normalized to **`pending_approval`** before forward. Other values are derived via **`legacy_result_token`** from the outcome (see code), not from raw downstream text.
 
 ### Safe metadata only
 
 - **`operation_title`:** **only** from registry **`_meta.operation_summary`** when present; otherwise a neutral `Operation …` title (**not** from tool `title` or downstream bodies).
 - **`path`** / **`resource_label`:** **only** from registry **`_meta.path`** templates (query stripped). If no template is registered, **`path`** is omitted/empty and **`resource_label`** uses a stable `gateway:<export_name>` id (no raw request paths, query strings, or interpolated ids).
+- **`path` on forward:** `forward_call_log` applies the same query/fragment stripping to whatever path is in the audit row before POSTing to Identity, so a mistaken `?…` segment never leaves the gateway in the call-log body.
 - **`access_kind`:** **`read`**, **`write`**, or **`destructive`** from tool traits and HTTP method (`access_kind_from_tool`), not from guesswork on names.
 - **`error_code`:** only if in the allowlist (`mcp_audit_codes.py`).
 - **No** raw tool arguments, provider exception text, or arbitrary client paths in the forwarded body.
@@ -138,7 +139,7 @@ Other service gateways that write MCP approvals or forward activity to Identity 
 ## Client conformance and CI
 
 - **Conformance and audits:** [mcp-e2e-conformance.md](./mcp-e2e-conformance.md), [mcp-tool-schema-audit.md](./mcp-tool-schema-audit.md).
-- **CI** checks out **`shellui/identity-service`** at **`develop`** by default. For gateway changes that depend on an Identity branch not yet on `develop`, set the repository variable **`IDENTITY_SERVICE_REF`** (commit SHA or branch name) in GitHub **Actions variables** so the **Tests** job clones that ref. Record the **exact ref you validated** in the **pull request description** for traceability (not necessarily in this doc).
+- **CI** checks out **`shellui/identity-service`** at **`develop`** by default unless the repository variable **`IDENTITY_SERVICE_REF`** is set (branch name or full SHA). To align with **identity PR #135** while it is open, pin that PR’s **current** `headRefOid` from GitHub (it moves with pushes). Record the **exact ref you validated** in the **pull request description** for traceability.
 
 ## Unsupported / transport notes
 

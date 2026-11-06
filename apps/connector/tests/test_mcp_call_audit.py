@@ -7,6 +7,7 @@ from django.test import SimpleTestCase
 from apps.connector.mcp_call_audit import (
     OUTCOMES,
     build_call_audit_log,
+    legacy_result_token,
     outcome_from_audit,
     operation_title_for_audit,
     resource_label_safe,
@@ -41,6 +42,16 @@ class McpCallAuditOutcomeTests(SimpleTestCase):
             outcome_from_audit(log_result='pending_approval', status=202, is_error=None),
             'pending_approval',
         )
+
+    def test_legacy_pending_log_result_maps_to_pending_approval_outcome(self):
+        self.assertEqual(
+            outcome_from_audit(log_result='pending', status=202, is_error=None),
+            'pending_approval',
+        )
+
+    def test_legacy_result_token_pending_is_pending_approval(self):
+        self.assertEqual(legacy_result_token(outcome='pending'), 'pending_approval')
+        self.assertEqual(legacy_result_token(outcome='pending_approval'), 'pending_approval')
 
     def test_outcomes_set(self):
         self.assertEqual(OUTCOMES, {'allowed', 'failed', 'denied', 'pending_approval', 'session_used'})

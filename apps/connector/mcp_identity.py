@@ -23,13 +23,13 @@ from shellui_django.mcp.internal import (
 )
 
 from apps.connector.mcp_audit_codes import ALLOWED_ERROR_CODES
-from apps.connector.mcp_call_audit import OUTCOMES, legacy_result_token
+from apps.connector.mcp_call_audit import OUTCOMES, legacy_result_token, safe_route_path_for_audit
 from apps.connector.mcp_company_id import strict_numeric_company_id
 from apps.connector.mcp_revocation import revocation_fingerprint_material
 
 logger = logging.getLogger(__name__)
 
-# Identity canonical live delegated-agent binding (commit 17f09487+); do not use alternate URL spellings.
+# Identity canonical live delegated-agent binding (identity PR #135+); do not use alternate URL spellings.
 DELEGATED_AGENT_AUTHORITY_PATH = '/api/v1/mcp/internal/mcp-agent-delegated-authority'
 DELEGATED_AGENT_AUTHORITY_AUDIENCE = 'shellui-mcp-agent-delegated-authority'
 DELEGATED_AGENT_AUTHORITY_SCOPE = 'mcp.agent.delegated.authority.read'
@@ -79,6 +79,48 @@ def _build_delegated_agent_authority_assertion(*, audience_url: str) -> str:
     return token.decode('utf-8') if isinstance(token, bytes) else str(token)
 
 
+def _delegated_authority_success_body_ok(
+    data: dict[str, Any],
+    *,
+    agent_id: str,
+    company_id: int,
+    global_company_id: str,
+    grant_version: int,
+    company_binding_version: int,
+) -> bool:
+    """Require Identity 200 JSON to echo the same binding the gateway asserted (shellui/identity-service ``McpInternalDelegatedAgentAuthorityView``)."""
+    try:
+        aid = uuid.UUID(str(data.get('agent_id') or '').strip())
+        expect_aid = uuid.UUID(str(agent_id).strip())
+    except (ValueError, TypeError, AttributeError):
+        return False
+    if aid != expect_aid:
+        return False
+    cid_raw = data.get('company_id')
+    if not isinstance(cid_raw, int) or cid_raw <= 0:
+        return False
+    if int(cid_raw) != int(company_id):
+        return False
+    try:
+        row_gc = uuid.UUID(str(data.get('global_company_id') or '').strip())
+        body_gc = uuid.UUID(str(global_company_id).strip())
+    except (ValueError, TypeError, AttributeError):
+        return False
+    if row_gc != body_gc:
+        return False
+    gv_raw = data.get('grant_version')
+    cb_raw = data.get('company_binding_version')
+    if not isinstance(gv_raw, int) or not isinstance(cb_raw, int):
+        return False
+    if int(gv_raw) != int(grant_version) or int(cb_raw) != int(company_binding_version):
+        return False
+    if data.get('authorized') is not True:
+        return False
+    if data.get('revoked') is not False or data.get('paused') is not False:
+        return False
+    return True
+
+
 def verify_live_delegated_agent_authority(
     *,
     agent_id: str,
@@ -90,8 +132,10 @@ def verify_live_delegated_agent_authority(
     """
     Live delegated binding check against Identity (not revocation-cache alone).
 
-    **200** with ``authorized: true`` only when the regional agent row matches the binding triple.
-    **403** / **404** / malformed body → deny. Transport failure → deny (fail closed).
+    **200** with ``authorized: true`` and JSON echo of ``agent_id``, ``company_id``,
+    ``global_company_id``, ``grant_version``, and ``company_binding_version`` matching the request
+    (and ``revoked`` / ``paused`` false). Any mismatch, **403** / **404** / malformed body, or
+    transport error → deny (fail closed).
     """
     origin = _identity_origin()
     if not origin:
@@ -135,12 +179,19 @@ def verify_live_delegated_agent_authority(
         return False
     if not isinstance(data, dict):
         return False
-    if data.get('authorized') is not True:
-        return False
-    # Strict booleans on success (Identity contract); reject missing or wrong types.
-    if data.get('revoked') is not False:
-        return False
-    if data.get('paused') is not False:
+    if not _delegated_authority_success_body_ok(
+        data,
+        agent_id=agent_id,
+        company_id=company_id,
+        global_company_id=global_company_id,
+        grant_version=grant_version,
+        company_binding_version=company_binding_version,
+    ):
+        logger.info(
+            'MCP delegated authority response rejected: binding echo mismatch or invalid shape agent_id=%s company_id=%s',
+            agent_id,
+            company_id,
+        )
         return False
     return True
 
@@ -356,7 +407,7 @@ def personal_agent_bearer_valid(claims: dict) -> bool:
 
 
 _ACCESS_KINDS = frozenset({'read', 'write', 'destructive'})
-_RESULT_WHITELIST = frozenset({'success', 'error', 'denied', 'pending'})
+_RESULT_WHITELIST = frozenset({'success', 'error', 'denied', 'pending_approval'})
 
 
 def forward_call_log(entry: dict) -> None:
@@ -383,6 +434,7 @@ def forward_call_log(entry: dict) -> None:
     op_title = str(entry.get('operation_title') or '').strip()[:200]
     resource_label = str(entry.get('resource_label') or '').strip()[:200]
     tool_export_id = str(entry.get('tool_export_id') or entry.get('tool') or '')[:256]
+    safe_path = safe_route_path_for_audit(entry.get('path'))[:512]
     body: dict[str, Any] = {
         'agent_id': entry.get('agent_id'),
         'company_id': entry.get('company_id'),
@@ -390,13 +442,16 @@ def forward_call_log(entry: dict) -> None:
         'tool': str(entry.get('tool') or '')[:256],
         'tool_export_id': tool_export_id,
         'method': str(entry.get('method') or '')[:16],
-        'path': str(entry.get('path') or '')[:512],
+        'path': safe_path,
         'status': int(entry.get('status') or 0),
         'client_ip': str(entry.get('client_ip') or '')[:45],
     }
     res_raw = str(entry.get('result') or '').strip()[:32]
-    if res_raw in _RESULT_WHITELIST:
-        body['result'] = res_raw
+    res_lower = res_raw.lower()
+    if res_lower in _RESULT_WHITELIST:
+        body['result'] = res_lower
+    elif res_lower == 'pending':
+        body['result'] = 'pending_approval'
     else:
         oa = outcome_raw if outcome_raw in OUTCOMES else 'failed'
         body['result'] = legacy_result_token(outcome=oa)[:32]

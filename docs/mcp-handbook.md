@@ -31,7 +31,7 @@ For **global-delegated** regional tokens (full `global_company_id` + `grant_vers
 - **Authorization:** `Bearer` RS256 assertion with **`aud`:** `shellui-mcp-agent-delegated-authority`, **`scope`:** `mcp.agent.delegated.authority.read`, **`target`:** Identity issuer (same pattern as other internal MCP routes).
 - **JSON body:** `agent_id` (uuid string), `company_id` (positive int), `global_company_id` (uuid string), `grant_version`, `company_binding_version` (non‑negative JSON integers).
 
-**200** with **`authorized`: true** requires strict **`revoked`: false** and **`paused`: false** on the response. **403** / **404** / transport errors → fail closed for delegated paths.
+**200** with **`authorized`: true** requires strict **`revoked`: false** and **`paused`: false**, and the JSON must echo **`agent_id`**, **`company_id`**, **`global_company_id`**, **`grant_version`**, and **`company_binding_version`** as non‑string integers/UUIDs matching the request body—otherwise the gateway treats the response as invalid and fails closed (same as **403** / **404** / transport errors).
 
 ## JSON-RPC examples
 

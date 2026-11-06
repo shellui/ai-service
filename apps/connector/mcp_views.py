@@ -412,12 +412,28 @@ class PrefixingMcpServer(AggregatingMcpServer):
             gw.tools_from_schema, srv.tools_from_schema = orig_gw, orig_srv
 
     def _cached_export_tool(self, export_name: str) -> dict | None:
+        """Resolve a tool row from the gateway export name (same rules as ``prefixed_tool_catalog``)."""
+        local_id = self._gateway.local_service_id
+        raw_export = str(export_name or '')
+        # Local catalog: must mirror ``prefixed_tool_catalog`` export naming (sequential ``taken`` for collisions).
+        if raw_export.startswith(f'{local_id}_'):
+            taken: set[str] = set()
+            for tool in tools_from_schema(self.schema_provider()):
+                if not isinstance(tool, dict):
+                    continue
+                local_tool_name = str(tool.get('name') or '').strip()
+                if not local_tool_name:
+                    continue
+                exp = gateway_export_name(local_id, local_tool_name, taken=taken)
+                taken.add(exp)
+                if exp == raw_export:
+                    return normalize_mcp_tool(tool)
+            return None
         local_name = self._local_tool_export_name(export_name)
         if local_name is not None:
             for tool in tools_from_schema(self.schema_provider()):
                 if str(tool.get('name') or '') == local_name:
                     return normalize_mcp_tool(tool)
-            # Explicit local export prefix but no matching OpenAPI MCP tool.
             return None
         service_id = self._service_id_from_export_name(export_name)
         if service_id is None:

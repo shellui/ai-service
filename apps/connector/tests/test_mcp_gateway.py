@@ -291,6 +291,16 @@ class McpGatewayTests(TestCase):
         body = response.json()
         self.assertNotIn('error', body.get('result') or body)
 
+    def test_cached_export_tool_resolves_ai_list_services(self, _rev_ok):
+        """Gate/audit must resolve local exports the same way as tools/list (prefix + collision rules)."""
+        from apps.connector.mcp_views import _get_server
+
+        row = _get_server()._cached_export_tool('ai_list_services')
+        self.assertIsNotNone(row)
+        meta = row.get('_meta') if isinstance(row, dict) else {}
+        self.assertTrue(str(meta.get('path') or '').strip())
+        self.assertTrue(str(meta.get('method') or '').strip())
+
     def test_route_resolves_from_tools_catalog_without_route_cache(self, _rev_ok):
         from apps.connector.mcp_views import _get_server
 

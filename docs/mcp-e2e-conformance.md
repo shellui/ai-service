@@ -29,4 +29,12 @@ Set `MCP_E2E_LEAVE_STACK=1` to keep containers running after a failure.
 
 ## CI
 
-The **MCP client conformance** job on pull requests builds identity (develop checkout) and ai-service, runs this script, and fails on any client or negative check.
+The **MCP client conformance** job on pull requests builds identity and ai-service, runs this script, and fails on any client or negative check.
+
+**Repository variables (explicit refs, same semantics as the Tests job):**
+
+| Variable | Default | Used by |
+|----------|---------|---------|
+| `IDENTITY_SERVICE_REF` | `develop` | MCP client conformance **and** Tests (schema audit) identity checkout |
+
+The **Tests** job also accepts optional refs for downstream OpenAPI clones used only by `tools/mcp-audit/generate_report.py`: `STORAGE_SERVICE_REF`, `HOSTING_SERVICE_REF`, `EMAIL_SERVICE_REF`, `SAAS_SERVICE_REF` (each defaults to `develop`). Set these to a branch or **full commit SHA** when you need a locked contract across repos; the workflow prints no hidden partial pins—only what you configure in GitHub Actions variables for that run.
