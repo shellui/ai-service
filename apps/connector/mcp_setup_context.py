@@ -138,6 +138,9 @@ def global_binding_conflict_claims(
     """
     if not isinstance(agent_claims, dict):
         return False
+    ma = _mcp_authority_claim(agent_claims.get('mcp_authority'))
+    if ma in {'delegated', 'global_delegated'} and not is_global_delegated_claims(agent_claims):
+        return True
     raw_gcid = agent_claims.get('global_company_id')
     gv, cbv, gcid = global_binding_triplet_from_claims(agent_claims)
     has_raw_gcid = not (

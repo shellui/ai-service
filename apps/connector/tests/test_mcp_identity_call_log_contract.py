@@ -130,7 +130,7 @@ class ForwardCallLogIdentityDevelopTests(SimpleTestCase):
             mcp_identity.forward_call_log(_base_entry(grant_version=99))
         post.assert_not_called()
 
-    def test_destructive_non_success_drops_approval_and_adds_error(self):
+    def test_destructive_waiting_preserves_waiting_outcome(self):
         with patch('apps.connector.mcp_identity._http_post') as post:
             mcp_identity.forward_call_log(
                 _base_entry(
@@ -143,9 +143,9 @@ class ForwardCallLogIdentityDevelopTests(SimpleTestCase):
                 )
             )
         body = post.call_args.kwargs['json']
-        self.assertEqual(body['outcome'], 'failed')
-        self.assertNotIn('approval_id', body)
-        self.assertEqual(body.get('error_code'), 'mcp_tool_error')
+        self.assertEqual(body['outcome'], 'waiting_approval')
+        self.assertEqual(body['approval_id'], _APPROVAL)
+        self.assertEqual(body.get('error_code'), 'waiting_approval')
 
     def test_approval_id_uuid_only(self):
         with patch('apps.connector.mcp_identity._http_post') as post:

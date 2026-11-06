@@ -471,6 +471,37 @@ class McpGatewayTests(TestCase):
         self.assertIn('error', response.json())
         post.assert_not_called()
 
+    @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
+    @patch('apps.connector.mcp_views.requests.post')
+    def test_forward_tool_call_scope_forbidden_uses_negative_32603(self, post, _mint, _rev_ok):
+        cache.set(
+            'mcp_gateway:tools:https://storage.test/mcp',
+            [
+                {
+                    'name': 'list_buckets',
+                    'description': 'List',
+                    '_meta': {'method': 'get', 'path': '/buckets/'},
+                }
+            ],
+        )
+        cache.set(
+            'mcp_gateway:route:storage_list_buckets',
+            {'service_id': 'storage', 'downstream_name': 'list_buckets'},
+        )
+        post.side_effect = AssertionError('downstream MCP must not run when scope forbids service')
+        token = _agent_token(secret=self.secret, issuer=self.issuer, scope='ai')
+        response = self.client.post(
+            '/c/10/mcp',
+            data=_rpc('tools/call', name='storage_list_buckets', arguments={}),
+            content_type='application/json',
+            **self._auth(token),
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        body = response.json()
+        err = body.get('error') or {}
+        self.assertEqual(err.get('code'), -32603, body)
+        self.assertEqual(err.get('message'), 'Forbidden')
+
     def test_token_for_other_company_is_refused(self, _rev_ok):
         # aud names company 11 and matches the URL, but company_id is 10: refuse.
         token = _agent_token(secret=self.secret, issuer=self.issuer, resource='https://ai.test/c/11/mcp')
@@ -597,6 +628,7 @@ class McpGatewayTests(TestCase):
             grant_version=1,
             company_binding_version=1,
             global_agent_id=g_aid,
+            mcp_destructive=False,
         )
         response = self.client.post(
             '/c/10/mcp',
@@ -690,6 +722,7 @@ class McpGatewayTests(TestCase):
             grant_version=1,
             company_binding_version=1,
             global_agent_id=g_aid,
+            mcp_destructive=False,
         )
         response = self.client.post(
             '/c/10/mcp',
@@ -734,6 +767,7 @@ class McpGatewayTests(TestCase):
             grant_version=1,
             company_binding_version=1,
             global_agent_id=g_aid,
+            mcp_destructive=False,
         )
         response = self.client.post(
             '/c/10/mcp',
@@ -779,6 +813,7 @@ class McpGatewayTests(TestCase):
             grant_version=1,
             company_binding_version=1,
             global_agent_id=g_aid_claim,
+            mcp_destructive=False,
         )
         response = self.client.post(
             '/c/10/mcp',
@@ -788,6 +823,26 @@ class McpGatewayTests(TestCase):
         )
         self.assertEqual(response.status_code, 403)
         self.assertEqual(response.json().get('error'), 'delegated_authority_forbidden')
+
+    def test_mcp_authority_delegated_without_binding_triple_rejected(self, _rev_ok):
+        base = _agent_token(secret=self.secret, issuer=self.issuer, grant_version=1)
+        claims = jwt.decode(
+            base,
+            self.secret,
+            algorithms=['HS256'],
+            audience=AI_MCP,
+            options={'verify_aud': False},
+        )
+        claims['mcp_authority'] = 'delegated'
+        token = jwt.encode(claims, self.secret, algorithm='HS256')
+        response = self.client.post(
+            '/c/10/mcp',
+            data=_rpc('tools/list'),
+            content_type='application/json',
+            **self._auth(token),
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json().get('error'), 'global_binding_invalid')
 
     def test_personal_partial_global_triplet_rejected(self, _rev_ok):
         token = _agent_token(

@@ -20,6 +20,8 @@ On the **ai** service, **`STORAGE_SERVICE_URL`**, **`HOSTING_SERVICE_URL`**, and
 
 So the default suite proves **MCP + OAuth + ai gateway + identity** for the flows in `tools/mcp-e2e` (including negatives such as tenant isolation, revoked agents, and invalid OAuth where the scripts cover them). It does **not** prove routing through real **storage**, **hosting**, or **email** gateways, full delegated-downstream integration, or production SaaS behavior.
 
+The gateway **`initialize`** response echoes **`protocolVersion`** only when the client sends one of the exact revisions listed in `apps.connector.mcp_protocol.SUPPORTED_PROTOCOL_VERSIONS` (same set the unit tests assert against **shellui-django**); unknown strings return **JSON-RPC -32600** with HTTP 400—there is no silent upgrade to a default revision. Default CI still uses empty downstream URLs and the SaaS mock, so **live** delegated downstream MCP is not exercised automatically.
+
 ## Optional downstream URLs (manual local evidence only)
 
 Before `docker compose up`, you can point the **ai** container at real sibling dev URLs (each must serve MCP as your env expects). This is **ad hoc** and **not** part of the default CI MCP client job:

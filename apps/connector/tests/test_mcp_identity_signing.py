@@ -156,10 +156,14 @@ class McpIdentitySigningTests(SimpleTestCase):
                 grant_version=1,
                 company_binding_version=2,
                 agent_claims={
-                    'scope': 'ai storage',
+                    'scope': 'storage ai',
                     'mcp_access': 'read',
                     'mcp_read': 'full',
                     'global_agent_id': '33333333-3333-4333-8333-333333333333',
+                    'grant_version': 1,
+                    'company_binding_version': 2,
+                    'global_company_id': '22222222-2222-4222-8222-222222222222',
+                    'mcp_destructive': False,
                 },
             )
         self.assertTrue(ok)
@@ -226,7 +230,57 @@ class McpIdentitySigningTests(SimpleTestCase):
                 global_company_id='22222222-2222-4222-8222-222222222222',
                 grant_version=1,
                 company_binding_version=2,
-                agent_claims={'scope': 'ai storage'},
+                agent_claims={
+                    'scope': 'ai storage',
+                    'grant_version': 1,
+                    'company_binding_version': 2,
+                    'global_company_id': '22222222-2222-4222-8222-222222222222',
+                    'global_agent_id': '33333333-3333-4333-8333-333333333333',
+                    'mcp_destructive': False,
+                },
+            )
+        self.assertFalse(ok)
+
+    def test_delegated_authority_requires_global_agent_id_on_delegated_claims(self):
+        with patch('apps.connector.mcp_identity._http_post') as post:
+            post.return_value = MagicMock(status_code=200, json=lambda: self._delegated_ok_json())
+            ok = mcp_identity.verify_live_delegated_agent_authority(
+                agent_id='11111111-1111-4111-8111-111111111111',
+                company_id=10,
+                global_company_id='22222222-2222-4222-8222-222222222222',
+                grant_version=1,
+                company_binding_version=2,
+                agent_claims={
+                    'scope': 'ai storage',
+                    'mcp_access': 'read',
+                    'mcp_read': 'full',
+                    'grant_version': 1,
+                    'company_binding_version': 2,
+                    'global_company_id': '22222222-2222-4222-8222-222222222222',
+                    'mcp_destructive': False,
+                },
+            )
+        self.assertFalse(ok)
+
+    def test_delegated_authority_requires_bool_mcp_destructive(self):
+        with patch('apps.connector.mcp_identity._http_post') as post:
+            post.return_value = MagicMock(status_code=200, json=lambda: self._delegated_ok_json())
+            ok = mcp_identity.verify_live_delegated_agent_authority(
+                agent_id='11111111-1111-4111-8111-111111111111',
+                company_id=10,
+                global_company_id='22222222-2222-4222-8222-222222222222',
+                grant_version=1,
+                company_binding_version=2,
+                agent_claims={
+                    'scope': 'ai storage',
+                    'mcp_access': 'read',
+                    'mcp_read': 'full',
+                    'global_agent_id': '33333333-3333-4333-8333-333333333333',
+                    'grant_version': 1,
+                    'company_binding_version': 2,
+                    'global_company_id': '22222222-2222-4222-8222-222222222222',
+                    'mcp_destructive': 'false',
+                },
             )
         self.assertFalse(ok)
 

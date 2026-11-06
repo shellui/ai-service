@@ -122,7 +122,13 @@ def _delegated_authority_success_body_ok(
     company_binding_version: int,
     agent_claims: dict[str, Any] | None,
 ) -> bool:
-    """Require Identity **200** JSON to match ``_delegated_authority_fixed_payload`` (merged ``develop``)."""
+    """Require Identity **200** JSON to match ``_delegated_authority_fixed_payload`` (merged ``develop``).
+
+    For **delegated** JWTs (full global triple), the signed claims must include a valid
+    ``global_agent_id`` matching the Identity row, ``mcp_destructive`` as a real **bool**
+    matching ``allow_destructive`` (no string/coercion fallback), and JWT ``scope`` must
+    match ``services_allowed`` as an exact **set** (order-independent).
+    """
     if set(data.keys()) != _DELEGATED_AUTHORITY_RESPONSE_KEYS:
         return False
     if data.get('authorized') is not True:
@@ -136,8 +142,14 @@ def _delegated_authority_success_body_ok(
     row_allow_destr = data.get('allow_destructive')
     if not isinstance(row_allow_destr, bool):
         return False
+    delegated_claims = isinstance(agent_claims, dict) and is_global_delegated_claims(agent_claims)
     jwt_destr = agent_claims.get('mcp_destructive') if isinstance(agent_claims, dict) else None
-    if isinstance(jwt_destr, bool):
+    if delegated_claims:
+        if 'mcp_destructive' not in (agent_claims or {}) or not isinstance(jwt_destr, bool):
+            return False
+        if row_allow_destr != jwt_destr:
+            return False
+    elif isinstance(jwt_destr, bool):
         if row_allow_destr != jwt_destr:
             return False
     elif row_allow_destr is not False:
@@ -188,7 +200,16 @@ def _delegated_authority_success_body_ok(
         return False
     if isinstance(agent_claims, dict) and agent_claims:
         raw_ga = agent_claims.get('global_agent_id')
-        if raw_ga not in (None, ''):
+        if delegated_claims:
+            if raw_ga in (None, ''):
+                return False
+            try:
+                claim_ga = uuid.UUID(str(raw_ga).strip())
+            except (ValueError, TypeError, AttributeError):
+                return False
+            if claim_ga != resp_ga:
+                return False
+        elif raw_ga not in (None, ''):
             try:
                 claim_ga = uuid.UUID(str(raw_ga).strip())
             except (ValueError, TypeError, AttributeError):
@@ -206,8 +227,9 @@ def _delegated_authority_success_body_ok(
         except ImportError:
             scope_service_ids = None  # type: ignore[misc, assignment]
         if scope_service_ids is not None:
-            claim_svcs = sorted(str(x) for x in scope_service_ids(agent_claims))
-            if claim_svcs != list(svcs):
+            claim_set = {str(x) for x in scope_service_ids(agent_claims) if str(x).strip()}
+            row_set = {str(x) for x in svcs if isinstance(x, str) and str(x).strip()}
+            if claim_set != row_set:
                 return False
     return True
 
@@ -243,12 +265,14 @@ def verify_live_delegated_agent_authority_detail(
     Live delegated binding check against Identity (not revocation-cache alone).
 
     **200** responses use a **fixed 15-key** JSON object (see identity ``_delegated_authority_fixed_payload``).
-    The gateway accepts only when ``authorized`` and ``active`` are **true**, ``revoked`` / ``paused`` /
-    ``allow_destructive`` are **false**, binding fields match the request, ``services_allowed`` is a
-    sorted list of strings, and there are **no** extra keys. Mismatch can still be **HTTP 200** with
-    ``authorized: false``; the gateway treats that as deny. Transport errors and non-200 → deny.
-    When ``agent_claims`` is set, ``global_agent_id`` (if present), ``mcp_access`` / ``mcp_read``, and
-    JWT ``scope`` services must match the Identity row (``access_mode``, ``read_level``, ``services_allowed``).
+    The gateway accepts only when ``authorized`` and ``active`` are **true**, ``revoked`` and ``paused`` are
+    **false**, binding IDs and versions match the request, ``services_allowed`` is a sorted list of strings,
+    ``allow_destructive`` is a **boolean** that must match the JWT ``mcp_destructive`` claim when present,
+    and there are **no** extra keys. For delegated JWTs, ``global_agent_id`` and boolean ``mcp_destructive``
+    are **required** and must match the row. Mismatch can still be **HTTP 200** with ``authorized: false``;
+    the gateway treats that as deny. Transport errors and non-200 → deny.
+    When ``agent_claims`` is set, ``mcp_access`` / ``mcp_read``, JWT ``scope`` (full set vs row), and
+    ``global_agent_id`` (delegated) must match the Identity row.
     """
     origin = _identity_origin()
     if not origin:
@@ -673,15 +697,26 @@ def forward_call_log(entry: dict) -> None:
 
     destructive_audit = access_kind == 'destructive' or bool(entry.get('destructive_hint'))
     if destructive_audit:
-        if ingest_outcome not in ('allowed', 'session_used'):
+        if ingest_outcome == 'denied':
+            ec_derived = sanitize_error_code(entry.get('error_code')) or 'denied'
+        elif ingest_outcome == 'waiting_approval':
+            ec_derived = sanitize_error_code(entry.get('error_code')) or 'waiting_approval'
+        elif ingest_outcome in ('allowed', 'session_used'):
+            if approval_uuid is None:
+                ingest_outcome = 'failed'
+                ec_derived = sanitize_error_code(entry.get('error_code')) or 'mcp_tool_error'
+            else:
+                ec_derived = None
+        elif ingest_outcome == 'failed':
+            ec_derived = sanitize_error_code(entry.get('error_code')) or error_code_from_http(
+                status=status_code, is_error=is_err
+            )
+            if ec_derived is None:
+                ec_derived = 'mcp_tool_error'
+        else:
             ingest_outcome = 'failed'
             approval_uuid = None
             ec_derived = sanitize_error_code(entry.get('error_code')) or 'mcp_tool_error'
-        elif approval_uuid is None:
-            ingest_outcome = 'failed'
-            ec_derived = 'mcp_tool_error'
-        else:
-            ec_derived = None
     else:
         ec_raw = entry.get('error_code')
         ec_derived = sanitize_error_code(ec_raw)

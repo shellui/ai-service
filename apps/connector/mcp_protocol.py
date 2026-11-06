@@ -17,11 +17,13 @@ from django.http import HttpRequest, HttpResponse, JsonResponse
 from shellui_django.mcp.gateway import AggregatingMcpServer
 
 from apps.connector.mcp_call_log import begin_mcp_tool_call_timer, reset_mcp_tool_call_timer
+from apps.connector.mcp_company_id import strict_numeric_company_id
 from apps.connector.mcp_identity import (
     DelegatedAuthorityFailureReason,
     verify_live_delegated_agent_authority_detail,
 )
 from apps.connector.mcp_setup_context import (
+    _mcp_authority_claim,
     global_binding_triplet_from_claims,
     global_binding_conflict_claims,
     is_global_delegated_claims,
@@ -30,7 +32,7 @@ from apps.connector.mcp_tool_presentation import shellui_gateway_instructions
 from shellui_django.mcp.rate_limit import check_agent_rate_limit
 from shellui_django.mcp.server import McpServer
 
-# Newest first; negotiation picks the client version when it appears in this tuple.
+# Supported MCP revisions (exact client match only; see ``negotiate_protocol_version``).
 SUPPORTED_PROTOCOL_VERSIONS: tuple[str, ...] = (
     '2025-06-18',
     '2025-03-26',
@@ -46,11 +48,12 @@ MCP_TOOLS_PAGE_SIZE = 200
 _SUPPORTED_PROTOCOL_SET = frozenset(SUPPORTED_PROTOCOL_VERSIONS)
 
 
-def negotiate_protocol_version(client_version: str | None) -> str:
+def negotiate_protocol_version(client_version: str | None) -> str | None:
+    """Return client version only when it is an exact gateway-supported revision (no silent fallback)."""
     requested = str(client_version or '').strip()
-    if requested in _SUPPORTED_PROTOCOL_SET:
-        return requested
-    return SUPPORTED_PROTOCOL_VERSIONS[0]
+    if not requested:
+        return None
+    return requested if requested in _SUPPORTED_PROTOCOL_SET else None
 
 
 def server_capabilities() -> dict[str, Any]:
@@ -62,11 +65,8 @@ def build_initialize_result(
     *,
     agent_claims: dict[str, Any],
     params: dict[str, Any],
+    protocol_version: str,
 ) -> dict[str, Any]:
-    client_version = params.get('protocolVersion')
-    protocol_version = negotiate_protocol_version(
-        str(client_version) if client_version is not None else None
-    )
     agent = server._gateway.resolve_agent(agent_claims)
     urls = server._gateway.get_service_urls()
     from shellui_django.mcp.gateway import scope_service_ids
@@ -209,6 +209,9 @@ def _delegated_live_authority_block(
     agent_claims: dict[str, Any],
 ) -> JsonResponse | None:
     """Central gateway: delegated JWTs must pass Identity live 15-key authority before any MCP method."""
+    ma = _mcp_authority_claim(agent_claims.get('mcp_authority'))
+    if ma == 'delegated' and not is_global_delegated_claims(agent_claims):
+        return JsonResponse({'error': 'global_binding_invalid'}, status=403)
     if global_binding_conflict_claims(agent_claims, allow_isolated_grant_version=True):
         return JsonResponse({'error': 'global_binding_invalid'}, status=403)
     if not is_global_delegated_claims(agent_claims):
@@ -216,11 +219,7 @@ def _delegated_live_authority_block(
     gv, cbv, gcid = global_binding_triplet_from_claims(agent_claims)
     if gv is None or cbv is None or gcid is None:
         return JsonResponse({'error': 'delegated_authority_forbidden'}, status=403)
-    cid_raw = agent_claims.get('company_id')
-    try:
-        company_id_int = int(cid_raw) if cid_raw is not None else None
-    except (TypeError, ValueError):
-        company_id_int = None
+    company_id_int = strict_numeric_company_id(agent_claims.get('company_id'))
     if company_id_int is None:
         return JsonResponse({'error': 'delegated_authority_forbidden'}, status=403)
     agent_id = str(agent_claims.get('agent_id') or '').strip()
@@ -273,11 +272,9 @@ def _gateway_precheck(
         return JsonResponse({'error': 'unauthorized'}, status=401)
     if check_agent_rate_limit(agent_id):
         return JsonResponse({'error': 'rate_limited'}, status=429)
-    company_id = agent_claims.get('company_id')
-    try:
-        company_id_int = int(company_id) if company_id is not None else None
-    except (TypeError, ValueError):
-        company_id_int = None
+    company_id_int = strict_numeric_company_id(agent_claims.get('company_id'))
+    if company_id_int is None:
+        return JsonResponse({'error': 'unauthorized'}, status=401)
     if server.identity_revocation_check and server.identity_revocation_check(agent_id, company_id_int):
         return JsonResponse({'error': 'agent_revoked'}, status=403)
     if not McpServer._service_allowed(agent_claims, server.service_name):
@@ -323,7 +320,10 @@ def handle_mcp_gateway_request(
     if not isinstance(params, dict):
         params = {}
 
-    company_id = int(agent_claims['company_id'])
+    cid = strict_numeric_company_id(agent_claims.get('company_id'))
+    if cid is None:
+        return JsonResponse({'error': 'unauthorized'}, status=401)
+    company_id = int(cid)
     agent_id = str(agent_claims['agent_id'])
 
     protocol_error = _validate_protocol_version_header(request, req_id)
@@ -346,7 +346,17 @@ def handle_mcp_gateway_request(
         return HttpResponse(status=202)
 
     if method == 'initialize':
-        result = build_initialize_result(server, agent_claims=agent_claims, params=params)
+        pv = negotiate_protocol_version(
+            str(params.get('protocolVersion')) if params.get('protocolVersion') is not None else None
+        )
+        if pv is None:
+            return JsonResponse(
+                McpServer._error(req_id, -32600, 'Unsupported MCP protocol version'),
+                status=400,
+            )
+        result = build_initialize_result(
+            server, agent_claims=agent_claims, params=params, protocol_version=pv
+        )
         session_id = _new_session_id()
         client_caps = params.get('capabilities') if isinstance(params.get('capabilities'), dict) else {}
         client_elicitation = isinstance(client_caps.get('elicitation'), dict)

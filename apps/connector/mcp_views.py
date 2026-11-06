@@ -23,6 +23,7 @@ from apps.connector.mcp_openapi_tools import tools_from_schema
 from apps.connector.mcp_tool_schema import normalize_mcp_tool
 
 from apps.authapi.agent_tokens import authenticate_agent_bearer
+from apps.connector.mcp_company_id import strict_numeric_company_id
 from apps.connector.mcp_protocol import handle_mcp_gateway_request, paginate_tools
 from apps.connector.agent_record import AgentRecord
 from apps.connector.downstream_tokens import DownstreamTokenError, mint_downstream_access_token
@@ -46,6 +47,7 @@ from apps.connector.mcp_company_label import resolve_company_label
 from apps.connector.mcp_tenant import apply_tenant_to_arguments, tenant_binding_from_meta
 from apps.connector.mcp_tool_presentation import apply_gateway_tool_presentation
 from apps.connector.services import configured_service_urls, downstream_resource_for
+from shellui_django.mcp.openapi_tools import tools_from_schema as shellui_tools_from_schema
 from shellui_django.mcp.routing import McpToolArgumentError
 from shellui_django.mcp.server import McpServer
 
@@ -532,6 +534,102 @@ class PrefixingMcpServer(AggregatingMcpServer):
             return outcome.response
         return None
 
+    def _shellui_base_maybe_forward_tool_call(
+        self,
+        request: HttpRequest,
+        req_id,
+        params,
+        agent_claims,
+    ) -> JsonResponse | None:
+        """Upstream ``AggregatingMcpServer._maybe_forward_tool_call`` with stable JSON-RPC error surfaces."""
+        tool_name = str(params.get('name') or '')
+        if not tool_name:
+            return None
+        route = self._lookup_route(tool_name)
+        local_id = self._gateway.local_service_id
+        if route is None:
+            schema = self.schema_provider()
+            local_names = {str(t.get('name')) for t in shellui_tools_from_schema(schema)}
+            if tool_name in local_names:
+                return None
+            return JsonResponse(McpServer._error(req_id, -32602, 'Unknown tool'))
+        service_id = route['service_id']
+        if service_id == local_id:
+            return None
+        scope = scope_service_ids(agent_claims)
+        if not service_allowed(list(scope), service_id):
+            return JsonResponse(McpServer._error(req_id, -32603, 'Forbidden'))
+        agent = self._gateway.resolve_agent(agent_claims)
+        if agent is None or not service_allowed(agent.services_allowed or [], service_id):
+            return JsonResponse(McpServer._error(req_id, -32603, 'Forbidden'))
+        mcp_url = self._gateway.get_service_urls().get(service_id)
+        if not mcp_url:
+            return JsonResponse(McpServer._error(req_id, -32603, 'Service unavailable'))
+        token = self._gateway.mint_downstream_token(agent, mcp_url)
+        downstream_params = dict(params)
+        downstream_params['name'] = route['downstream_name']
+        rpc = {
+            'jsonrpc': '2.0',
+            'id': req_id,
+            'method': 'tools/call',
+            'params': downstream_params,
+        }
+        try:
+            response = requests.post(
+                mcp_url,
+                json=rpc,
+                headers={
+                    'Authorization': f'Bearer {token}',
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+                timeout=self._gateway.downstream_timeout_seconds,
+            )
+        except (requests.RequestException, OSError) as exc:
+            logger.warning(
+                'MCP gateway tools/call transport error service=%s tool=%s err=%s',
+                service_id,
+                tool_name,
+                type(exc).__name__,
+            )
+            return JsonResponse(
+                McpServer._result(
+                    req_id,
+                    {
+                        'content': [{'type': 'text', 'text': 'Downstream service unavailable.'}],
+                        'isError': True,
+                    },
+                )
+            )
+        if response.status_code >= 400:
+            logger.warning(
+                'MCP gateway tools/call HTTP %s service=%s tool=%s',
+                response.status_code,
+                service_id,
+                tool_name,
+            )
+            return JsonResponse(
+                McpServer._result(
+                    req_id,
+                    {
+                        'content': [{'type': 'text', 'text': 'Downstream service error.'}],
+                        'isError': True,
+                    },
+                )
+            )
+        try:
+            body = response.json()
+        except ValueError:
+            return JsonResponse(
+                McpServer._result(
+                    req_id,
+                    {'content': [{'type': 'text', 'text': 'Invalid downstream response.'}], 'isError': True},
+                )
+            )
+        if not isinstance(body, dict):
+            return JsonResponse(McpServer._error(req_id, -32603, 'Invalid downstream response'))
+        return JsonResponse(body)
+
     def _maybe_forward_tool_call(self, request: HttpRequest, req_id, params, agent_claims):
         call_params, error = self._prepare_tool_call_params(params, agent_claims, req_id)
         if error is not None:
@@ -566,7 +664,7 @@ class PrefixingMcpServer(AggregatingMcpServer):
                 return blocked
 
         response = self._using_connector_tool_catalog(
-            lambda *args: super(PrefixingMcpServer, self)._maybe_forward_tool_call(*args),
+            lambda *args: self._shellui_base_maybe_forward_tool_call(*args),
             request,
             req_id,
             call_params,
@@ -757,11 +855,9 @@ def _agent_claims(request: HttpRequest, company_id: int) -> dict | None:
     principal, claims = result
     if not company_audience_matches(claims, expected_resource):
         return None
-    # The URL names the tenant. A token for another company never works here, even with a matching aud.
-    try:
-        if int(claims.get('company_id')) != int(company_id):
-            return None
-    except (TypeError, ValueError):
+    # The URL names the tenant: require strict numeric ``company_id`` (no UUID/string coercion).
+    claim_cid = strict_numeric_company_id(claims.get('company_id'))
+    if claim_cid is None or claim_cid != int(company_id):
         return None
     request.user = principal
     drf_request = Request(request)
