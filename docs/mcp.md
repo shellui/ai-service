@@ -140,6 +140,7 @@ Other service gateways that write MCP approvals or forward activity to Identity 
 ## Client conformance and CI
 
 - **Conformance and audits:** [mcp-e2e-conformance.md](./mcp-e2e-conformance.md), [mcp-tool-schema-audit.md](./mcp-tool-schema-audit.md).
+- **MCP e2e scope:** the `tools/mcp-e2e` compose stack does **not** include real storage, hosting, or email downstream URLs (they are empty in compose) and uses a **SaaS mock**—see the “What this stack is (and is not)” section in [mcp-e2e-conformance.md](./mcp-e2e-conformance.md). Do not treat a green **MCP client conformance** job as full-stack or regional-delegated-downstream proof.
 - **CI** checks out **`shellui/identity-service`** at **`develop`** by default unless the repository variable **`IDENTITY_SERVICE_REF`** is set (branch name or full SHA). To align with **identity PR #135** while it is open, pin that PR’s **current** `headRefOid` from GitHub (it moves with pushes). Record the **exact ref you validated** in the **pull request description** for traceability.
 
 ## Unsupported / transport notes

@@ -4,6 +4,14 @@ title: MCP client conformance (e2e)
 
 # MCP client conformance (e2e)
 
+## What this stack is (and is not)
+
+The compose file `tools/mcp-e2e/docker-compose.yml` runs **identity**, **ai-service**, **postgres**, **redis**, and a **`saas-mock`** process only. **`STORAGE_SERVICE_URL`**, **`HOSTING_SERVICE_URL`**, and **`EMAIL_SERVICE_URL`** are explicitly set to **empty strings** on the ai container, so the gateway does **not** call real storage, hosting, or email MCP downstreams in this job. **SaaS** is satisfied by the **mock** service (`SAAS_SERVICE_URL: http://saas-mock:8000`), not production SaaS.
+
+So: this suite is **MCP client + OAuth flows + ai gateway + identity** (including revocation and related checks baked into the scripts). It is **not** proof of regional delegated routing through storage/hosting/email gateways, **not** full multi-service downstream integration, and **not** production SaaS correctness. Describe it that way in PRs and runbooks.
+
+---
+
 This suite proves the Shellui MCP gateway works with **official MCP clients**, not ai-service test doubles:
 
 - `@modelcontextprotocol/sdk` (TypeScript) with OAuth protected-resource discovery, dynamic client registration, PKCE S256, magic-link sign-in, token exchange, refresh, `initialize`, `tools/list`, and a harmless tool call.
@@ -29,7 +37,7 @@ Set `MCP_E2E_LEAVE_STACK=1` to keep containers running after a failure.
 
 ## CI
 
-The **MCP client conformance** job on pull requests builds identity and ai-service, runs this script, and fails on any client or negative check.
+The **MCP client conformance** job on pull requests uses the same compose constraints (empty storage/hosting/email URLs; SaaS mock). It builds identity and ai-service, runs this script, and fails on any client or negative check. It validates **this narrow stack**, not delegated downstream behavior against real sibling services.
 
 **Repository variables (explicit refs, same semantics as the Tests job):**
 
