@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import time
 from datetime import datetime, timedelta, timezone as dt_timezone
@@ -48,6 +49,20 @@ SESSION_REVOKE_PATH = '/api/v1/mcp/internal/mcp-approval-session-revoke'
 SESSION_GRANT_SECONDS = 60
 
 PUBLIC_APPROVALS_PATH = '/api/v1/mcp/approvals'
+
+
+def identity_connection_id(raw: str) -> str:
+    """
+    Sanitize ``Mcp-Session-Id`` for Identity JSON bodies only (local session cache keeps the raw
+    header). Printable ASCII, max 128 chars, no ``|``; else SHA-256 hex of UTF-8 bytes.
+    """
+    s = str(raw or '').strip()
+    if not s:
+        return ''
+    if len(s) > 128 or '|' in s or any(ord(c) < 32 or ord(c) > 126 for c in s):
+        return hashlib.sha256(s.encode('utf-8')).hexdigest()
+    return s
+
 
 def _agent_claims_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
     inner = payload.get('_agent_claims')
@@ -343,10 +358,11 @@ def decide_approval(
         headers = _approval_headers(binding, ctx=ctx)
     except InternalAssertionError:
         return DecideResult(ok=False, status_code=503)
+    id_conn = identity_connection_id(connection_id)
     body: dict[str, Any] = {
         'approval_id': approval_id,
         'decision': decision,
-        'connection_id': connection_id,
+        'connection_id': id_conn,
     }
     if actor_email:
         body['actor_email'] = actor_email
@@ -439,7 +455,8 @@ def check_session_grant(
     service = str(payload.get('service') or '')
     action = str(payload.get('action') or '')
     arguments_hash = str(payload.get('arguments_hash') or '')
-    if not connection_id or not agent_id or not service or not action or not arguments_hash:
+    id_conn = identity_connection_id(connection_id)
+    if not id_conn or not agent_id or not service or not action or not arguments_hash:
         return False
     if agent_is_revoked(agent_id, company_id):
         return False
@@ -477,7 +494,7 @@ def check_session_grant(
     except InternalAssertionError:
         return False
     body: dict[str, Any] = {
-        'connection_id': connection_id,
+        'connection_id': id_conn,
         'is_destructive': bool(is_destructive),
         'agent_id': agent_id,
         'company_id': company_id,
@@ -573,9 +590,12 @@ def revoke_session_grant(payload: dict[str, Any], *, connection_id: str) -> bool
     except InternalAssertionError:
         return False
     try:
+        id_conn = identity_connection_id(connection_id)
+        if not id_conn:
+            return False
         response = requests.post(
             url,
-            json={'connection_id': connection_id},
+            json={'connection_id': id_conn},
             headers=headers,
             timeout=5,
         )

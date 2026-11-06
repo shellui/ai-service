@@ -175,7 +175,7 @@ def _refresh_revocations() -> bool:
     try:
         headers = _revocation_headers(origin)
     except InternalAssertionError:
-        logger.warning('MCP revocation poll skipped: service assertion signing is not configured')
+        logger.warning('MCP revocation poll failed: service assertion signing is not configured')
         _mark_revocation_untrusted()
         return False
     try:
@@ -270,7 +270,7 @@ def forward_call_log(entry: dict) -> None:
     try:
         assertion = build_mcp_call_log_assertion(audience_url=_identity_audience(origin), **_signing_kwargs())
     except InternalAssertionError:
-        logger.warning('MCP call log skipped: service assertion signing is not configured')
+        logger.warning('MCP call log failed: service assertion signing is not configured')
         return
     outcome_raw = str(entry.get('outcome') or '').strip().lower()
     if outcome_raw == 'pending':

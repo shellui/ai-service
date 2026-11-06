@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import time
 import uuid
 from datetime import timedelta
@@ -15,6 +16,7 @@ from apps.authapi.ai_service_jwks import compute_rsa_kid, generate_rsa_key_pair,
 from shellui_django.mcp.internal import APPROVAL_AUDIENCE
 
 from apps.connector import mcp_approvals
+from apps.connector.mcp_approvals import identity_connection_id
 
 _PRIVATE, _PUBLIC = generate_rsa_key_pair(key_size=2048)
 _SIGNING = load_ai_service_signing_key(private_pem=_PRIVATE, kid=compute_rsa_kid(_PUBLIC))
@@ -111,6 +113,24 @@ class McpApprovalsCoreTests(TestCase):
         self.assertEqual(claims.get('grant_version'), _GV)
         self.assertEqual(claims.get('company_binding_version'), _CBV)
         self.assertEqual(claims.get('global_company_id'), _GLOBAL_CO)
+
+    def test_identity_connection_id_pipe_hashes(self):
+        raw = 'a|b'
+        self.assertEqual(identity_connection_id(raw), hashlib.sha256(raw.encode()).hexdigest())
+
+    @patch('apps.connector.mcp_approvals.requests.post')
+    def test_session_check_sanitizes_connection_id_for_identity(self, post):
+        fut = (timezone.now() + timedelta(seconds=30)).isoformat()
+        post.return_value = MagicMock(status_code=200, json=lambda: {'session_allowed': True, 'expires_at': fut})
+        now = int(time.time())
+        p = {
+            **_BASE_PAYLOAD,
+            '_agent_claims': {'iat': now, 'exp': now + 3600, 'personal_token_id': 'pt-1', 'jti': 'jt-1'},
+        }
+        raw = 'sess|with-pipe'
+        self.assertTrue(mcp_approvals.check_session_grant(p, connection_id=raw, is_destructive=False))
+        jb = post.call_args.kwargs.get('json') or {}
+        self.assertEqual(jb.get('connection_id'), identity_connection_id(raw))
 
     @patch('apps.connector.mcp_approvals.requests.post')
     def test_session_check_called_every_time_no_cache(self, post):

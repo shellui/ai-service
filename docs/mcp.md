@@ -49,6 +49,8 @@ Do **not** infer mode from `personal_token_id` alone (identity #135 may issue it
 | **Reject** | Any **partial** triple (e.g. gv without gcid, malformed UUID string, one version missing). |
 
 Session-check POST body repeats binding fields **from the regional JWT only** (no stored authority).
+For Identity only, `connection_id` is derived from `Mcp-Session-Id`: printable ASCII, max 128 chars,
+no `|`; otherwise SHA-256 hex (local session cache still uses the raw header value).
 For global tokens, Identity response must echo **exact** `global_company_id`, `grant_version`, and
 `company_binding_version`. Invalid `setup_flow` blocks **all** approval APIs (`blocked_assertion`).
 

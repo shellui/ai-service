@@ -105,7 +105,7 @@ class McpIdentitySigningTests(SimpleTestCase):
         get.assert_not_called()
 
     @override_settings(AI_SERVICE_SIGNING_KEY=None)
-    def test_without_signing_key_call_log_is_skipped(self):
+    def test_without_signing_key_call_log_is_not_sent(self):
         with patch('apps.connector.mcp_identity.requests.post') as post:
             mcp_identity.forward_call_log({'agent_id': 'a', 'company_id': 1})
         post.assert_not_called()
