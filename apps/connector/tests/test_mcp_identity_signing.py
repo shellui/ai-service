@@ -63,41 +63,49 @@ class McpIdentitySigningTests(SimpleTestCase):
         with patch('apps.connector.mcp_identity.requests.post') as post:
             mcp_identity.forward_call_log(
                 {
-                    'agent_id': 'a',
+                    'agent_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
                     'company_id': 1,
                     'method': 'POST',
                     'status': 200,
                     'client_ip': '203.0.113.1',
-                    'result': 'success',
                     'duration_ms': 42,
+                    'outcome': 'allowed',
+                    'operation_title': 'Do thing',
+                    'resource_label': 'POST-/mcp',
+                    'access_kind': 'write',
+                    'log_result': 'success',
                 }
             )
         self._verify(_bearer(post.call_args), audience=CALL_LOG_AUDIENCE, scope=CALL_LOG_SCOPE)
         body = post.call_args.kwargs['json']
         self.assertEqual(body['method'], 'POST')
         self.assertEqual(body['client_ip'], '203.0.113.1')
-        self.assertEqual(body['result'], 'success')
+        self.assertEqual(body['operation_result'], 'success')
         self.assertEqual(body['duration_ms'], 42)
-        self.assertNotIn('arguments', body)
+        self.assertEqual(body['arguments'], {})
+        self.assertNotIn('result', body)
+        self.assertNotIn('outcome', body)
         self.assertNotIn('arguments_redacted', body)
 
     def test_call_log_pending_outcome_maps_for_identity(self):
         with patch('apps.connector.mcp_identity.requests.post') as post:
             mcp_identity.forward_call_log(
                 {
-                    'agent_id': 'a',
+                    'agent_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
                     'company_id': 1,
                     'method': 'GET',
                     'path': '/api/r?q=1',
-                    'outcome': 'pending',
-                    'result': 'pending',
+                    'outcome': 'pending_approval',
+                    'operation_title': 'Pending op',
+                    'resource_label': 'GET-/api/r',
+                    'access_kind': 'read',
+                    'log_result': 'pending_approval',
                     'status': 202,
                 }
             )
         body = post.call_args.kwargs['json']
-        self.assertEqual(body['outcome'], 'pending_approval')
+        self.assertEqual(body['operation_result'], 'unavailable')
         self.assertEqual(body['path'], '/api/r')
-        self.assertEqual(body['result'], 'pending_approval')
 
     def _delegated_ok_json(
         self,
@@ -186,13 +194,16 @@ class McpIdentitySigningTests(SimpleTestCase):
         with patch('apps.connector.mcp_identity.requests.post') as post:
             mcp_identity.forward_call_log(
                 {
-                    'agent_id': 'a',
+                    'agent_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
                     'company_id': 1,
                     'method': 'POST',
                     'status': 200,
                     'company_name': 'EvilCo',
                     'agent_name': 'EvilAgent',
-                    'result': 'success',
+                    'outcome': 'allowed',
+                    'operation_title': 'Safe',
+                    'resource_label': 'POST-/x',
+                    'access_kind': 'write',
                 }
             )
         body = post.call_args.kwargs['json']

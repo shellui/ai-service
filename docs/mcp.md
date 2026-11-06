@@ -97,29 +97,20 @@ Logic lives in `apps/connector/mcp_setup_context.py`:
 
 ## Call logs and activity (Identity)
 
-`POST /api/v1/mcp/internal/mcp-call-logs` forwards **allowlisted** fields only (`apps/connector/mcp_identity.py` + `apps/connector/mcp_call_audit.py`).
+`POST /api/v1/mcp/internal/mcp-call-logs` from the gateway must match **identity-service PR #136** when that branch is deployed: for caller **`ai`**, the JSON body uses an **exact allowlist** of keys (**no** `outcome`, **`result`**, **`error_code`**, **`tool_export_id`**, or JWT display fields). Required audit fields include **`operation_title`**, **`access_kind`**, **`operation_result`**, **`resource_label`**, and **`arguments`** as **`{}`**. Optional **`approval_request_id`** is a UUID only when the id is valid (`apps/connector/mcp_identity.py` + `mcp_call_audit.py`).
 
-### Canonical **`outcome`** (Identity JSON)
+### Gateway **`outcome`** vs Identity **`operation_result`**
 
-Internal `forward_call_log` maps gateway bookkeeping to Identity’s **`outcome`** using a fixed set (see **`OUTCOMES`** in `mcp_call_audit.py`):
-
-- **`pending_approval`:** from internal log tokens like `pending_approval` (or legacy `pending` mapped before forward).
-- **`allowed`**, **`denied`**, **`failed`**, **`session_used`:** from `outcome_from_audit` rules.
-- Unknown provider strings do **not** map to “allowed”; they collapse to safe **`failed`** semantics with allowlisted metadata only.
-
-HTTP **200** with unknown `log_result` and **`is_error` unset** is treated as **`failed`** (fail closed). **`is_error: false`** is required to record **`allowed`** on success-class HTTP status.
-
-The legacy **`result`** field uses Identity’s whitelist (`success`, `error`, `denied`, `pending_approval`); legacy internal `pending` is normalized to **`pending_approval`** before forward. Other values are derived via **`legacy_result_token`** from the outcome (see code), not from raw downstream text.
+Internal rows still use **`OUTCOMES`** in `mcp_call_audit.py`. **`forward_call_log`** maps to Identity’s terminal **`operation_result`** (`success`, `error`, `denied`, `timeout`, `cancelled`, `unavailable`). **`pending_approval`** maps to **`unavailable`** on forward because the trusted enum has no pending value.
 
 ### Safe metadata only
 
 - **`operation_title`:** **only** from registry **`_meta.operation_summary`** when present; otherwise a neutral `Operation …` title (**not** from tool `title` or downstream bodies).
-- **`path`** / **`resource_label`:** **only** from registry **`_meta.path`** templates (query stripped). If no template is registered, **`path`** is omitted/empty and **`resource_label`** uses a stable `gateway:<export_name>` id (no raw request paths, query strings, or interpolated ids).
-- **`path` on forward:** `forward_call_log` applies the same query/fragment stripping to whatever path is in the audit row before POSTing to Identity, so a mistaken `?…` segment never leaves the gateway in the call-log body.
-- **Labels:** **`company_name`** and **`agent_name`** are **not** forwarded to Identity (JWT display strings are not server-enforced registry data).
+- **`path`** / **`resource_label`:** **only** from registry **`_meta.path`** templates (query stripped). If no template is registered, **`path`** is empty and **`resource_label`** uses a stable `gateway:<export_name>` id (no raw request paths or query strings). Characters outside Identity’s **`resource_label`** charset (e.g. `{` `}` in route templates) are replaced for forward.
+- **`path` on forward:** `forward_call_log` strips query/fragment before POST.
+- **Labels:** **`company_name`** and **`agent_name`** are **not** forwarded (JWT display strings are not server-enforced registry data).
 - **`access_kind`:** **`read`**, **`write`**, or **`destructive`** from tool traits and HTTP method (`access_kind_from_tool`), not from guesswork on names.
-- **`error_code`:** only if in the allowlist (`mcp_audit_codes.py`).
-- **No** raw tool arguments, provider exception text, or arbitrary client paths in the forwarded body.
+- **No** raw tool arguments except the fixed empty **`arguments`** object required by Identity.
 
 A downstream HTTP **2xx** alone does **not** imply **`allowed`** if the gateway classified the operation as an error (`is_error`, audit `log_result`, etc.). See **`outcome_from_audit`**.
 

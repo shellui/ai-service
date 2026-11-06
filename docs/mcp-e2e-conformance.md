@@ -43,12 +43,15 @@ Record the **exact SHAs or branch names** of identity, saas, storage, hosting, a
 | Repo | PR | headRefOid (example) |
 |------|-----|----------------------|
 | shellui/identity-service | #135 | `d79d433278ac18695a6165448bf0b8cfe56c88a5` |
+| shellui/identity-service | #136 (`mcp-call-logs` allowlist) | `c05ea83082f484f01b147126e0f4e9e06382e375` |
 | shellui/saas-service | #34 | `a470938a76f453048acba61661847aa88466c318` |
 | shellui/storage-service | #59 | `cdd1c3a57d308c0bae7ea12f9618ed04f830c077` |
 | shellui/hosting-service | #78 | `cdd1c3a57d308c0bae7ea12f9618ed04f830c077` |
 | shellui/email-service | #46 | `17c900d07938f5fbd15a0241ba6e58d8a704c9d0` |
 
-CI **MCP client conformance** still uses empty downstream URLs and the SaaS mock unless you change the workflow; `IDENTITY_SERVICE_REF` (and sibling refs for the **Tests** job schema audit) stay the way to pin identity in GitHub Actions.
+**Storage PR #59 head you named:** `c2cb6ef05f5b5f697d15f849167c16c009885072` (replace the table cell if `gh pr view 59` shows a newer `headRefOid`).
+
+CI **MCP client conformance** still uses empty downstream URLs and the SaaS mock unless you change the workflow; `IDENTITY_SERVICE_REF` (and sibling refs for the **Tests** job schema audit) stay the way to pin identity in GitHub Actions. For **`POST .../mcp-call-logs`** parity, run identity at **#136** (or merge) locally while you exercise tools; **#135** remains authoritative for delegated authority until its ownership fix lands.
 
 ## What the clients run
 

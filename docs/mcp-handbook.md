@@ -29,7 +29,7 @@ For **global-delegated** regional tokens (full `global_company_id` + `grant_vers
 
 - **URL:** `POST /api/v1/mcp/internal/mcp-agent-delegated-authority` (spellings like `mcp-delegated-agent-authority` are **not** supported).
 - **Authorization:** `Bearer` RS256 assertion with **`aud`:** `shellui-mcp-agent-delegated-authority`, **`scope`:** `mcp.agent.delegated.authority.read`, **`target`:** Identity issuer (same pattern as other internal MCP routes).
-- **JSON body:** `agent_id` (uuid string), `company_id` (positive int), `global_company_id` (uuid string), `grant_version`, `company_binding_version` (non‑negative JSON integers).
+- **JSON body:** `agent_id` (uuid string), `company_id` (positive int), `global_company_id` (uuid string), `grant_version`, `company_binding_version` (non-negative JSON integers).
 
 **200** with **`authorized`: true** requires strict **`revoked`: false** and **`paused`: false**, and the JSON must echo **`agent_id`**, **`company_id`**, **`global_agent_id`** (UUID string), **`global_company_id`**, **`grant_version`**, and **`company_binding_version`** as non‑string integers/UUIDs matching the request/binding—otherwise the gateway treats the response as invalid and fails closed (same as **403** / **404** / transport errors).
 
@@ -101,8 +101,7 @@ Binding (`service`, `action` = export name, `arguments_hash`, company, agent) is
 
 ## Call log outcomes (activity)
 
-Forwarded to Identity as canonical **`outcome`** values: **`pending_approval`**, **`allowed`**, **`denied`**, **`failed`**, **`session_used`**.  
-`decide` responses that surface Identity’s human **`status`: `approved`** map to audit token **`identity_approved`** → outcome **`allowed`** (so they are not misclassified as failure when `audit_status` differs). **`error_code`** is allowlisted (`mcp_audit_codes.py`), including **`mcp_tool_error`** for safe tool-registry failures.
+Internal audit rows use **`outcome`** (`allowed`, `failed`, `denied`, `pending_approval`, `session_used`). **`forward_call_log`** maps to Identity **PR #136** **`operation_result`**: `success`, `error`, `denied`, `timeout`, `cancelled`, `unavailable` (**`pending_approval`** → **`unavailable`** on forward). The POST body is allowlisted; see [mcp.md](./mcp.md) call logs section.
 
 ## Revocation cache
 

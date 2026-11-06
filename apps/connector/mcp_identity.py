@@ -22,8 +22,7 @@ from shellui_django.mcp.internal import (
     verify_mcp_revocation_list_response,
 )
 
-from apps.connector.mcp_audit_codes import ALLOWED_ERROR_CODES
-from apps.connector.mcp_call_audit import OUTCOMES, legacy_result_token, safe_route_path_for_audit
+from apps.connector.mcp_call_audit import OUTCOMES, safe_route_path_for_audit
 from apps.connector.mcp_company_id import strict_numeric_company_id
 from apps.connector.mcp_revocation import revocation_fingerprint_material
 
@@ -415,7 +414,30 @@ def personal_agent_bearer_valid(claims: dict) -> bool:
 
 
 _ACCESS_KINDS = frozenset({'read', 'write', 'destructive'})
-_RESULT_WHITELIST = frozenset({'success', 'error', 'denied', 'pending_approval'})
+# Identity PR #136 ``call_log_trusted.ALLOWED_CALL_RESULTS`` (terminal; no pending_grant).
+_IDENTITY_OPERATION_RESULTS = frozenset(
+    {'success', 'error', 'denied', 'timeout', 'cancelled', 'unavailable'}
+)
+
+
+def operation_result_for_identity_trusted_log(*, outcome: str, log_result: str | None) -> str:
+    """Map gateway ``outcome`` to Identity ``operation_result`` (strict enum)."""
+    o = str(outcome or '').strip().lower()
+    if not o and log_result:
+        lr = str(log_result).strip().lower()
+        if lr == 'pending_approval' or lr == 'pending':
+            return 'unavailable'
+        if lr in {'success', 'error', 'denied'}:
+            return lr
+    if o in {'allowed', 'session_used'}:
+        return 'success'
+    if o == 'denied':
+        return 'denied'
+    if o == 'failed':
+        return 'error'
+    if o == 'pending_approval':
+        return 'unavailable'
+    return 'error'
 
 
 def forward_call_log(entry: dict) -> None:
@@ -438,57 +460,44 @@ def forward_call_log(entry: dict) -> None:
     else:
         outcome = ''
     access_raw = str(entry.get('access_kind') or entry.get('access_level') or '').strip().lower()
-    access_kind = access_raw if access_raw in _ACCESS_KINDS else ''
-    op_title = str(entry.get('operation_title') or '').strip()[:200]
-    resource_label = str(entry.get('resource_label') or '').strip()[:200]
-    tool_export_id = str(entry.get('tool_export_id') or entry.get('tool') or '')[:256]
-    safe_path = safe_route_path_for_audit(entry.get('path'))[:512]
+    access_kind = access_raw if access_raw in _ACCESS_KINDS else 'write'
+    op_title = str(entry.get('operation_title') or '').strip()[:200] or 'Operation'
+    resource_label = str(entry.get('resource_label') or '').strip()[:120] or 'gateway:tool'
+    tool_name = str(entry.get('tool_export_id') or entry.get('tool') or '')[:255] or 'tool'
+    safe_path = safe_route_path_for_audit(entry.get('path'))[:500]
+    log_res = entry.get('log_result')
+    op_result = operation_result_for_identity_trusted_log(outcome=outcome, log_result=str(log_res) if log_res else None)
+    if op_result not in _IDENTITY_OPERATION_RESULTS:
+        op_result = 'error'
+    aid_raw = str(entry.get('approval_id') or entry.get('approval_request_id') or '').strip()
+    approval_uuid: str | None = None
+    if aid_raw:
+        try:
+            approval_uuid = str(uuid.UUID(aid_raw))
+        except (ValueError, TypeError, AttributeError):
+            approval_uuid = None
+    duration = entry.get('duration_ms')
+    dur_ms = int(duration) if isinstance(duration, (int, float)) and duration >= 0 else 0
+    client_ip = str(entry.get('client_ip') or '')[:45]
+    # Identity PR #136: ai-service posts allowlisted keys only; required audit block.
     body: dict[str, Any] = {
         'agent_id': entry.get('agent_id'),
         'company_id': entry.get('company_id'),
-        'service': str(entry.get('service') or 'ai')[:64],
-        'tool': str(entry.get('tool') or '')[:256],
-        'tool_export_id': tool_export_id,
+        'service': str(entry.get('service') or 'ai')[:32],
+        'tool': tool_name,
         'method': str(entry.get('method') or '')[:16],
         'path': safe_path,
         'status': int(entry.get('status') or 0),
-        'client_ip': str(entry.get('client_ip') or '')[:45],
+        'duration_ms': dur_ms,
+        'client_ip': client_ip,
+        'arguments': {},
+        'operation_title': op_title,
+        'access_kind': access_kind,
+        'operation_result': op_result,
+        'resource_label': resource_label,
     }
-    res_raw = str(entry.get('result') or '').strip()[:32]
-    res_lower = res_raw.lower()
-    if res_lower in _RESULT_WHITELIST:
-        body['result'] = res_lower
-    elif res_lower == 'pending':
-        body['result'] = 'pending_approval'
-    else:
-        oa = outcome_raw if outcome_raw in OUTCOMES else 'failed'
-        body['result'] = legacy_result_token(outcome=oa)[:32]
-    if outcome:
-        body['outcome'] = outcome
-    if access_kind:
-        body['access_kind'] = access_kind
-    ro = entry.get('read_only_hint')
-    if isinstance(ro, bool):
-        body['read_only_hint'] = ro
-    dh = entry.get('destructive_hint')
-    if isinstance(dh, bool):
-        body['destructive_hint'] = dh
-    if op_title:
-        body['operation_title'] = op_title
-    if resource_label:
-        body['resource_label'] = resource_label
-    # Do not forward JWT ``company_name`` / ``agent_name`` (unverified display strings).
-    aid = str(entry.get('approval_id') or entry.get('approval_request_id') or '').strip()[:64]
-    if aid:
-        body['approval_id'] = aid
-    duration = entry.get('duration_ms')
-    if isinstance(duration, (int, float)) and duration >= 0:
-        body['duration_ms'] = int(duration)
-    ec_raw = entry.get('error_code')
-    if isinstance(ec_raw, str):
-        ec = ec_raw.strip().lower()[:64]
-        if ec in ALLOWED_ERROR_CODES:
-            body['error_code'] = ec
+    if approval_uuid:
+        body['approval_request_id'] = approval_uuid
     try:
         requests.post(
             url,
