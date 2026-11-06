@@ -5,8 +5,9 @@ from __future__ import annotations
 import logging
 import time
 import uuid
+from datetime import timedelta
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypedDict
 
 import jwt
 import requests
@@ -20,7 +21,13 @@ from shellui_django.mcp.internal import (
     InternalAssertionError,
 )
 
-from apps.connector.mcp_identity import _identity_audience, _identity_origin, _signing_kwargs
+from apps.connector.mcp_identity import (
+    _identity_audience,
+    _identity_origin,
+    _signing_kwargs,
+    agent_is_revoked,
+    revocation_list_fingerprint,
+)
 from apps.connector.mcp_setup_context import ApprovalAssertionContext, approval_assertion_context_from_agent_claims
 
 logger = logging.getLogger(__name__)
@@ -38,6 +45,61 @@ SESSION_GRANT_SECONDS = 60
 PUBLIC_APPROVALS_PATH = '/api/v1/mcp/approvals'
 
 _GRANT_MAP_PREFIX = 'mcp_gateway:session_grant_map:'
+_GRANT_INDEX_PREFIX = 'mcp_gateway:session_grant_index:'
+
+
+class _GrantRecord(TypedDict):
+    exp_ms: int
+    revoke_fp: str
+    jti: str
+
+
+def _agent_claims_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    inner = payload.get('_agent_claims')
+    return inner if isinstance(inner, dict) else {}
+
+
+def _jwt_absolute_exp_ms(agent_claims: dict[str, Any]) -> int | None:
+    try:
+        exp = int(agent_claims['exp'])
+    except (KeyError, TypeError, ValueError):
+        return None
+    return max(0, exp) * 1000
+
+
+def _seconds_until_jwt_exp(agent_claims: dict[str, Any]) -> int | None:
+    try:
+        exp = int(agent_claims['exp'])
+    except (KeyError, TypeError, ValueError):
+        return None
+    return max(0, int(exp - time.time()))
+
+
+def _grant_index_key(*, agent_id: str, company_id: int) -> str:
+    return f'{_GRANT_INDEX_PREFIX}{agent_id}:{company_id}'
+
+
+def _invalidate_session_grant_maps_for_agent(*, agent_id: str, company_id: int) -> None:
+    """Drop cached session grants after Identity revoke or agent revocation."""
+    idx_key = _grant_index_key(agent_id=agent_id, company_id=company_id)
+    raw = cache.get(idx_key)
+    if isinstance(raw, dict):
+        for map_key in raw:
+            if isinstance(map_key, str):
+                cache.delete(map_key)
+    cache.delete(idx_key)
+
+
+def _register_grant_map_key(*, agent_id: str, company_id: int, map_key: str, until_ms: int) -> None:
+    idx_key = _grant_index_key(agent_id=agent_id, company_id=company_id)
+    entry = cache.get(idx_key)
+    m: dict[str, int] = dict(entry) if isinstance(entry, dict) else {}
+    m[map_key] = max(int(m.get(map_key, 0)), int(until_ms))
+    now = _now_ms()
+    pruned = {k: v for k, v in m.items() if v > now}
+    longest = max(pruned.values()) if pruned else until_ms
+    ttl = max(1, int((longest - now) / 1000) + 2)
+    cache.set(idx_key, pruned, timeout=min(ttl, int(getattr(settings, 'MCP_SESSION_GRANT_INDEX_MAX_SECONDS', 3600))))
 
 
 def _now_ms() -> int:
@@ -307,17 +369,45 @@ def decide_approval(
     )
 
 
-def _prune_grant_map(m: dict[str, Any]) -> dict[str, int]:
-    now = _now_ms()
-    out: dict[str, int] = {}
+def _revoke_fingerprint() -> str:
+    return revocation_list_fingerprint() or ''
+
+
+def _jti_from_agent_claims(agent_claims: dict[str, Any]) -> str:
+    return str(agent_claims.get('jti') or '').strip()
+
+
+def _prune_grant_map_records(m: dict[str, Any], *, now_ms: int, fp: str, jti: str) -> dict[str, _GrantRecord]:
+    out: dict[str, _GrantRecord] = {}
     for k, v in m.items():
-        if isinstance(v, int) and v > now:
-            out[str(k)] = v
+        if not isinstance(v, dict):
+            continue
+        try:
+            exp_ms = int(v['exp_ms'])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if exp_ms <= now_ms:
+            continue
+        if str(v.get('revoke_fp') or '') != fp:
+            continue
+        if jti and str(v.get('jti') or '') != jti:
+            continue
+        out[str(k)] = {
+            'exp_ms': exp_ms,
+            'revoke_fp': fp,
+            'jti': str(v.get('jti') or ''),
+        }
     return out
+
+
+def invalidate_local_session_grants_for_agent(*, agent_id: str, company_id: int) -> None:
+    """Invalidate cached session-allow entries (e.g. after Identity session revoke)."""
+    _invalidate_session_grant_maps_for_agent(agent_id=agent_id, company_id=company_id)
 
 
 def _store_session_grant(
     *,
+    payload: dict[str, Any],
     connection_id: str,
     agent_id: str,
     company_id: int,
@@ -328,24 +418,40 @@ def _store_session_grant(
 ) -> None:
     map_key = _grant_map_key(connection_id=connection_id, agent_id=agent_id, company_id=company_id)
     entry_k = _grant_entry_key(service=service, action=action, arguments_hash=arguments_hash)
+    ag = _agent_claims_from_payload(payload)
+    jti = _jti_from_agent_claims(ag)
+    jwt_exp_ms = _jwt_absolute_exp_ms(ag)
+    fp = _revoke_fingerprint()
     exp_dt = _parse_iso_expires_at(expires_at_iso)
     if exp_dt is not None:
         if timezone.is_naive(exp_dt):
             exp_dt = timezone.make_aware(exp_dt, timezone.get_current_timezone())
-        exp_ms = int(exp_dt.timestamp() * 1000)
-        remaining = (exp_dt - timezone.now()).total_seconds()
-        ttl = max(1, int(remaining) + 1) if remaining > 0 else 0
+        grant_exp_ms = int(exp_dt.timestamp() * 1000)
     else:
-        exp_ms = _now_ms() + SESSION_GRANT_SECONDS * 1000
-        ttl = SESSION_GRANT_SECONDS
-    if ttl <= 0:
+        grant_exp_ms = _now_ms() + SESSION_GRANT_SECONDS * 1000
+    if jwt_exp_ms is not None:
+        grant_exp_ms = min(grant_exp_ms, jwt_exp_ms)
+    now_ms = _now_ms()
+    if grant_exp_ms <= now_ms:
         return
+    record: _GrantRecord = {'exp_ms': grant_exp_ms, 'revoke_fp': fp, 'jti': jti}
     raw = cache.get(map_key)
-    m = _prune_grant_map(raw) if isinstance(raw, dict) else {}
-    m[entry_k] = exp_ms
-    longest_ms = max(m.values()) if m else exp_ms
-    longest_remaining = max(1, int((longest_ms - _now_ms()) / 1000) + 1)
-    cache.set(map_key, m, timeout=longest_remaining)
+    m = (
+        _prune_grant_map_records(raw, now_ms=now_ms, fp=fp, jti=jti)
+        if isinstance(raw, dict)
+        else {}
+    )
+    m[entry_k] = record
+    longest_ms = max(r['exp_ms'] for r in m.values()) if m else grant_exp_ms
+    longest_remaining = max(1, int((longest_ms - now_ms) / 1000) + 1)
+    idx_cap = int(getattr(settings, 'MCP_SESSION_GRANT_INDEX_MAX_SECONDS', 3600))
+    cache.set(map_key, m, timeout=min(longest_remaining, idx_cap))
+    _register_grant_map_key(
+        agent_id=agent_id,
+        company_id=company_id,
+        map_key=map_key,
+        until_ms=longest_ms,
+    )
 
 
 def check_session_grant(
@@ -366,21 +472,43 @@ def check_session_grant(
     arguments_hash = str(payload.get('arguments_hash') or '')
     if not connection_id or not agent_id or not service or not action or not arguments_hash:
         return False
+    if agent_is_revoked(agent_id, company_id):
+        invalidate_local_session_grants_for_agent(agent_id=agent_id, company_id=company_id)
+        return False
+    ag = _agent_claims_from_payload(payload)
+    jti = _jti_from_agent_claims(ag)
+    fp = _revoke_fingerprint()
     map_key = _grant_map_key(connection_id=connection_id, agent_id=agent_id, company_id=company_id)
     entry_k = _grant_entry_key(service=service, action=action, arguments_hash=arguments_hash)
+    now_ms = _now_ms()
     raw = cache.get(map_key)
     if isinstance(raw, dict):
-        exp_ms = raw.get(entry_k)
-        if isinstance(exp_ms, int) and _now_ms() < exp_ms:
-            return True
-        # Stale entry — drop and fall through to Identity.
-        pruned = _prune_grant_map(raw)
+        rec = raw.get(entry_k)
+        if isinstance(rec, dict):
+            try:
+                exp_ms = int(rec['exp_ms'])
+            except (KeyError, TypeError, ValueError):
+                exp_ms = 0
+            rec_fp = str(rec.get('revoke_fp') or '')
+            rec_jti = str(rec.get('jti') or '')
+            if (
+                exp_ms > now_ms
+                and rec_fp == fp
+                and (not jti or rec_jti == jti)
+                and not agent_is_revoked(agent_id, company_id)
+            ):
+                return True
+        pruned = _prune_grant_map_records(raw, now_ms=now_ms, fp=fp, jti=jti)
+        mismatch_had_entry = isinstance(rec, dict) and str(rec.get('revoke_fp') or '') != fp
         if pruned:
-            longest_ms = max(pruned.values())
-            longest_remaining = max(1, int((longest_ms - _now_ms()) / 1000) + 1)
-            cache.set(map_key, pruned, timeout=longest_remaining)
+            longest_ms = max(r['exp_ms'] for r in pruned.values())
+            longest_remaining = max(1, int((longest_ms - now_ms) / 1000) + 1)
+            idx_cap = int(getattr(settings, 'MCP_SESSION_GRANT_INDEX_MAX_SECONDS', 3600))
+            cache.set(map_key, pruned, timeout=min(longest_remaining, idx_cap))
         else:
             cache.delete(map_key)
+        if mismatch_had_entry:
+            raw = None
 
     origin = _identity_origin()
     binding = approval_binding_from_payload(payload)
@@ -411,14 +539,32 @@ def check_session_grant(
                 exp_dt = timezone.make_aware(exp_dt, timezone.get_current_timezone())
             if exp_dt <= timezone.now():
                 return False
+        if agent_is_revoked(agent_id, company_id):
+            invalidate_local_session_grants_for_agent(agent_id=agent_id, company_id=company_id)
+            return False
+        wall = _seconds_until_jwt_exp(ag)
+        if wall is not None and wall <= 0:
+            return False
+        capped_iso: str | None = None
+        if exp_dt is not None and wall is not None:
+            cap_dt = timezone.now() + timedelta(seconds=wall)
+            if exp_dt > cap_dt:
+                capped_iso = cap_dt.isoformat()
+            else:
+                capped_iso = str(expires_at).strip() if expires_at else None
+        elif exp_dt is not None:
+            capped_iso = str(expires_at).strip() if expires_at else None
+        elif wall is not None:
+            capped_iso = (timezone.now() + timedelta(seconds=wall)).isoformat()
         _store_session_grant(
+            payload=payload,
             connection_id=connection_id,
             agent_id=agent_id,
             company_id=company_id,
             service=service,
             action=action,
             arguments_hash=arguments_hash,
-            expires_at_iso=str(expires_at).strip() if expires_at else None,
+            expires_at_iso=capped_iso,
         )
         return True
     return False
@@ -456,7 +602,7 @@ def revoke_session_grant(payload: dict[str, Any], *, connection_id: str) -> bool
     except (TypeError, ValueError):
         company_id = 0
     if agent_id and company_id:
-        cache.delete(_grant_map_key(connection_id=connection_id, agent_id=agent_id, company_id=company_id))
+        invalidate_local_session_grants_for_agent(agent_id=agent_id, company_id=company_id)
     return isinstance(data, dict) and bool(data.get('revoked'))
 
 

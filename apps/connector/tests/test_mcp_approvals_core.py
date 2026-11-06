@@ -17,6 +17,14 @@ from apps.connector import mcp_approvals
 _PRIVATE, _PUBLIC = generate_rsa_key_pair(key_size=2048)
 _SIGNING = load_ai_service_signing_key(private_pem=_PRIVATE, kid=compute_rsa_kid(_PUBLIC))
 
+_BASE_PAYLOAD = {
+    'agent_id': 'a1',
+    'company_id': 10,
+    'service': 'storage',
+    'action': 'tool',
+    'arguments_hash': 'y' * 64,
+}
+
 
 @override_settings(
     AI_SERVICE_SIGNING_KEY=_SIGNING,
@@ -36,6 +44,12 @@ _SIGNING = load_ai_service_signing_key(private_pem=_PRIVATE, kid=compute_rsa_kid
 class McpApprovalsCoreTests(TestCase):
     def setUp(self):
         cache.clear()
+        revoke = patch('apps.connector.mcp_approvals.agent_is_revoked', return_value=False)
+        revoke.start()
+        self.addCleanup(revoke.stop)
+        rf = patch('apps.connector.mcp_approvals.revocation_list_fingerprint', return_value='test-fp')
+        rf.start()
+        self.addCleanup(rf.stop)
 
     @patch('apps.connector.mcp_approvals.requests.post')
     def test_assertion_includes_setup_claims_when_agent_claims_setup(self, post):
@@ -104,3 +118,63 @@ class McpApprovalsCoreTests(TestCase):
             '_agent_claims': {'iat': now, 'exp': now + 3600},
         }
         self.assertFalse(mcp_approvals.check_session_grant(payload, connection_id='c', is_destructive=False))
+
+    @patch('apps.connector.mcp_approvals.requests.post')
+    def test_session_grant_cache_invalidated_on_revocation_fingerprint_change(self, post):
+        fut = '2099-01-01T00:00:00+00:00'
+        post.return_value = MagicMock(status_code=200, json=lambda: {'session_allowed': True, 'expires_at': fut})
+        now = int(time.time())
+        p = {
+            **_BASE_PAYLOAD,
+            '_agent_claims': {'iat': now, 'exp': now + 3600, 'jti': 'tok-1'},
+        }
+        self.assertTrue(mcp_approvals.check_session_grant(p, connection_id='conn-x', is_destructive=False))
+        post.assert_called_once()
+        with patch('apps.connector.mcp_approvals.revocation_list_fingerprint', return_value='fp-b'):
+            self.assertTrue(mcp_approvals.check_session_grant(p, connection_id='conn-x', is_destructive=False))
+        self.assertEqual(post.call_count, 2)
+
+    @patch('apps.connector.mcp_approvals.requests.post')
+    def test_session_grant_cache_requires_matching_jti(self, post):
+        post.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {'session_allowed': True, 'expires_at': '2099-01-01T00:00:00+00:00'},
+        )
+        now = int(time.time())
+        p1 = {**_BASE_PAYLOAD, '_agent_claims': {'iat': now, 'exp': now + 3600, 'jti': 'aa'}}
+        self.assertTrue(mcp_approvals.check_session_grant(p1, connection_id='c', is_destructive=False))
+        p2 = {**_BASE_PAYLOAD, '_agent_claims': {'iat': now, 'exp': now + 3600, 'jti': 'bb'}}
+        self.assertTrue(mcp_approvals.check_session_grant(p2, connection_id='c', is_destructive=False))
+        self.assertEqual(post.call_count, 2)
+
+    @patch('apps.connector.mcp_approvals.requests.post')
+    def test_session_grant_cached_expiry_capped_by_access_token_wall_time(self, post):
+        post.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {'session_allowed': True, 'expires_at': '2099-01-01T00:00:00+00:00'},
+        )
+        now = int(time.time())
+        p = {**_BASE_PAYLOAD, '_agent_claims': {'iat': now, 'exp': now + 45, 'jti': 'wall-cap'}}
+        self.assertTrue(mcp_approvals.check_session_grant(p, connection_id='c2', is_destructive=False))
+        post.assert_called_once()
+        self.assertTrue(mcp_approvals.check_session_grant(p, connection_id='c2', is_destructive=False))
+        self.assertEqual(post.call_count, 1)
+        mk = mcp_approvals._grant_map_key(connection_id='c2', agent_id='a1', company_id=10)
+        raw = cache.get(mk)
+        self.assertIsInstance(raw, dict)
+        rec = next(iter(raw.values()))
+        self.assertLessEqual(rec['exp_ms'], mcp_approvals._now_ms() + 50_000)
+
+    @patch('apps.connector.mcp_approvals.agent_is_revoked')
+    @patch('apps.connector.mcp_approvals.requests.post')
+    def test_revoked_agent_cannot_use_positive_cache(self, post, revoked):
+        post.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {'session_allowed': True, 'expires_at': '2099-01-01T00:00:00+00:00'},
+        )
+        now = int(time.time())
+        p = {**_BASE_PAYLOAD, '_agent_claims': {'iat': now, 'exp': now + 3600, 'jti': 'rvk'}}
+        revoked.return_value = False
+        self.assertTrue(mcp_approvals.check_session_grant(p, connection_id='c3', is_destructive=False))
+        revoked.return_value = True
+        self.assertFalse(mcp_approvals.check_session_grant(p, connection_id='c3', is_destructive=False))

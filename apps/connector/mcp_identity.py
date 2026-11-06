@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import threading
 from typing import Any
@@ -145,6 +147,17 @@ def _refresh_revocations() -> bool:
         return False
     _store_trusted_revocation(revoked_ids=revoked_ids, agents=agents, cache_seconds=cache_seconds)
     return True
+
+
+def revocation_list_fingerprint() -> str | None:
+    """Stable hash of the trusted revocation snapshot; None when list is unavailable."""
+    payload = _cached_revocation()
+    if payload is None:
+        return None
+    ids = sorted(str(x) for x in (payload.get('revoked_ids') or []))
+    agents = payload.get('agents') or []
+    raw = json.dumps({'agent_ids': ids, 'agents': agents}, sort_keys=True, default=str)
+    return hashlib.sha256(raw.encode()).hexdigest()[:40]
 
 
 def agent_is_revoked(agent_id: str, company_id: int | None) -> bool:

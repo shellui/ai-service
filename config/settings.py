@@ -415,6 +415,8 @@ MCP_APPROVAL_SETUP_SESSION_TTL_MAX_SECONDS = max(
     MCP_APPROVAL_SETUP_SESSION_TTL_MIN_SECONDS,
     _env_int('MCP_APPROVAL_SETUP_SESSION_TTL_MAX_SECONDS', 900),
 )
+# Cap Django cache TTL for per-connection session-grant maps (revocation index bookkeeping).
+MCP_SESSION_GRANT_INDEX_MAX_SECONDS = max(60, _env_int('MCP_SESSION_GRANT_INDEX_MAX_SECONDS', 3600))
 
 # Connected Shellui services (origins only; MCP paths are appended in code).
 STORAGE_SERVICE_URL = os.getenv('STORAGE_SERVICE_URL', '').strip().rstrip('/') or None

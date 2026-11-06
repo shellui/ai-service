@@ -8,6 +8,7 @@ issued), never from tool arguments.
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 
 from django.conf import settings
@@ -40,6 +41,15 @@ def _max_assertion_lifetime_seconds() -> int:
         _DEFAULT_APPROVAL_ASSERTION_LIFETIME,
         int(getattr(settings, 'MCP_APPROVAL_ASSERTION_MAX_LIFETIME_SECONDS', 900) or 900),
     )
+
+
+def _seconds_until_access_token_exp(agent_claims: dict) -> int | None:
+    """Wall-clock seconds until ``exp`` (not ``exp - iat``), for capping setup authority."""
+    try:
+        exp = int(agent_claims['exp'])
+    except (KeyError, TypeError, ValueError):
+        return None
+    return max(0, exp - int(time.time()))
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,9 +97,13 @@ def approval_assertion_context_from_agent_claims(agent_claims: dict | None) -> A
     except (KeyError, TypeError, ValueError):
         max_from_jwt = None
 
+    wall_remaining = _seconds_until_access_token_exp(agent_claims)
+
     cap = _max_assertion_lifetime_seconds()
     if max_from_jwt is not None:
         cap = min(cap, max_from_jwt)
+    if wall_remaining is not None:
+        cap = min(cap, wall_remaining)
 
     if setup_ttl > cap:
         logger.info(
@@ -104,6 +118,15 @@ def approval_assertion_context_from_agent_claims(agent_claims: dict | None) -> A
     # JWT lifetime must cover the session TTL identity will grant (<= exp - iat).
     lifetime = max(_DEFAULT_APPROVAL_ASSERTION_LIFETIME, setup_ttl)
     lifetime = min(lifetime, cap)
+    if wall_remaining is not None and lifetime > wall_remaining:
+        logger.info(
+            'MCP setup assertion TTL ignored (exceeds access token wall time): company_id=%s agent_id=%s lifetime=%s wall=%s',
+            agent_claims.get('company_id'),
+            agent_claims.get('agent_id'),
+            lifetime,
+            wall_remaining,
+        )
+        return _fallback_context()
     if lifetime < setup_ttl:
         return _fallback_context()
 

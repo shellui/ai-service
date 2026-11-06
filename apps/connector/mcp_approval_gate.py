@@ -32,6 +32,7 @@ def patched_decide_write(**kwargs: Any) -> WriteGateDecision:
 from apps.connector import mcp_approval_copy as copy
 from apps.connector import mcp_approvals as approvals
 from apps.connector.mcp_company_label import resolve_company_label
+from apps.connector.mcp_identity import agent_is_revoked
 from apps.connector.mcp_setup_context import approval_assertion_context_from_agent_claims
 
 logger = logging.getLogger(__name__)
@@ -273,6 +274,23 @@ def enforce_tool_call_approval(
         connection_id=connection_id,
         is_destructive=destructive,
     ):
+        if agent_is_revoked(agent_id, company_id):
+            return GateOutcome(
+                proceed=False,
+                response=_approval_result(
+                    req_id,
+                    text='Agent access was revoked.',
+                    meta={'status': 'denied'},
+                ),
+                log=_log_entry(
+                    agent_claims=agent_claims,
+                    service=service_id,
+                    tool=export_name,
+                    method=method,
+                    path=path,
+                    log_result='denied',
+                ),
+            )
         return GateOutcome(proceed=True)
 
     client_decision, client_approval_id = parse_client_decision(params)

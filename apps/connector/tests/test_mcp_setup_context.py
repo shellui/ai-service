@@ -49,8 +49,26 @@ class McpSetupContextTests(TestCase):
             {
                 'setup_flow': True,
                 'mcp_session_ttl_seconds': 600,
-                'iat': now,
+                'iat': now - 800,
                 'exp': now + 120,
+            },
+        )
+        self.assertEqual(ctx.lifetime_seconds, 60)
+        self.assertFalse(ctx.setup_flow)
+
+    @override_settings(
+        MCP_APPROVAL_SETUP_SESSION_TTL_MIN_SECONDS=600,
+        MCP_APPROVAL_SETUP_SESSION_TTL_MAX_SECONDS=900,
+        MCP_APPROVAL_ASSERTION_MAX_LIFETIME_SECONDS=900,
+    )
+    def test_setup_rejected_when_wall_clock_remaining_too_short(self):
+        now = int(time.time())
+        ctx = approval_assertion_context_from_agent_claims(
+            {
+                'setup_flow': True,
+                'mcp_session_ttl_seconds': 600,
+                'iat': now - 3600,
+                'exp': now + 30,
             },
         )
         self.assertEqual(ctx.lifetime_seconds, 60)

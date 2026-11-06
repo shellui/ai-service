@@ -71,6 +71,7 @@ def _agent_token(*, secret: str, issuer: str, mcp_access: str = 'ask') -> str:
         }
     },
 )
+@patch('apps.connector.mcp_approval_gate.agent_is_revoked', return_value=False)
 @patch('apps.connector.mcp_views.identity_revocation_unavailable', return_value=False)
 @patch('apps.connector.mcp_views.agent_is_revoked', return_value=False)
 class McpApprovalGatewayTests(TestCase):
