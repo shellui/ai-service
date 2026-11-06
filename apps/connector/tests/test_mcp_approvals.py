@@ -20,6 +20,7 @@ from apps.authapi.ai_service_jwks import (
 )
 from apps.connector import mcp_approval_copy as copy
 from apps.connector.mcp_approval_gate import build_elicitation_meta, enforce_tool_call_approval
+from shellui_django.mcp.write_gate import WriteGateDecision
 from apps.connector import mcp_approvals
 from apps.connector.mcp_approvals import SESSION_GRANT_SECONDS
 from apps.connector.mcp_protocol import MCP_SESSION_CACHE_PREFIX
@@ -345,6 +346,7 @@ class McpApprovalCopyTests(TestCase):
                 'agent_id': 'a',
                 'company_id': 10,
                 'setup_flow': True,
+                'mcp_new_company_grant': True,
                 'mcp_session_ttl_seconds': 600,
                 'grant_version': 'gv-setup',
                 'company_binding_version': 'cbv-setup',
@@ -356,6 +358,55 @@ class McpApprovalCopyTests(TestCase):
         )
         self.assertEqual(meta['elicitation']['session_seconds'], 600)
         self.assertIn('600', meta['elicitation']['session_helper'])
+
+
+class McpApprovalGateDenyPrecedenceTests(TestCase):
+    def test_client_deny_processed_before_session_grant(self):
+        request = Mock()
+        request.headers = {'Mcp-Session-Id': 'sess-1'}
+        tool = {'annotations': {'readOnlyHint': False}, '_meta': {'method': 'POST', 'path': '/api/v1/x'}}
+        with (
+            patch('apps.connector.mcp_approval_gate.decide_write') as decide,
+            patch('apps.connector.mcp_approval_gate.approvals.session_grant_covers_write') as sess,
+            patch('apps.connector.mcp_approval_gate.approvals.decide_approval') as decide_remote,
+        ):
+            decide.return_value = WriteGateDecision(
+                allowed=False,
+                needs_approval=True,
+                reason='Write requires approval.',
+            )
+            sess.return_value = True
+            decide_remote.return_value = Mock(
+                ok=True,
+                status_code=200,
+                audit_status='client_denied',
+                approval_status='denied',
+            )
+            out = enforce_tool_call_approval(
+                request,
+                1,
+                params={
+                    '_meta': {
+                        'shellui_approval': {
+                            'decision': 'deny',
+                            'approval_id': 'ap-deny',
+                        },
+                    },
+                },
+                agent_claims={
+                    'agent_id': 'a1',
+                    'company_id': 10,
+                    'mcp_access': 'ask',
+                },
+                export_name='storage_create_bucket',
+                service_id='storage',
+                tool=tool,
+                method='POST',
+                path='/api/v1/buckets/',
+                arguments={},
+            )
+        sess.assert_not_called()
+        self.assertFalse(out.proceed)
 
 
 @override_settings(

@@ -25,6 +25,8 @@ from shellui_django.mcp.identity_jwks import (
     resolve_verification_key,
 )
 
+from apps.connector.mcp_audit_codes import ALLOWED_ERROR_CODES
+from apps.connector.mcp_call_audit import OUTCOMES, legacy_result_token, safe_route_path_for_audit
 from apps.connector.mcp_company_id import strict_numeric_company_id
 
 logger = logging.getLogger(__name__)
@@ -317,6 +319,7 @@ def personal_agent_bearer_valid(claims: dict) -> bool:
 
 _OUTCOMES = frozenset({'allowed', 'failed', 'denied', 'pending', 'session_used'})
 _ACCESS_KINDS = frozenset({'read', 'write', 'destructive'})
+_RESULT_WHITELIST = frozenset({'success', 'error', 'denied', 'pending'})
 
 
 def forward_call_log(entry: dict) -> None:
@@ -330,7 +333,12 @@ def forward_call_log(entry: dict) -> None:
         logger.warning('MCP call log skipped: service assertion signing is not configured')
         return
     outcome_raw = str(entry.get('outcome') or '').strip().lower()
-    outcome = outcome_raw if outcome_raw in _OUTCOMES else ''
+    if outcome_raw == 'pending':
+        outcome = 'pending_approval'
+    elif outcome_raw in _OUTCOMES:
+        outcome = outcome_raw
+    else:
+        outcome = ''
     access_raw = str(entry.get('access_kind') or entry.get('access_level') or '').strip().lower()
     access_kind = access_raw if access_raw in _ACCESS_KINDS else ''
     op_title = str(entry.get('operation_title') or '').strip()[:200]
@@ -343,11 +351,16 @@ def forward_call_log(entry: dict) -> None:
         'tool': str(entry.get('tool') or '')[:256],
         'tool_export_id': tool_export_id,
         'method': str(entry.get('method') or '')[:16],
-        'path': str(entry.get('path') or '')[:512],
+        'path': safe_route_path_for_audit(entry.get('path'))[:512],
         'status': int(entry.get('status') or 0),
         'client_ip': str(entry.get('client_ip') or '')[:45],
-        'result': str(entry.get('result') or '')[:32],
     }
+    res_raw = str(entry.get('result') or '').strip()[:32]
+    if res_raw in _RESULT_WHITELIST:
+        body['result'] = res_raw
+    else:
+        oa = outcome_raw if outcome_raw in OUTCOMES else 'failed'
+        body['result'] = legacy_result_token(outcome=oa)[:32]
     if outcome:
         body['outcome'] = outcome
     if access_kind:
@@ -374,6 +387,11 @@ def forward_call_log(entry: dict) -> None:
     duration = entry.get('duration_ms')
     if isinstance(duration, (int, float)) and duration >= 0:
         body['duration_ms'] = int(duration)
+    ec_raw = entry.get('error_code')
+    if isinstance(ec_raw, str):
+        ec = ec_raw.strip().lower()[:64]
+        if ec in ALLOWED_ERROR_CODES:
+            body['error_code'] = ec
     try:
         requests.post(
             url,

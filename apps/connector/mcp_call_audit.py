@@ -6,8 +6,11 @@ fields from tool registry metadata and validated agent JWT claims only.
 
 from __future__ import annotations
 
+import re
 from typing import Any
+from urllib.parse import urlsplit
 
+from apps.connector.mcp_audit_codes import error_code_from_http, sanitize_error_code
 from apps.connector.mcp_company_id import strict_numeric_company_id
 from apps.connector.mcp_tool_presentation import strip_presentation_noise
 
@@ -58,7 +61,7 @@ def outcome_from_audit(*, log_result: str | None, status: int | None, is_error: 
 
 def _tool_traits(tool: dict[str, Any] | None, *, method: str) -> tuple[bool, bool]:
     if not isinstance(tool, dict):
-        return False, str(method or 'GET').upper() in {'GET', 'HEAD', 'OPTIONS'}
+        return False, False
     ann = tool.get('annotations') if isinstance(tool.get('annotations'), dict) else {}
     read_only = bool(ann.get('readOnlyHint'))
     destructive = bool(ann.get('destructiveHint'))
@@ -67,43 +70,85 @@ def _tool_traits(tool: dict[str, Any] | None, *, method: str) -> tuple[bool, boo
         read_only = True
     if meta.get('destructive') is True:
         destructive = True
-    m = str(method or meta.get('method') or 'GET').upper()
-    if m in {'GET', 'HEAD', 'OPTIONS'}:
-        read_only = True
     return read_only, destructive
 
 
 def access_kind_from_tool(tool: dict[str, Any] | None, *, method: str) -> str:
+    """Derive access kind from explicit registry flags and HTTP method only (no infer from name)."""
     read_only, destructive = _tool_traits(tool, method=method)
-    m = str(method or 'GET').upper()
-    if destructive and m not in {'GET', 'HEAD', 'OPTIONS'}:
-        return 'destructive'
+    raw_m = str(method or '').strip()
+    if not raw_m:
+        return 'write'
+    m = raw_m.upper()
     if m in {'GET', 'HEAD', 'OPTIONS'}:
         return 'read'
+    if destructive:
+        return 'destructive'
     if read_only:
         return 'read'
     return 'write'
 
 
-def _openapi_operation_title(tool: dict[str, Any] | None) -> str:
-    """Prefer registry/OpenAPI summary-backed title; never invent from underscores here."""
+def _path_template_for_audit(meta: dict[str, Any]) -> str:
+    p = str(meta.get('path') or '').strip()
+    if not p:
+        return ''
+    return p.split('?', 1)[0].strip() or ''
+
+
+_OP_TITLE_BROKER_RE = re.compile(r'\b(broker|queue|ask)\b', re.I)
+
+
+def _neutral_operation_title(export_name: str) -> str:
+    base = str(export_name or '').strip() or 'tool'
+    return f'Operation {base}'[:200]
+
+
+def operation_title_for_audit(
+    tool: dict[str, Any] | None,
+    *,
+    export_name: str,
+    method: str,
+) -> str:
+    """Trusted title: OpenAPI summary from registry _meta, else presentation title; neutral fallback."""
     if not isinstance(tool, dict):
-        return ''
+        return _neutral_operation_title(export_name)
     meta = tool.get('_meta') if isinstance(tool.get('_meta'), dict) else {}
-    if not meta.get('path'):
-        return ''
-    raw = str(tool.get('title') or '').strip()
-    if not raw:
-        return ''
-    return strip_presentation_noise(raw)[:200]
+    op_sum = str(meta.get('operation_summary') or '').strip()
+    if op_sum:
+        if _OP_TITLE_BROKER_RE.search(op_sum):
+            return _neutral_operation_title(export_name)
+        return strip_presentation_noise(op_sum)[:200]
+    title = str(tool.get('title') or '').strip()
+    if title:
+        if _OP_TITLE_BROKER_RE.search(title):
+            return _neutral_operation_title(export_name)
+        return strip_presentation_noise(title)[:200]
+    return _neutral_operation_title(export_name)
 
 
-def resource_label_safe(*, method: str, path: str) -> str:
-    m = str(method or '').strip().upper()[:16]
-    p = str(path or '').strip()
-    if len(p) > 160:
-        p = p[:157] + '...'
-    label = f'{m} {p}'.strip()
+def safe_route_path_for_audit(raw: object) -> str:
+    """Strip query/fragment and scheme for audit path and resource label (no client-controlled query leakage)."""
+    s = str(raw or '').strip()
+    if not s:
+        return ''
+    if '://' in s:
+        parts = urlsplit(s)
+        path = parts.path or ''
+    else:
+        path = s.split('#', 1)[0].split('?', 1)[0]
+    return path.strip()[:512]
+
+
+def resource_label_safe(*, method: str, path: str, tool: dict[str, Any] | None) -> str:
+    m = str(method or '').strip().upper()[:16] or 'GET'
+    meta = tool.get('_meta') if isinstance(tool, dict) and isinstance(tool.get('_meta'), dict) else {}
+    tmpl = _path_template_for_audit(meta) if meta else ''
+    if not tmpl:
+        tmpl = safe_route_path_for_audit(path)
+    if len(tmpl) > 160:
+        tmpl = tmpl[:157] + '...'
+    label = f'{m} {tmpl}'.strip()
     return label[:200]
 
 
@@ -120,6 +165,7 @@ def build_call_audit_log(
     is_error: bool | None = None,
     approval_id: str | None = None,
     legacy_result: str | None = None,
+    error_code: str | None = None,
 ) -> dict[str, Any]:
     cid = strict_numeric_company_id(agent_claims.get('company_id'))
     claim_service = str(agent_claims.get('service') or '').strip()
@@ -129,7 +175,8 @@ def build_call_audit_log(
     else:
         outcome = outcome_from_audit(log_result=log_result, status=status, is_error=is_error)
     access_kind = access_kind_from_tool(tool, method=method)
-    op_title = _openapi_operation_title(tool)
+    op_title = operation_title_for_audit(tool, export_name=export_name, method=method)
+    safe_path = safe_route_path_for_audit(path)
     rid = str(approval_id or '').strip()
     agent_name = str(agent_claims.get('agent_name') or '').strip()[:200]
     company_name = str(agent_claims.get('company_name') or '').strip()[:200]
@@ -144,13 +191,19 @@ def build_call_audit_log(
         'tool_export_id': str(export_name or '')[:256],
         'operation_title': op_title,
         'method': str(method or '')[:16],
-        'path': str(path or '')[:512],
-        'resource_label': resource_label_safe(method=method, path=path),
+        'path': safe_path,
+        'resource_label': resource_label_safe(method=method, path=path, tool=tool),
         'access_kind': access_kind,
         'status': int(status),
         'outcome': outcome if outcome in OUTCOMES else 'failed',
         'duration_ms': 0,
     }
+    ec_kw = error_code
+    ec = sanitize_error_code(ec_kw) if ec_kw is not None and str(ec_kw).strip() else None
+    if ec is None:
+        ec = error_code_from_http(status=int(status), is_error=is_error)
+    if ec:
+        entry['error_code'] = ec
     if rid:
         entry['approval_id'] = rid[:64]
     lr = str(legacy_result or '').strip()[:32]

@@ -424,7 +424,17 @@ def check_session_grant(
         headers = _approval_headers(binding, ctx=ctx)
     except InternalAssertionError:
         return False
-    body = {'connection_id': connection_id, 'is_destructive': bool(is_destructive)}
+    body: dict[str, Any] = {
+        'connection_id': connection_id,
+        'is_destructive': bool(is_destructive),
+        'agent_id': agent_id,
+        'company_id': company_id,
+        'service': service,
+        'action': action,
+        'arguments_hash': arguments_hash,
+        'grant_version': expected_gv,
+        'company_binding_version': expected_cbv,
+    }
     try:
         response = requests.post(url, json=body, headers=headers, timeout=5)
     except requests.RequestException:

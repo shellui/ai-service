@@ -37,6 +37,7 @@ class McpSetupContextTests(TestCase):
             {
                 'company_id': 10,
                 'setup_flow': True,
+                'mcp_new_company_grant': True,
                 'mcp_session_ttl_seconds': 600,
                 'iat': now,
                 'exp': now + 900,
@@ -60,7 +61,11 @@ class McpSetupContextTests(TestCase):
             {
                 'company_id': 10,
                 'setup_flow': True,
+                'mcp_new_company_grant': True,
                 'mcp_session_ttl_seconds': 600,
+                'grant_version': _GV,
+                'company_binding_version': _CBV,
+                'setup_expires_at': (timezone.now() + timedelta(seconds=650)).isoformat(),
                 'iat': now - 800,
                 'exp': now + 120,
             },
@@ -79,7 +84,11 @@ class McpSetupContextTests(TestCase):
             {
                 'company_id': 10,
                 'setup_flow': True,
+                'mcp_new_company_grant': True,
                 'mcp_session_ttl_seconds': 600,
+                'grant_version': _GV,
+                'company_binding_version': _CBV,
+                'setup_expires_at': (timezone.now() + timedelta(seconds=650)).isoformat(),
                 'iat': now - 3600,
                 'exp': now + 30,
             },
@@ -98,7 +107,11 @@ class McpSetupContextTests(TestCase):
             {
                 'company_id': 10,
                 'setup_flow': True,
+                'mcp_new_company_grant': True,
                 'mcp_session_ttl_seconds': 120,
+                'grant_version': _GV,
+                'company_binding_version': _CBV,
+                'setup_expires_at': (timezone.now() + timedelta(seconds=650)).isoformat(),
                 'iat': now,
                 'exp': now + 900,
             },
@@ -117,7 +130,11 @@ class McpSetupContextTests(TestCase):
             {
                 'company_id': str(uuid.uuid4()),
                 'setup_flow': True,
+                'mcp_new_company_grant': True,
                 'mcp_session_ttl_seconds': 600,
+                'grant_version': _GV,
+                'company_binding_version': _CBV,
+                'setup_expires_at': (timezone.now() + timedelta(seconds=650)).isoformat(),
                 'iat': now,
                 'exp': now + 900,
             },
@@ -137,6 +154,7 @@ class McpSetupContextTests(TestCase):
             {
                 'company_id': 10,
                 'setup_flow': True,
+                'mcp_new_company_grant': True,
                 'mcp_session_ttl_seconds': 600,
                 'iat': now,
                 'exp': exp_wall,
@@ -160,11 +178,35 @@ class McpSetupContextTests(TestCase):
             {
                 'company_id': 10,
                 'setup_flow': True,
+                'mcp_new_company_grant': True,
                 'mcp_session_ttl_seconds': 600,
                 'iat': now,
                 'exp': now + 900,
                 'grant_version': _GV,
                 'company_binding_version': _CBV,
+            },
+        )
+        self.assertFalse(ctx.setup_flow)
+
+    @override_settings(
+        MCP_APPROVAL_SETUP_SESSION_TTL_MIN_SECONDS=600,
+        MCP_APPROVAL_SETUP_SESSION_TTL_MAX_SECONDS=900,
+        MCP_APPROVAL_ASSERTION_MAX_LIFETIME_SECONDS=900,
+    )
+    def test_setup_requires_new_company_grant(self):
+        now = int(time.time())
+        setup_exp = timezone.now() + timedelta(seconds=650)
+        ctx = approval_assertion_context_from_agent_claims(
+            {
+                'company_id': 10,
+                'setup_flow': True,
+                'mcp_new_company_grant': False,
+                'mcp_session_ttl_seconds': 600,
+                'iat': now,
+                'exp': now + 900,
+                'grant_version': _GV,
+                'company_binding_version': _CBV,
+                'setup_expires_at': setup_exp.isoformat(),
             },
         )
         self.assertFalse(ctx.setup_flow)

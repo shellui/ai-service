@@ -313,31 +313,6 @@ def enforce_tool_call_approval(
         '_agent_claims': agent_claims,
     }
 
-    if approvals.session_grant_covers_write(
-        approval_payload,
-        connection_id=connection_id,
-        is_destructive=destructive,
-    ):
-        if agent_is_revoked(agent_id, company_id):
-            return GateOutcome(
-                proceed=False,
-                response=_approval_result(
-                    req_id,
-                    text='Agent access was revoked.',
-                    meta={'status': 'denied'},
-                ),
-                log=_log_entry(
-                    agent_claims=agent_claims,
-                    service=service_id,
-                    export_name=export_name,
-                    tool=tool,
-                    method=method,
-                    path=path,
-                    log_result='denied',
-                ),
-            )
-        return GateOutcome(proceed=True)
-
     client_decision, client_approval_id = parse_client_decision(params)
     actor_email = str(agent_claims.get('email') or '').strip() or None
 
@@ -370,6 +345,31 @@ def enforce_tool_call_approval(
                 log_result=log_result,
             ),
         )
+
+    if approvals.session_grant_covers_write(
+        approval_payload,
+        connection_id=connection_id,
+        is_destructive=destructive,
+    ):
+        if agent_is_revoked(agent_id, company_id):
+            return GateOutcome(
+                proceed=False,
+                response=_approval_result(
+                    req_id,
+                    text='Agent access was revoked.',
+                    meta={'status': 'denied'},
+                ),
+                log=_log_entry(
+                    agent_claims=agent_claims,
+                    service=service_id,
+                    export_name=export_name,
+                    tool=tool,
+                    method=method,
+                    path=path,
+                    log_result='denied',
+                ),
+            )
+        return GateOutcome(proceed=True)
 
     if client_decision == 'session_allow' and client_approval_id:
         decided = _decide(client_approval_id, 'allow_session')

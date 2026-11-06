@@ -82,6 +82,7 @@ class McpApprovalsCoreTests(TestCase):
             '_agent_claims': {
                 'company_id': 10,
                 'setup_flow': True,
+                'mcp_new_company_grant': True,
                 'mcp_session_ttl_seconds': 600,
                 'grant_version': _GV,
                 'company_binding_version': _CBV,
@@ -123,6 +124,11 @@ class McpApprovalsCoreTests(TestCase):
         self.assertTrue(mcp_approvals.check_session_grant(p10, connection_id='conn-1', is_destructive=False))
         self.assertTrue(mcp_approvals.check_session_grant(p99, connection_id='conn-1', is_destructive=False))
         self.assertEqual(post.call_count, 2)
+        for call in post.call_args_list:
+            jb = call.kwargs.get('json') or {}
+            self.assertEqual(jb.get('grant_version'), _GV)
+            self.assertEqual(jb.get('company_binding_version'), _CBV)
+            self.assertEqual(jb.get('arguments_hash'), 'z' * 64)
 
     @patch('apps.connector.mcp_approvals.requests.post')
     def test_rejects_past_expires_at(self, post):
@@ -258,6 +264,7 @@ class McpSessionGrantSetupFlowTests(TestCase):
             '_agent_claims': {
                 'company_id': 10,
                 'setup_flow': True,
+                'mcp_new_company_grant': True,
                 'mcp_session_ttl_seconds': 600,
                 'grant_version': _GV,
                 'company_binding_version': _CBV,
@@ -281,6 +288,7 @@ class McpSessionGrantSetupFlowTests(TestCase):
             '_agent_claims': {
                 'company_id': 10,
                 'setup_flow': True,
+                'mcp_new_company_grant': True,
                 'mcp_session_ttl_seconds': 600,
                 'grant_version': _GV,
                 'company_binding_version': _CBV,

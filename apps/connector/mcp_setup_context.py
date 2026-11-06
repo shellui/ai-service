@@ -24,12 +24,17 @@ logger = logging.getLogger(__name__)
 _DEFAULT_APPROVAL_ASSERTION_LIFETIME = 60
 
 
-def _truthy_setup_flow(raw: object) -> bool:
+def _bool_claim(raw: object) -> bool:
+    """Strict JWT boolean: only true or case-insensitive 'true' (identity-issued)."""
     if isinstance(raw, bool):
         return raw
     if isinstance(raw, str):
-        return raw.strip().lower() in {'1', 'true', 'yes', 'on', 'setup', 'setup_flow', 'new_company'}
+        return raw.strip().lower() == 'true'
     return False
+
+
+def _truthy_setup_flow(raw: object) -> bool:
+    return _bool_claim(raw)
 
 
 def session_allow_ttl_bounds() -> tuple[int, int]:
@@ -116,6 +121,14 @@ def approval_assertion_context_from_agent_claims(agent_claims: dict | None) -> A
     if not _truthy_setup_flow(agent_claims.get('setup_flow')):
         return _fallback_context(agent_claims)
 
+    # Long setup session is only for the new-company delegation grant (identity #135 snapshot).
+    if not _bool_claim(agent_claims.get('mcp_new_company_grant')):
+        logger.info(
+            'MCP setup assertion rejected (not a new-company grant): agent_id=%s',
+            agent_claims.get('agent_id'),
+        )
+        return _fallback_context(agent_claims)
+
     if strict_numeric_company_id(agent_claims.get('company_id')) is None:
         logger.info(
             'MCP setup assertion rejected (invalid company_id in agent claims): agent_id=%s company_id=%r',
@@ -153,6 +166,17 @@ def approval_assertion_context_from_agent_claims(agent_claims: dict | None) -> A
         max_from_jwt = None
 
     wall_remaining = _seconds_until_access_token_exp(agent_claims)
+    # Setup window 600–900s only when more than 600s remain on the access token; otherwise ordinary 60s cap.
+    lo, _hi = session_allow_ttl_bounds()
+    if wall_remaining is not None and wall_remaining <= lo:
+        logger.info(
+            'MCP setup assertion rejected (access token wall <= %ss): company_id=%s agent_id=%s wall=%s',
+            lo,
+            agent_claims.get('company_id'),
+            agent_claims.get('agent_id'),
+            wall_remaining,
+        )
+        return _fallback_context(agent_claims)
 
     require_abs_setup_expiry = bool(
         getattr(settings, 'MCP_SETUP_REQUIRES_ABSOLUTE_EXPIRY', False),

@@ -80,6 +80,24 @@ class McpIdentitySigningTests(SimpleTestCase):
         self.assertNotIn('arguments', body)
         self.assertNotIn('arguments_redacted', body)
 
+    def test_call_log_pending_outcome_maps_for_identity(self):
+        with patch('apps.connector.mcp_identity.requests.post') as post:
+            mcp_identity.forward_call_log(
+                {
+                    'agent_id': 'a',
+                    'company_id': 1,
+                    'method': 'GET',
+                    'path': '/api/r?q=1',
+                    'outcome': 'pending',
+                    'result': 'pending',
+                    'status': 202,
+                }
+            )
+        body = post.call_args.kwargs['json']
+        self.assertEqual(body['outcome'], 'pending_approval')
+        self.assertEqual(body['path'], '/api/r')
+        self.assertEqual(body['result'], 'pending')
+
     @override_settings(AI_SERVICE_SIGNING_KEY=None)
     def test_without_signing_key_revocation_fails_closed(self):
         with patch('apps.connector.mcp_identity.requests.get') as get:

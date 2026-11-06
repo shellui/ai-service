@@ -33,11 +33,16 @@ On `tools/call`, the gateway enforces the agent `mcp_access` mode (`read_only`, 
 - **In-chat (elicitation):** the tool result includes `_meta.shellui_approval` with Wilson v1 copy and buttons Allow, Deny, and Allow for this session (non-destructive only). The client retries `tools/call` with `params._meta.shellui_approval.decision` set to `allow`, `deny`, or `session_allow`. The gateway records the decision through identity `POST /api/v1/mcp/internal/mcp-approval-decide` (`allow`, `deny`, or `allow_session`; `409` when session allow is requested for a destructive tool).
 - **Settings fallback:** when the MCP session did not advertise elicitation, the result points at identity `GET /api/v1/mcp/approvals` (list) and the specific approval id under `/api/v1/mcp/approvals/{id}`.
 
-Session allow skips re-prompts for **non-destructive** writes on the same `Mcp-Session-Id` connection. **Every** eligible `tools/call` performs `POST /api/v1/mcp/internal/mcp-approval-session-check` (the gateway does not cache a local “already allowed” boolean). A grant is honored only when **all** of the following hold:
+Session allow skips re-prompts for **non-destructive** writes on the same `Mcp-Session-Id` connection. **Every** eligible `tools/call` performs `POST /api/v1/mcp/internal/mcp-approval-session-check` (the gateway does not cache a local “already allowed” boolean). The JSON body includes `connection_id`, `grant_version`, `company_binding_version` (from the live regional token), `agent_id`, `company_id`, `service`, `action`, `arguments_hash`, and `is_destructive` so Identity can correlate the grant to this exact tool call.
 
-- Response `session_allowed` is true **and** `grant_version` and `company_binding_version` match the verified regional access token (aliases such as `grant_validity_version` are not accepted).
-- Response includes an absolute `expires_at` within **60 seconds** of “now” for ordinary sessions; setup sessions use the **600–900** second window from signed claims and also require `setup_expires_at` on the response, capped by JWT wall time and signed setup expiry.
+A grant is honored only when **all** of the following hold:
+
+- Response `session_allowed` is true **and** `grant_version` and `company_binding_version` **exactly** match the verified regional access token (no alias keys).
+- Response includes an absolute `expires_at` within **60 seconds** of “now” for ordinary sessions.
+- **Setup** (long allow) applies only when the token includes `setup_flow: true`, `mcp_new_company_grant: true`, signed `mcp_session_ttl_seconds` in **600–900**, absolute `setup_expires_at` on the token, **and** matching `setup_expires_at` on the session-check response; if the access token has **≤600s** wall time remaining, setup long-allow is **not** used (fall back to ordinary 60s rules). Caps still include JWT `exp` wall and signed setup expiry.
 - Destructive tools never use session allow (even when `mcp_access` is `full` or `mcp_destructive` is set).
+
+**Deny precedence:** a client `deny` decision is sent to Identity **before** any session-grant shortcut is evaluated (deny cannot be overridden by an active session grant).
 
 Revoke with `mcp-approval-session-revoke`. Approved one-shot calls still use `mcp-approval-consume`.
 
@@ -47,22 +52,24 @@ Gateway forwards `POST /api/v1/mcp/internal/mcp-call-logs` with RS256 assertions
 
 | Field | Notes |
 | ----- | ----- |
-| `outcome` | `allowed` \| `failed` \| `denied` \| `pending` \| `session_used` — derived from gateway decisions / HTTP status, not from raw error text |
-| `access_kind` | `read` \| `write` \| `destructive` from tool annotations + HTTP method |
+| `outcome` | Gateway uses `allowed` \| `failed` \| `denied` \| `pending` \| `session_used`. Forwarded to identity as `pending_approval` when the gateway outcome is `pending` (identity region activity schema). |
+| `access_kind` | `read` if method is GET/HEAD/OPTIONS **or** explicit `readOnlyHint` / `_meta.read_only`; `destructive` if explicit `destructiveHint` / `_meta.destructive` (non-safe method); else `write` — not inferred from name or substring heuristics |
 | `read_only_hint`, `destructive_hint` | Mirrors MCP tool annotations |
-| `operation_title` | OpenAPI/registry title when present (stripped presentation noise); otherwise empty (UI may fall back to tool id) |
+| `operation_title` | Trusted OpenAPI `summary` from registry `_meta.operation_summary` (or presentation `title` when non-sensitive); if missing or unsafe, neutral `Operation {export_name}` (never raw provider exception text) |
 | `tool_export_id` | Same as gateway export name (`tool`) |
-| `resource_label` | Short `METHOD path` (no arguments) |
+| `resource_label` | `METHOD` + trusted route template from `_meta.path`, or sanitized path with query/fragment stripped |
+| `path` | Same sanitized route as `resource_label` (no `?` or `#`; never raw client query strings) |
+| `error_code` | Optional; allowlisted only: `bad_request`, `unauthorized`, `forbidden`, `not_found`, `conflict`, `rate_limited`, `timeout`, `upstream_error`, `internal_error`, `denied`, `expired`, `out_of_sync`, `unknown`. Arbitrary provider strings are dropped. |
 | `company_name`, `agent_name` | From validated access-token claims when present |
 | `approval_id` | Set when a real approval row id is known (e.g. pending elicitation) |
-| `result` | Legacy short token (`success` / `error` / `denied` / `pending`) for backward compatibility |
+| `result` | Legacy short token forwarded only when already one of `success`, `error`, `denied`, `pending`; otherwise recomputed from `outcome` (never arbitrary text) |
 | `duration_ms` | Unchanged |
 
 `company_id` always matches the token; if the tool call’s service id and a `service` claim on the token both exist and differ, `outcome` is `failed` (no cross-service leakage).
 
 Arguments, query bodies, provider response text, and headers are **never** forwarded.
 
-Identity must implement the internal approval and session-check contract (`grant_version`, `company_binding_version`, `setup_expires_at` when setup); create, state, consume, decide, session-check, and call logs align with identity `develop` after merge.
+Identity must implement the internal approval and session-check contract described here; ai-service tracks that contract in PR **#24** (merge into `develop` — this doc is the gateway contract as implemented in that PR, not a future branch guess).
 
 ## Client conformance
 
