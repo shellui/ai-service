@@ -8,7 +8,6 @@ issued), never from tool arguments.
 from __future__ import annotations
 
 import logging
-import re
 import time
 import uuid
 from dataclasses import dataclass
@@ -21,12 +20,6 @@ from django.utils.dateparse import parse_datetime
 from apps.connector.mcp_company_id import strict_numeric_company_id
 
 logger = logging.getLogger(__name__)
-
-# Lowercase UUID string for delegated global binding (identity / commons #14).
-_GLOBAL_COMPANY_UUID_RE = re.compile(
-    r'^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
-    re.I,
-)
 
 # Default shellui-django internal assertion window for ordinary approvals.
 _DEFAULT_APPROVAL_ASSERTION_LIFETIME = 60
@@ -49,41 +42,62 @@ def _is_personal_agent_claims(agent_claims: dict | None) -> bool:
 
 
 def parse_int_version_claim(raw: object) -> int | None:
-    """Canonical non-negative integer grant/binding version (``None`` vs ``0`` vs malformed). Reject bool, float, aliases."""
+    """Strict nonnegative int from JWT only (commons #14: ``None`` vs ``0``; no string claims)."""
     if raw is None:
         return None
     if isinstance(raw, bool):
         return None
-    if isinstance(raw, float):
-        return None
     if isinstance(raw, int):
         return raw if raw >= 0 else None
-    if isinstance(raw, str):
-        s = raw.strip()
-        if not s:
-            return None
-        try:
-            v = int(s, 10)
-        except ValueError:
-            return None
-        return v if v >= 0 else None
     return None
 
 
-def parse_global_company_id(raw: object) -> str | None:
-    """Delegated global company id: lowercase UUID string only (no legacy slug aliases)."""
+def parse_setup_expires_at_claim(raw: object, *, wall_max_exp: int) -> timezone.datetime | None:
+    """Identity-issued ``setup_expires_at``: ISO-8601 string or Unix epoch **int** seconds (not bool)."""
     if raw is None:
         return None
-    s = str(raw).strip().lower()
+    if isinstance(raw, bool):
+        return None
+    dt: timezone.datetime | None = None
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+        try:
+            ts = float(raw)
+        except (TypeError, ValueError):
+            return None
+        if ts <= 0:
+            return None
+        dt = datetime.fromtimestamp(ts, tz=dt_timezone.utc)
+    else:
+        text = str(raw).strip()
+        if not text:
+            return None
+        dt = parse_datetime(text)
+    if dt is None:
+        return None
+    if timezone.is_naive(dt):
+        dt = timezone.make_aware(dt, dt_timezone.utc)
+    now = timezone.now()
+    if dt <= now:
+        return None
+    wall_max = datetime.fromtimestamp(float(wall_max_exp), tz=dt_timezone.utc)
+    if dt > wall_max:
+        return None
+    return dt
+
+
+def parse_global_company_id(raw: object) -> str | None:
+    """Delegated global company id: canonical UUID string (commons #14 / strict parse)."""
+    if raw is None:
+        return None
+    if isinstance(raw, bool):
+        return None
+    s = str(raw).strip()
     if not s:
         return None
-    if not _GLOBAL_COMPANY_UUID_RE.match(s):
-        return None
     try:
-        u = uuid.UUID(s)
+        return str(uuid.UUID(s))
     except ValueError:
         return None
-    return str(u)
 
 
 def session_allow_ttl_bounds() -> tuple[int, int]:
@@ -162,27 +176,6 @@ def _fallback_context(
         is_personal_agent=is_personal,
         blocked_assertion=blocked,
     )
-
-
-def _parse_setup_expires_at_claim(raw: object, *, wall_max_exp: int) -> timezone.datetime | None:
-    """Parse identity-issued setup_expires_at; must be in (now, jwt exp]."""
-    if raw is None:
-        return None
-    text = str(raw).strip()
-    if not text:
-        return None
-    dt = parse_datetime(text)
-    if dt is None:
-        return None
-    if timezone.is_naive(dt):
-        dt = timezone.make_aware(dt, dt_timezone.utc)
-    now = timezone.now()
-    if dt <= now:
-        return None
-    wall_max = datetime.fromtimestamp(float(wall_max_exp), tz=dt_timezone.utc)
-    if dt > wall_max:
-        return None
-    return dt
 
 
 def approval_assertion_context_from_agent_claims(agent_claims: dict | None) -> ApprovalAssertionContext:
@@ -270,7 +263,7 @@ def approval_assertion_context_from_agent_claims(agent_claims: dict | None) -> A
             agent_claims.get('agent_id'),
         )
         return _fallback_context(agent_claims, setup_claim_rejected=True)
-    setup_expires_at = _parse_setup_expires_at_claim(raw_setup_exp, wall_max_exp=wall_max_exp)
+    setup_expires_at = parse_setup_expires_at_claim(raw_setup_exp, wall_max_exp=wall_max_exp)
     if setup_expires_at is None:
         logger.info(
             'MCP setup assertion rejected (invalid setup_expires_at): company_id=%s agent_id=%s',

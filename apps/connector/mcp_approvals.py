@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import time
-import uuid
 from datetime import datetime, timedelta, timezone as dt_timezone
 from dataclasses import dataclass
 from typing import Any
@@ -15,9 +14,8 @@ from django.conf import settings
 from django.utils.dateparse import parse_datetime
 from django.utils import timezone
 from shellui_django.mcp.internal import (
-    APPROVAL_AUDIENCE,
-    APPROVAL_SCOPE,
     InternalAssertionError,
+    build_mcp_approval_assertion,
 )
 
 from apps.connector.mcp_company_id import strict_numeric_company_id
@@ -27,11 +25,13 @@ from apps.connector.mcp_identity import (
     _signing_kwargs,
     agent_is_revoked,
 )
+from apps.connector.mcp_revocation import delegation_authority_consistent_with_revocation
 from apps.connector.mcp_setup_context import (
     ApprovalAssertionContext,
     approval_assertion_context_from_agent_claims,
     parse_global_company_id,
     parse_int_version_claim,
+    parse_setup_expires_at_claim,
     session_allow_ttl_bounds,
 )
 
@@ -82,6 +82,14 @@ def _assertion_context(payload: dict[str, Any] | None) -> ApprovalAssertionConte
 def _parse_iso_expires_at(raw: object) -> timezone.datetime | None:
     if raw is None:
         return None
+    if isinstance(raw, bool):
+        return None
+    if isinstance(raw, (int, float)):
+        try:
+            dt = datetime.fromtimestamp(float(raw), tz=dt_timezone.utc)
+        except (OSError, OverflowError, ValueError):
+            return None
+        return dt if dt > timezone.now() else None
     text = str(raw).strip()
     if not text:
         return None
@@ -90,7 +98,7 @@ def _parse_iso_expires_at(raw: object) -> timezone.datetime | None:
 
 
 def _build_approval_assertion_jwt(*, binding: dict[str, Any], ctx: ApprovalAssertionContext) -> str:
-    """RS256 JWT for Identity internal MCP approval APIs (same claims as shellui-django helper plus setup)."""
+    """RS256 JWT via commons ``build_mcp_approval_assertion`` plus optional setup claims."""
     signing = _signing_kwargs()
     origin = _identity_origin()
     if not origin:
@@ -99,44 +107,67 @@ def _build_approval_assertion_jwt(*, binding: dict[str, Any], ctx: ApprovalAsser
     if not issuer:
         raise InternalAssertionError('AI_SERVICE_ISSUER is not configured.', status=503)
     target = _identity_audience(origin)
-    now = int(time.time())
-    claims: dict[str, Any] = {
-        'iss': issuer,
-        'aud': APPROVAL_AUDIENCE,
-        'sub': f'agent:{binding["agent_id"]}',
-        'scope': APPROVAL_SCOPE,
-        'company_id': int(binding['company_id']),
-        'agent_id': str(binding['agent_id']),
-        'service': str(binding['service']),
-        'action': str(binding['action']),
-        'arguments_hash': str(binding['arguments_hash']),
-        'target': target,
-        'iat': now,
-        'exp': now + int(ctx.lifetime_seconds),
-        'jti': uuid.uuid4().hex,
-    }
-    if ctx.grant_version is not None:
-        claims['grant_version'] = int(ctx.grant_version)
-    if ctx.company_binding_version is not None:
-        claims['company_binding_version'] = int(ctx.company_binding_version)
-    if ctx.global_company_id is not None:
-        claims['global_company_id'] = str(ctx.global_company_id)
+    gv = ctx.grant_version
+    gcid = ctx.global_company_id
+    cbv = ctx.company_binding_version
+    if ctx.is_personal_agent:
+        token = build_mcp_approval_assertion(
+            company_id=int(binding['company_id']),
+            agent_id=str(binding['agent_id']),
+            service=str(binding['service']),
+            action=str(binding['action']),
+            arguments_hash=str(binding['arguments_hash']),
+            audience_url=target,
+            lifetime_seconds=int(ctx.lifetime_seconds),
+            private_key_pem=signing['private_key_pem'],
+            kid=signing['kid'],
+            issuer=issuer,
+            grant_version=gv,
+            global_company_id=None,
+            company_binding_version=None,
+        )
+    else:
+        if gv is None or gcid is None or cbv is None:
+            raise InternalAssertionError('Delegated approval assertion requires grant snapshot.', status=503)
+        token = build_mcp_approval_assertion(
+            company_id=int(binding['company_id']),
+            agent_id=str(binding['agent_id']),
+            service=str(binding['service']),
+            action=str(binding['action']),
+            arguments_hash=str(binding['arguments_hash']),
+            audience_url=target,
+            lifetime_seconds=int(ctx.lifetime_seconds),
+            private_key_pem=signing['private_key_pem'],
+            kid=signing['kid'],
+            issuer=issuer,
+            grant_version=int(gv),
+            global_company_id=str(gcid),
+            company_binding_version=int(cbv),
+        )
     if ctx.setup_flow and ctx.mcp_session_ttl_seconds is not None:
+        try:
+            claims = jwt.decode(token, options={'verify_signature': False})
+        except jwt.PyJWTError as exc:
+            raise InternalAssertionError('Could not merge setup approval claims.', status=503) from exc
+        if not isinstance(claims, dict):
+            raise InternalAssertionError('Could not merge setup approval claims.', status=503)
         claims['setup_flow'] = True
         claims['mcp_session_ttl_seconds'] = int(ctx.mcp_session_ttl_seconds)
         if ctx.setup_expires_at is not None:
             claims['setup_expires_at'] = ctx.setup_expires_at.isoformat()
-    try:
-        token = jwt.encode(
-            claims,
-            signing['private_key_pem'],
-            algorithm='RS256',
-            headers={'kid': signing['kid']} if signing.get('kid') else None,
-        )
-    except Exception as exc:
-        logger.warning('MCP approval assertion encode failed: %s', type(exc).__name__)
-        raise InternalAssertionError('Could not sign approval assertion.', status=503) from exc
-    return token.decode('utf-8') if isinstance(token, bytes) else token
+        try:
+            token = jwt.encode(
+                claims,
+                signing['private_key_pem'],
+                algorithm='RS256',
+                headers={'kid': signing['kid']} if signing.get('kid') else None,
+            )
+        except Exception as exc:
+            logger.warning('MCP approval assertion re-encode failed: %s', type(exc).__name__)
+            raise InternalAssertionError('Could not sign approval assertion.', status=503) from exc
+        if isinstance(token, bytes):
+            token = token.decode('utf-8')
+    return token if isinstance(token, str) else str(token)
 
 
 def _approval_headers(binding: dict[str, Any], *, ctx: ApprovalAssertionContext) -> dict[str, str]:
@@ -288,7 +319,7 @@ def consume_approval(approval_id: str, payload: dict[str, Any]) -> bool:
         data = response.json()
     except ValueError:
         return False
-    return isinstance(data, dict) and bool(data.get('consumed'))
+    return isinstance(data, dict) and data.get('consumed') is True
 
 
 def decide_approval(
@@ -360,24 +391,8 @@ def _session_response_versions(data: dict[str, Any]) -> tuple[int | None, int | 
 
 
 def _parse_setup_expires_at_from_response(raw: object, *, wall_max_exp: int) -> timezone.datetime | None:
-    """Parse Identity ``setup_expires_at`` on session-check; must be in (now, JWT exp wall]."""
-    if raw is None:
-        return None
-    text = str(raw).strip()
-    if not text:
-        return None
-    dt = parse_datetime(text)
-    if dt is None:
-        return None
-    if timezone.is_naive(dt):
-        dt = timezone.make_aware(dt, dt_timezone.utc)
-    now = timezone.now()
-    if dt <= now:
-        return None
-    wall_max = datetime.fromtimestamp(float(wall_max_exp), tz=dt_timezone.utc)
-    if dt > wall_max:
-        return None
-    return dt
+    """Parse Identity ``setup_expires_at`` (ISO or Unix epoch seconds); rejects bool; never stringify ``None``."""
+    return parse_setup_expires_at_claim(raw, wall_max_exp=wall_max_exp)
 
 
 def _cap_session_expiry(
@@ -438,6 +453,12 @@ def check_session_grant(
     if not personal:
         if expected_gv is None or expected_cbv is None or expected_gcid is None:
             return False
+        if not delegation_authority_consistent_with_revocation(
+            agent_id=agent_id,
+            company_id=company_id,
+            agent_claims=ag,
+        ):
+            return False
     else:
         if (expected_gv is None) != (expected_cbv is None):
             return False
@@ -485,12 +506,7 @@ def check_session_grant(
     if not data.get('session_allowed'):
         return False
     resp_gv, resp_cbv = _session_response_versions(data)
-    if not personal:
-        if resp_gv != expected_gv or resp_cbv != expected_cbv:
-            return False
-    elif expected_gv is not None or expected_cbv is not None:
-        if resp_gv != expected_gv or resp_cbv != expected_cbv:
-            return False
+    resp_gcid = parse_global_company_id(data.get('global_company_id'))
 
     expires_at = data.get('expires_at')
     exp_dt = _parse_iso_expires_at(expires_at)
@@ -512,6 +528,21 @@ def check_session_grant(
 
     if exp_dt is None:
         return False
+
+    now = timezone.now()
+    ordinary_window_end = now + timedelta(seconds=int(SESSION_GRANT_SECONDS))
+    version_mismatch = resp_gv != expected_gv or resp_cbv != expected_cbv
+    if not personal:
+        if resp_gcid is not None and expected_gcid is not None and resp_gcid != expected_gcid:
+            return False
+        if version_mismatch:
+            if ctx.setup_flow:
+                return False
+            if not (exp_dt <= ordinary_window_end):
+                return False
+    elif expected_gv is not None or expected_cbv is not None:
+        if version_mismatch:
+            return False
 
     cap_dt = _cap_session_expiry(exp_dt, ag=ag, ctx=ctx, setup_resp_dt=setup_resp_dt)
     if cap_dt is None or cap_dt <= timezone.now():

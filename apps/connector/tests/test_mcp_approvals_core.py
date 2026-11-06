@@ -186,8 +186,9 @@ class McpApprovalsCoreTests(TestCase):
         post.assert_not_called()
 
     @patch('apps.connector.mcp_approvals.requests.post')
-    def test_grant_version_mismatch_rejected(self, post):
-        fut = (timezone.now() + timedelta(seconds=30)).isoformat()
+    def test_grant_version_mismatch_rejected_when_session_not_ordinary(self, post):
+        """Beyond the ~60s ordinary window, delegated session must match current identity versions."""
+        fut = (timezone.now() + timedelta(seconds=120)).isoformat()
 
         def _json():
             return {
@@ -201,6 +202,25 @@ class McpApprovalsCoreTests(TestCase):
         now = int(time.time())
         p = {**_BASE_PAYLOAD, '_agent_claims': _claims_base(now)}
         self.assertFalse(mcp_approvals.check_session_grant(p, connection_id='c-mv', is_destructive=False))
+        post.assert_called_once()
+
+    @patch('apps.connector.mcp_approvals.requests.post')
+    def test_grant_version_mismatch_grandfathered_ordinary_session(self, post):
+        """Pre-existing ordinary (~60s) grant stays valid while JWT exp remains absolute cap."""
+        fut = (timezone.now() + timedelta(seconds=30)).isoformat()
+
+        def _json():
+            return {
+                'session_allowed': True,
+                'grant_version': 99999,
+                'company_binding_version': _CBV,
+                'expires_at': fut,
+            }
+
+        post.return_value = MagicMock(status_code=200, json=_json)
+        now = int(time.time())
+        p = {**_BASE_PAYLOAD, '_agent_claims': _claims_base(now)}
+        self.assertTrue(mcp_approvals.check_session_grant(p, connection_id='c-mv-gf', is_destructive=False))
         post.assert_called_once()
 
     @patch('apps.connector.mcp_approvals.requests.post')

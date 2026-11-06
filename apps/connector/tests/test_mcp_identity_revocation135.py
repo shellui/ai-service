@@ -1,8 +1,9 @@
-"""Revocation poll verification for identity #135 (signed policy version)."""
+"""Revocation poll verification (commons #14 / identity #135)."""
 
 from __future__ import annotations
 
 import time
+import uuid
 
 import jwt
 from django.test import SimpleTestCase, override_settings
@@ -18,7 +19,7 @@ _JWKS = build_jwks_document(_ID_SIGNING)
 _ISSUER = 'https://identity.revoke.test'
 
 
-def _list_token(*, jwt_version: str | None) -> str:
+def _list_token(*, policy_version: int | None) -> str:
     now = int(time.time())
     claims: dict = {
         'iss': _ISSUER,
@@ -30,9 +31,10 @@ def _list_token(*, jwt_version: str | None) -> str:
         'cache_seconds': 30,
         'iat': now,
         'exp': now + 120,
+        'jti': uuid.uuid4().hex,
     }
-    if jwt_version is not None:
-        claims['revocation_policy_version'] = jwt_version
+    if policy_version is not None:
+        claims['revocation_policy_version'] = int(policy_version)
     token = jwt.encode(claims, _ID_SIGNING.private_pem, algorithm='RS256', headers={'kid': _ID_SIGNING.kid})
     return token.decode('utf-8') if isinstance(token, bytes) else token
 
@@ -41,11 +43,11 @@ def _list_token(*, jwt_version: str | None) -> str:
 class RevocationPolicyVersionTests(SimpleTestCase):
     def test_trusted_response_includes_policy_version(self):
         body = {
-            'revocation_assertion': _list_token(jwt_version='p1'),
+            'revocation_assertion': _list_token(policy_version=1),
             'revoked_agent_ids': ['agent-x'],
             'cache_seconds': 30,
             'agents': [],
-            'revocation_policy_version': 'p1',
+            'revocation_policy_version': 1,
         }
         ids, ttl, agents, ver = parse_trusted_revocation_poll_response_identity135(
             body,
@@ -54,23 +56,23 @@ class RevocationPolicyVersionTests(SimpleTestCase):
         )
         self.assertIn('agent-x', ids)
         self.assertEqual(ttl, 30)
-        self.assertEqual(ver, 'p1')
+        self.assertEqual(ver, 1)
         self.assertEqual(agents, [])
 
     def test_body_policy_version_mismatch_fails_closed(self):
         body = {
-            'revocation_assertion': _list_token(jwt_version='p1'),
+            'revocation_assertion': _list_token(policy_version=1),
             'revoked_agent_ids': ['agent-x'],
             'cache_seconds': 30,
             'agents': [],
-            'revocation_policy_version': 'p2',
+            'revocation_policy_version': 2,
         }
         with self.assertRaises(InternalAssertionError):
             parse_trusted_revocation_poll_response_identity135(body, expected_issuer=_ISSUER, jwks=_JWKS)
 
     def test_jwt_policy_version_without_body_fails_closed(self):
         body = {
-            'revocation_assertion': _list_token(jwt_version='p1'),
+            'revocation_assertion': _list_token(policy_version=1),
             'revoked_agent_ids': ['agent-x'],
             'cache_seconds': 30,
             'agents': [],
@@ -80,11 +82,11 @@ class RevocationPolicyVersionTests(SimpleTestCase):
 
     def test_body_policy_version_without_jwt_fails_closed(self):
         body = {
-            'revocation_assertion': _list_token(jwt_version=None),
+            'revocation_assertion': _list_token(policy_version=None),
             'revoked_agent_ids': ['agent-x'],
             'cache_seconds': 30,
             'agents': [],
-            'revocation_policy_version': 'p1',
+            'revocation_policy_version': 1,
         }
         with self.assertRaises(InternalAssertionError):
             parse_trusted_revocation_poll_response_identity135(body, expected_issuer=_ISSUER, jwks=_JWKS)

@@ -28,6 +28,8 @@ Identity endpoint: `POST /api/v1/mcp/internal/mcp-downstream-access-token`. It v
 
 ## MCP tool approvals (gateway)
 
+**End-to-end flow:** (1) Gateway `POST`s `mcp-approval-requests` with a signed RS256 assertion from commons (`grant_version`, `company_binding_version` as non-negative ints; delegated paths include canonical `global_company_id`; setup claims merged when valid). (2) Human decision via `mcp-approval-decide` (`allow`, `deny`, `allow_session`). (3) One-shot approved work uses `mcp-approval-consume` (2xx and JSON `consumed: true` only). (4) Session allow re-checks with `mcp-approval-session-check` on every eligible call (no local cache). (5) Optional `mcp-approval-session-revoke`. Downstream URLs and field names are fixed APIs—no undocumented free-form strings in bodies.
+
 On `tools/call`, the gateway enforces the agent `mcp_access` mode (`read_only`, `ask`, `full`) and tool annotations (`readOnlyHint`, `destructiveHint`). Writes that need a human decision create a row in identity via `POST /api/v1/mcp/internal/mcp-approval-requests`, then either:
 
 - **In-chat (elicitation):** the tool result includes `_meta.shellui_approval` with Wilson v1 copy and buttons Allow, Deny, and Allow for this session (non-destructive only). The client retries `tools/call` with `params._meta.shellui_approval.decision` set to `allow`, `deny`, or `session_allow`. The gateway records the decision through identity `POST /api/v1/mcp/internal/mcp-approval-decide` (`allow`, `deny`, or `allow_session`; `409` when session allow is requested for a destructive tool).
@@ -43,14 +45,16 @@ Signed approval assertions to identity use the same integer types for `grant_ver
 
 A grant is honored only when **all** of the following hold:
 
-- Response `session_allowed` is true **and** `grant_version` and `company_binding_version` **exactly** match the verified regional access token (no alias keys).
+- Response `session_allowed` is true **and** (for **personal** tokens that carry version claims, or any **setup** flow) `grant_version` and `company_binding_version` **exactly** match the verified regional access token (no alias keys). For **delegated** ordinary (non-setup) sessions, identity may return **newer** version numbers after a revocation bump; if the session grant’s absolute `expires_at` still falls within the ordinary **~60s** window from “now”, that pre-existing grant is **grandfathered** (JWT `exp` and caps still bound the session).
 - Response includes an absolute `expires_at` within **60 seconds** of “now” for ordinary sessions.
 - **Setup** (long allow) applies only when the token includes `setup_flow: true`, `mcp_new_company_grant: true`, signed `mcp_session_ttl_seconds` in **600–900**, absolute `setup_expires_at` on the token, **and** matching `setup_expires_at` on the session-check response; if the access token has **≤600s** wall time remaining, setup long-allow is **not** used (fall back to ordinary 60s rules). Caps still include JWT `exp` wall and signed setup expiry.
 - Destructive tools never use session allow (even when `mcp_access` is `full` or `mcp_destructive` is set).
 
 **Deny precedence:** a client `deny` decision is sent to Identity **before** any session-grant shortcut is evaluated (deny cannot be overridden by an active session grant).
 
-Revoke with `mcp-approval-session-revoke`. Approved one-shot calls still use `mcp-approval-consume`.
+Revoke with `mcp-approval-session-revoke`. Approved one-shot calls still use `mcp-approval-consume` (`HTTP 2xx` only; JSON `consumed` must be boolean **`true`**, not a string).
+
+**Dependency:** `shellui-django[mcp]` tracks commons **#14** from git (pinned commit `5f0fdf44bb140848fb1440cf04da6ada7996711d` on `cursor/regional-mcp-authority-65db` in `pyproject.toml`); merge to `develop` does not require a PyPI release.
 
 ### Call logs (personal activity / audit)
 
