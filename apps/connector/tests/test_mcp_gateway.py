@@ -529,19 +529,95 @@ class McpGatewayTests(TestCase):
         self.assertIn(response.status_code, (400, 401))
 
     def test_unauthenticated_points_to_company_metadata(self, _rev_ok):
-        response = self.client.post('/c/10/mcp', data=_rpc('tools/list'), content_type='application/json')
-        self.assertEqual(response.status_code, 401)
-        self.assertEqual(
-            response['WWW-Authenticate'],
-            'Bearer resource_metadata="https://ai.test/.well-known/oauth-protected-resource/c/10/mcp"',
+        challenge = (
+            'Bearer realm="mcp", '
+            'resource_metadata="https://ai.test/.well-known/oauth-protected-resource/c/10/mcp", '
+            'scope="mcp"'
         )
+        posted = self.client.post('/c/10/mcp', data=_rpc('tools/list'), content_type='application/json')
+        self.assertEqual(posted.status_code, 401)
+        self.assertEqual(posted['WWW-Authenticate'], challenge)
+        probed = self.client.get('/c/10/mcp')
+        self.assertEqual(probed.status_code, 401)
+        self.assertEqual(probed['WWW-Authenticate'], challenge)
+        bad = self.client.post(
+            '/c/10/mcp',
+            data=_rpc('tools/list'),
+            content_type='application/json',
+            HTTP_AUTHORIZATION='Bearer not-a-token',
+            HTTP_ACCEPT=MCP_ACCEPT,
+        )
+        self.assertEqual(bad.status_code, 401)
+        self.assertEqual(bad['WWW-Authenticate'], challenge)
 
     def test_company_metadata_uses_exact_resource(self, _rev_ok):
+        paths = (
+            '/.well-known/oauth-protected-resource/c/10/mcp',
+            '/.well-known/oauth-protected-resource/c/10/mcp/',
+            '/c/10/mcp/.well-known/oauth-protected-resource',
+            '/c/10/mcp/.well-known/oauth-protected-resource/',
+        )
+        for path in paths:
+            response = self.client.get(path)
+            self.assertEqual(response.status_code, 200, path)
+            body = response.json()
+            self.assertEqual(body['resource'], 'https://ai.test/c/10/mcp', path)
+            self.assertEqual(body['authorization_servers'], ['https://identity.test'], path)
+            self.assertEqual(body['scopes_supported'], ['mcp'], path)
+            self.assertEqual(body['bearer_methods_supported'], ['header'], path)
+            self.assertNotIn('device_authorization_endpoint', body)
+
+    @override_settings(IDENTITY_ISSUER='http://localhost:8001', IDENTITY_SERVICE_URL='http://identity:8000')
+    def test_authorization_server_is_identity_issuer_not_internal_origin(self, _rev_ok):
         response = self.client.get('/.well-known/oauth-protected-resource/c/10/mcp')
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['authorization_servers'], ['http://localhost:8001'])
+
+    @override_settings(IDENTITY_ISSUER='', IDENTITY_SERVICE_URL='http://localhost:8001', AI_PUBLIC_URL='https://ai.test')
+    def test_authorization_server_falls_back_to_service_url_not_gateway(self, _rev_ok):
+        response = self.client.get('/.well-known/oauth-protected-resource/c/10/mcp')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['authorization_servers'], ['http://localhost:8001'])
+
+    @override_settings(IDENTITY_ISSUER='', IDENTITY_SERVICE_URL='', AI_PUBLIC_URL='https://ai.test')
+    def test_metadata_omits_gateway_when_issuer_unset(self, _rev_ok):
+        response = self.client.get('/.well-known/oauth-protected-resource/c/10/mcp')
+        self.assertEqual(response.status_code, 503)
+        self.assertNotIn('https://ai.test', response.content.decode())
+
+    @patch('apps.connector.mcp_views.forward_call_log')
+    def test_device_grant_token_calls_tool_like_oauth(self, _log, _rev_ok):
+        """Device-grant access tokens use the same claims as the authorization-code grant."""
+        agent_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+        now = int(time.time())
+        claims = {
+            'token_type': 'access',
+            'sub': f'agent:{agent_id}',
+            'agent_id': agent_id,
+            'company_id': 10,
+            'company_name': 'Acme',
+            'aud': AI_MCP,
+            'iss': self.issuer,
+            'iat': now,
+            'exp': now + 900,
+            'mcp_access': 'ask',
+            'mcp_read': 'safe',
+            'mcp_destructive': False,
+            'scope': 'identity ai',
+            'grant_version': 0,
+            'jti': 'device-grant-jti',
+        }
+        token = jwt.encode(claims, self.secret, algorithm='HS256')
+        response = self.client.post(
+            '/c/10/mcp',
+            data=_rpc('tools/call', name='ai_list_services', arguments={}),
+            content_type='application/json',
+            **self._auth(token),
+        )
+        self.assertEqual(response.status_code, 200, response.content)
         body = response.json()
-        self.assertEqual(body['resource'], 'https://ai.test/c/10/mcp')
-        self.assertEqual(body['authorization_servers'], ['https://identity.test'])
+        self.assertNotIn('error', body)
+        self.assertFalse((body.get('result') or {}).get('isError', False))
 
     def test_plain_mcp_has_no_default_company(self, _rev_ok):
         token = _agent_token(secret=self.secret, issuer=self.issuer, resource='https://ai.test/mcp')
@@ -553,12 +629,19 @@ class McpGatewayTests(TestCase):
         self.assertEqual(response.json()['error'], 'company_required')
 
     def test_invalid_company_ids_are_404(self, _rev_ok):
-        for path in ('/c/0/mcp', '/c/abc/mcp', '/c/-1/mcp', '/.well-known/oauth-protected-resource/c/0/mcp'):
+        for path in (
+            '/c/0/mcp',
+            '/c/abc/mcp',
+            '/c/-1/mcp',
+            '/.well-known/oauth-protected-resource/c/0/mcp',
+            '/c/0/mcp/.well-known/oauth-protected-resource',
+        ):
             if 'well-known' in path:
                 response = self.client.get(path)
             else:
                 response = self.client.post(path, data=_rpc('tools/list'), content_type='application/json')
             self.assertEqual(response.status_code, 404, path)
+            self.assertNotIn('WWW-Authenticate', response)
 
     def _delegated_fixed15(
         self,

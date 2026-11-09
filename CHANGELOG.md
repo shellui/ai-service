@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased] - 2026-11-04
 
+### ✨ Feature
+
+- Company MCP OAuth discovery advertises Identity's issuer, scope `mcp`, and a `WWW-Authenticate` challenge (`realm="mcp"`, `resource_metadata`, `scope="mcp"`) so headless clients can use the device authorization grant. Device-grant access tokens are accepted like other OAuth agent tokens. See [docs/mcp-device-login.md](docs/mcp-device-login.md).
+
 ### 🐛 Bug Fixes
 
 - MCP gateway call logs forwarded to identity include measured ``duration_ms`` for each ``tools/call`` (local and downstream).

@@ -67,6 +67,7 @@ This suite drives **official MCP clients** against ai-service, not ai-service-on
 - `@modelcontextprotocol/sdk` (TypeScript) with OAuth protected-resource discovery, dynamic client registration, PKCE S256, magic-link sign-in, token exchange, refresh, `initialize`, `tools/list`, and a harmless tool call.
 - Official **Python `mcp`** SDK with the same OAuth and MCP flow.
 - **`@modelcontextprotocol/inspector --cli`** for `tools/list` using the OAuth access token.
+- **Device login** (`clients/run_device_flow.py`): protected-resource discovery and the 401 challenge, then (when Identity advertises `device_authorization_endpoint`) device-code start, the same magic-link approval the other clients use, token poll, and `tools/call`. Against an Identity build that does not advertise device authorization, that round-trip is skipped after the discovery checks.
 
 Negative checks cover tenant isolation, expired tokens, revoked agents, invalid OAuth redirect/PKCE, staff refusal, and plain `/mcp`. A step asserts SaaS opt-in authorize metadata (`saas_offered=1`) when `SAAS_SERVICE_URL` points at a server that returns that metadata (the default mock satisfies the shape the script expects). A step asserts `POST /oauth/mcp/token` accepts `application/x-www-form-urlencoded` and refresh tokens. After OAuth clients run, `run_schema_audit.py` fails if any exported tool has an untyped or empty JSON Schema property (OpenAI/Gemini function-calling subsets: no bare `{}`, no top-level `anyOf`, objects with explicit `type` and `properties`).
 

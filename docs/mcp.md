@@ -11,8 +11,8 @@ Longer backend-oriented examples and request field lists: [mcp-handbook.md](./mc
 ## Public URL and company scope
 
 - **Per-company MCP endpoint:** `POST /c/<company_id>/mcp` where `company_id` is the **numeric regional** company id (integer in the path and JWT `company_id` claim).
-- **OAuth protected-resource metadata (RFC 9728):** `GET /.well-known/oauth-protected-resource/c/<company_id>/mcp`.
-- **Unauthenticated** requests get `401`. Token `aud` must match the per-company URL and `company_id` must match the path.
+- **OAuth protected-resource metadata (RFC 9728):** `GET /.well-known/oauth-protected-resource/c/<company_id>/mcp` (also the trailing-slash and `/c/<company_id>/mcp/.well-known/oauth-protected-resource` forms). `authorization_servers` is `IDENTITY_ISSUER` (Identity's metadata `issuer`). `scopes_supported` is `mcp`. The origin-root well-known URL stays `404` `company_required`.
+- **Unauthenticated** `GET` and `POST` get `401` with `WWW-Authenticate: Bearer realm="mcp", resource_metadata="<that document>", scope="mcp"`. Token `aud` must match the per-company URL and `company_id` must match the path. Device-grant access tokens use the same claims as authorization-code agent tokens and are accepted the same way. See [Device login](./mcp-device-login.md).
 - **No company in path:** `POST /mcp` returns `404` with `company_required`.
 - Behind a reverse proxy, set **`AI_PUBLIC_URL`** so metadata and redirects stay correct.
 
