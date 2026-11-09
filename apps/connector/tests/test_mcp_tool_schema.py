@@ -50,9 +50,64 @@ class McpToolSchemaAuditTests(TestCase):
         }
         fixed = normalize_mcp_tool(legacy)
         query_props = fixed['inputSchema']['properties']['query']['properties']
-        self.assertEqual(query_props['format']['type'], 'string')
-        self.assertEqual(query_props['scope']['type'], 'string')
+        # Untyped OpenAPI fragments (including empty ``{}``) become free-form objects so
+        # JSONField body fields like ``document`` remain writable for MCP clients.
+        self.assertEqual(query_props['format']['type'], 'object')
+        self.assertTrue(query_props['format']['additionalProperties'])
+        self.assertEqual(query_props['scope']['type'], 'object')
+        self.assertTrue(query_props['scope']['additionalProperties'])
         self.assertEqual(audit_tool_input_schemas([fixed]), [])
+
+    def test_untyped_json_field_becomes_object_not_string(self):
+        from apps.connector.mcp_tool_schema import openapi_schema_to_json_schema
+
+        self.assertEqual(
+            openapi_schema_to_json_schema({}, {}),
+            {
+                'type': 'object',
+                'additionalProperties': True,
+                'description': 'JSON value (OpenAPI schema had no type).',
+                'properties': {},
+            },
+        )
+        themed = openapi_schema_to_json_schema({'description': 'Theme map'}, {})
+        self.assertEqual(themed['type'], 'object')
+        self.assertTrue(themed['additionalProperties'])
+        self.assertEqual(themed['description'], 'Theme map')
+
+    def test_normalize_recovers_operation_meta_from_proxy_schema(self):
+        """Downstream tools/list strips ``_meta``; gateway must rebuild path/method for the gate."""
+        legacy = {
+            'name': 'api_v1_users_list',
+            'description': 'List company users',
+            'annotations': {
+                'readOnlyHint': False,
+                'destructiveHint': False,
+                'idempotentHint': False,
+                'openWorldHint': False,
+            },
+            'inputSchema': {
+                'type': 'object',
+                'properties': {
+                    'path': {'type': 'string', 'const': '/api/v1/users'},
+                    'method': {'type': 'string', 'enum': ['GET']},
+                    'query': {
+                        'type': 'object',
+                        'additionalProperties': False,
+                        'properties': {'page': {'type': 'integer'}},
+                    },
+                    'body': {'type': 'object', 'additionalProperties': False, 'properties': {}},
+                },
+                'required': ['path', 'method'],
+                'additionalProperties': False,
+            },
+        }
+        fixed = normalize_mcp_tool(legacy)
+        self.assertEqual(fixed['_meta']['path'], '/api/v1/users')
+        self.assertEqual(fixed['_meta']['method'], 'GET')
+        self.assertTrue(fixed['_meta']['read_only'])
+        self.assertTrue(fixed['annotations']['readOnlyHint'])
+        self.assertFalse(fixed['annotations']['destructiveHint'])
 
     def test_openapi_tools_never_expose_company_id(self):
         schema = SchemaGenerator().get_schema(request=None, public=True)

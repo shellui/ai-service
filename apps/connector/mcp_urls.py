@@ -5,15 +5,35 @@ from __future__ import annotations
 from django.conf import settings
 from django.http import HttpRequest
 import hmac
+import ipaddress
 import re
 from urllib.parse import urlsplit
 
 _COMPANY_PATH = re.compile(r'^/c/[1-9][0-9]{0,18}/mcp$')
+_LOOPBACK_HOSTS = frozenset({'127.0.0.1', 'localhost', '::1'})
+_CGNAT_SHARED = ipaddress.ip_network('100.64.0.0/10')
 PLAIN_MCP_MESSAGE = 'Connect to the per-company MCP URL: /c/<company_id>/mcp.'
 
 
+def _http_dev_host_allowed(host: str | None) -> bool:
+    """Loopback names/IPs and private/CGNAT IP literals (LAN / Tailscale)."""
+    h = (host or '').lower()
+    if h in _LOOPBACK_HOSTS:
+        return True
+    try:
+        ip = ipaddress.ip_address(h)
+    except ValueError:
+        return False
+    return bool(
+        ip.is_loopback
+        or ip.is_private
+        or ip.is_link_local
+        or ip in _CGNAT_SHARED
+    )
+
+
 def normalize_company_resource(raw: str | None) -> str | None:
-    """Canonical ``https://host/c/<company_id>/mcp`` (http only on loopback). None for anything else."""
+    """Canonical ``https://host/c/<company_id>/mcp`` (http on loopback/private IPs). None otherwise."""
     s = str(raw or '').strip()
     if not s or '#' in s or '?' in s:
         return None
@@ -26,8 +46,7 @@ def normalize_company_resource(raw: str | None) -> str | None:
         return None
     if not _COMPANY_PATH.match(parsed.path):
         return None
-    host = (parsed.hostname or '').lower()
-    if parsed.scheme == 'http' and host not in ('127.0.0.1', 'localhost', '::1'):
+    if parsed.scheme == 'http' and not _http_dev_host_allowed(parsed.hostname):
         return None
     return s
 

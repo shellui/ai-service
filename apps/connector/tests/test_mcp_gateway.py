@@ -162,6 +162,19 @@ class McpGatewayTests(TestCase):
         response = self.client.post('/c/10/mcp', data=_rpc('tools/list'), content_type='application/json')
         self.assertEqual(response.status_code, 401)
 
+    def test_streamable_http_delete_session_is_noop(self, _rev_ok):
+        """Hermes ends Streamable HTTP sessions with DELETE; reject with 405 and it fails closed."""
+        token = _agent_token(secret=self.secret, issuer=self.issuer)
+        unauthorized = self.client.delete('/c/10/mcp', HTTP_MCP_SESSION_ID='sess-1')
+        self.assertEqual(unauthorized.status_code, 401)
+        response = self.client.delete(
+            '/c/10/mcp',
+            HTTP_MCP_SESSION_ID='sess-1',
+            **self._auth(token),
+        )
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.content, b'')
+
     def test_wrong_audience_rejected(self, _rev_ok):
         token = _agent_token(secret=self.secret, issuer=self.issuer, resource=STORAGE_MCP)
         response = self.client.post(

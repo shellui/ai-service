@@ -45,9 +45,10 @@ def _primary_type(schema: dict[str, Any]) -> str | None:
 
 def openapi_schema_to_json_schema(schema: dict[str, Any] | None, root: dict[str, Any]) -> dict[str, Any]:
     """Convert an OpenAPI 3.0/3.1 schema fragment to a JSON Schema node for MCP clients."""
-    resolved = resolve_schema(schema if isinstance(schema, dict) else None, root)
-    if not resolved:
+    if not isinstance(schema, dict):
         return {'type': 'string', 'description': 'OpenAPI schema missing; treated as string.'}
+    resolved = resolve_schema(schema, root)
+    # ``{}`` is a valid spectacular JSONField fragment — do not treat it as missing.
 
     if 'anyOf' in resolved and isinstance(resolved['anyOf'], list):
         return _merge_any_of(resolved['anyOf'], root, description=resolved.get('description'))
@@ -108,16 +109,29 @@ def openapi_schema_to_json_schema(schema: dict[str, Any] | None, root: dict[str,
     props = resolved.get('properties')
     if isinstance(props, dict) or typ == 'object' or 'properties' in resolved:
         out['type'] = 'object'
+        prop_map = props if isinstance(props, dict) else {}
         out['properties'] = {
             str(key): openapi_schema_to_json_schema(val if isinstance(val, dict) else {}, root)
-            for key, val in (props if isinstance(props, dict) else {}).items()
+            for key, val in prop_map.items()
         }
-        out['additionalProperties'] = False
+        # Keep free-form JSON objects writable when the source schema allows them
+        # (JSONField overlays set additionalProperties true).
+        out['additionalProperties'] = resolved.get('additionalProperties') is True
         req = resolved.get('required')
         if isinstance(req, list):
             required = [str(k) for k in req if str(k) in out['properties']]
             if required:
                 out['required'] = required
+        return ensure_validation_keywords(out)
+
+    # drf-spectacular JSONField often emits ``{}`` or description-only nodes. Treat those
+    # as free-form objects so MCP clients can submit nested draft payloads (e.g. document).
+    if not typ and 'const' not in resolved and 'enum' not in resolved and 'items' not in resolved:
+        out['type'] = 'object'
+        out['additionalProperties'] = True
+        if not out.get('description'):
+            out['description'] = 'JSON value (OpenAPI schema had no type).'
+        return ensure_validation_keywords(out)
 
     return ensure_validation_keywords(out)
 
@@ -217,10 +231,12 @@ def _finalize_schema_node(node: dict[str, Any], *, field_name: str = '') -> dict
         }
     if node.get('type') == 'object':
         props = node.get('properties')
+        # Preserve explicit free-form objects (spectacular JSONField → additionalProperties true).
+        allow_additional = node.get('additionalProperties') is True
         if isinstance(props, dict):
             node = {
                 **node,
-                'additionalProperties': False,
+                'additionalProperties': True if allow_additional else False,
                 'properties': {
                     k: _finalize_schema_node(v if isinstance(v, dict) else {}, field_name=str(k))
                     for k, v in props.items()
@@ -318,18 +334,75 @@ def audit_tool_input_schemas(tools: list[dict[str, Any]]) -> list[tuple[str, str
     return rows
 
 
+def _operation_from_input_schema(schema: dict[str, Any] | None) -> tuple[str | None, str | None]:
+    """Recover OpenAPI path/method from legacy proxy ``inputSchema`` (clients strip ``_meta``)."""
+    if not isinstance(schema, dict):
+        return None, None
+    props = schema.get('properties')
+    if not isinstance(props, dict):
+        return None, None
+    path = None
+    method = None
+    path_node = props.get('path')
+    if isinstance(path_node, dict):
+        const = path_node.get('const')
+        if isinstance(const, str) and const.strip():
+            path = const.strip()
+        elif isinstance(path_node.get('enum'), list) and path_node['enum']:
+            first = path_node['enum'][0]
+            if isinstance(first, str) and first.strip():
+                path = first.strip()
+    method_node = props.get('method')
+    if isinstance(method_node, dict):
+        const = method_node.get('const')
+        if isinstance(const, str) and const.strip():
+            method = const.strip().upper()
+        elif isinstance(method_node.get('enum'), list) and method_node['enum']:
+            first = method_node['enum'][0]
+            if isinstance(first, str) and first.strip():
+                method = first.strip().upper()
+    return path, method
+
+
+def _ensure_operation_meta(meta: dict[str, Any], schema: dict[str, Any] | None) -> dict[str, Any]:
+    """Fill missing ``_meta.path`` / ``_meta.method`` from the tool's proxy input schema."""
+    out = dict(meta) if isinstance(meta, dict) else {}
+    path, method = _operation_from_input_schema(schema)
+    if not str(out.get('path') or '').strip() and path:
+        out['path'] = path
+    if not str(out.get('method') or '').strip() and method:
+        out['method'] = method
+    method_u = str(out.get('method') or '').strip().upper()
+    if method_u:
+        out['method'] = method_u
+        if 'read_only' not in out:
+            out['read_only'] = method_u in {'GET', 'HEAD', 'OPTIONS'}
+        if 'destructive' not in out:
+            out['destructive'] = method_u == 'DELETE'
+    return out
+
+
 def normalize_mcp_tool(tool: dict[str, Any], root: dict[str, Any] | None = None) -> dict[str, Any]:
     from apps.connector.mcp_tool_presentation import sanitize_shellui_copy
     from apps.connector.mcp_tenant import apply_tenant_meta_from_binding, strip_tenant_fields_from_input_schema
 
     out = deepcopy(tool)
     schema = out.get('inputSchema')
+    raw_schema = deepcopy(schema) if isinstance(schema, dict) else None
+    meta = out.get('_meta') if isinstance(out.get('_meta'), dict) else {}
+    meta = _ensure_operation_meta(meta, raw_schema)
     if isinstance(schema, dict):
         tenant_binding = strip_tenant_fields_from_input_schema(schema)
         out['inputSchema'] = normalize_tool_input_schema(schema, root)
-        meta = out.get('_meta') if isinstance(out.get('_meta'), dict) else {}
+        # Re-read path/method after tenant strip; keep any recovered operation meta.
+        meta = _ensure_operation_meta(
+            meta,
+            out.get('inputSchema') if isinstance(out.get('inputSchema'), dict) else raw_schema,
+        )
         if tenant_binding or meta:
             out['_meta'] = apply_tenant_meta_from_binding(meta, tenant_binding)
+    elif meta:
+        out['_meta'] = meta
     name = str(out.get('name') or 'tool')
     from apps.connector.mcp_tool_presentation import human_title_from_tool_name, strip_presentation_noise
 
@@ -350,28 +423,35 @@ def normalize_mcp_tool(tool: dict[str, Any], root: dict[str, Any] | None = None)
         desc = sanitize_shellui_copy(desc)
     out['description'] = desc
     ann = out.get('annotations')
-    if not isinstance(ann, dict) or not all(
+    meta = out.get('_meta') if isinstance(out.get('_meta'), dict) else {}
+    method = str(meta.get('method') or '').strip().upper()
+    hints_complete = isinstance(ann, dict) and all(
         key in ann for key in ('readOnlyHint', 'destructiveHint', 'idempotentHint', 'openWorldHint')
-    ):
+    )
+    # Downstream catalogs often ship placeholder all-false annotations; rebuild when we know the method.
+    placeholder_ann = hints_complete and not any(
+        bool(ann.get(k)) for k in ('readOnlyHint', 'destructiveHint', 'idempotentHint', 'openWorldHint')
+    )
+    if not hints_complete or (placeholder_ann and method):
         from apps.connector.mcp_tool_presentation import tool_annotations
 
-        meta = out.get('_meta') or {}
-        method = str(meta.get('method') or 'GET')
         access = {
-            'read_only': bool(meta.get('read_only')),
-            'destructive': bool(meta.get('destructive')),
+            'read_only': bool(meta.get('read_only')) if 'read_only' in meta else method in {'GET', 'HEAD', 'OPTIONS'},
+            'destructive': bool(meta.get('destructive')) if 'destructive' in meta else method == 'DELETE',
         }
-        if meta.get('method'):
+        if method:
             operation = {'operationId': meta.get('operationId') or name}
             out['annotations'] = tool_annotations(operation, method=method, access=access)
         else:
             core = name.split('_', 1)[1] if '_' in name else name
-            read_only = core.startswith(('list_', 'get_'))
-            destructive = core.startswith(('delete_', 'create_', 'update_', 'replace_', 'destroy_'))
+            read_only = core.startswith(('list_', 'get_')) or core.endswith(('_list', '_retrieve', '_get'))
+            destructive = core.startswith(('delete_', 'create_', 'update_', 'replace_', 'destroy_')) or core.endswith(
+                ('_destroy', '_delete', '_create', '_update')
+            )
             out['annotations'] = {
                 'readOnlyHint': read_only,
                 'destructiveHint': destructive and not read_only,
-                'idempotentHint': read_only or core.startswith(('replace_', 'delete_')),
+                'idempotentHint': read_only or core.startswith(('replace_', 'delete_')) or core.endswith(('_destroy', '_delete', '_replace')),
                 'openWorldHint': 'send' in core,
             }
     return out

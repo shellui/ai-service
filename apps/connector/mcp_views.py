@@ -8,7 +8,7 @@ import logging
 
 import requests
 from django.conf import settings
-from django.http import HttpRequest, JsonResponse
+from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from drf_spectacular.generators import SchemaGenerator
 from rest_framework.request import Request
@@ -888,8 +888,15 @@ def mcp_endpoint(request: HttpRequest, company_id: int):
         # GET and POST without a token both challenge. Clients such as Hermes
         # probe with GET and read WWW-Authenticate before the well-known paths.
         return _unauthorized(request, company_id)
+    if request.method == 'DELETE':
+        # Streamable HTTP session termination (MCP 2025-03-26 … 2025-11-25).
+        # This gateway is request-scoped/stateless, so DELETE is an authenticated no-op.
+        # Hermes (and similar clients) treat 405 here as a hard connect failure.
+        return HttpResponse(status=204)
     if request.method != 'POST':
-        return JsonResponse({'error': 'method_not_allowed'}, status=405)
+        response = JsonResponse({'error': 'method_not_allowed'}, status=405)
+        response['Allow'] = 'POST, DELETE, GET'
+        return response
     if identity_revocation_unavailable():
         return JsonResponse({'error': 'identity_unavailable'}, status=503)
     token = _mcp_http_request.set(request)
