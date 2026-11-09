@@ -9,8 +9,9 @@ Backend reference for **`POST /c/<company_id>/mcp`** in ai-service. For the shor
 ## Endpoint and OAuth
 
 - **MCP (JSON-RPC):** `POST /c/<company_id>/mcp` — `company_id` is the **regional** integer tenant in the path and in the agent JWT `company_id` claim.
-- **Protected resource metadata (RFC 9728):** `GET /.well-known/oauth-protected-resource/c/<company_id>/mcp`.
-- **Token mint (region identity):** use your **regional** identity issuer’s **`POST .../oauth/token`** (OAuth2) with the correct `resource` / audience for the company-scoped MCP URL—not a legacy generic “/mcp/token” shortcut. The gateway only verifies agents against the URL-named company.
+- **Protected resource metadata (RFC 9728):** `GET /.well-known/oauth-protected-resource/c/<company_id>/mcp` and the same document at the trailing-slash and `/c/<company_id>/mcp/.well-known/oauth-protected-resource` paths. `authorization_servers` equals Identity's metadata `issuer` (`IDENTITY_ISSUER`). `scopes_supported` is `["mcp"]`. `bearer_methods_supported` is `["header"]`. Do not put `device_authorization_endpoint` on this document. The root `GET /.well-known/oauth-protected-resource` is `404` `company_required`.
+- **401 challenge:** `WWW-Authenticate: Bearer realm="mcp", resource_metadata="<absolute URL of that document>", scope="mcp"` on every 401 from `POST` or `GET /c/<company_id>/mcp`. Non-positive company ids stay `404` without that header.
+- **Token mint (region identity):** use your **regional** identity issuer’s **`POST .../oauth/token`** (OAuth2), including `grant_type=urn:ietf:params:oauth:grant-type:device_code`, with the correct `resource` / audience for the company-scoped MCP URL—not a legacy generic “/mcp/token” shortcut. The gateway only verifies agents against the URL-named company. A device-grant access token carries the same claims as an authorization-code token (`aud`, `sub` `agent:<uuid>`, `agent_id`, `company_id`, `mcp_access`, `mcp_read`, `mcp_destructive`, `scope`, `grant_version`) and is accepted the same way. Curl walkthrough: [mcp-device-login.md](./mcp-device-login.md).
 
 ### Delegation and global binding (identity #135 alignment)
 

@@ -20,10 +20,28 @@ urlpatterns = [
     path('', views.root, name='root'),
     path('health/live', views.health_live, name='health-live'),
     path('.well-known/jwks.json', AiServiceJwksView.as_view(), name='jwks'),
+    # RFC 9728 path insertion: /.well-known/oauth-protected-resource + /c/<id>/mcp.
+    # MCP clients also request the same path with a trailing slash.
     path(
         '.well-known/oauth-protected-resource/c/<int:company_id>/mcp',
         OAuthProtectedResourceMetadataView.as_view(),
         name='mcp-oauth-protected-resource',
+    ),
+    path(
+        '.well-known/oauth-protected-resource/c/<int:company_id>/mcp/',
+        OAuthProtectedResourceMetadataView.as_view(),
+        name='mcp-oauth-protected-resource-slash',
+    ),
+    # Clients that append the well-known suffix to the MCP URL (pathname + /.well-known/...).
+    path(
+        'c/<int:company_id>/mcp/.well-known/oauth-protected-resource',
+        OAuthProtectedResourceMetadataView.as_view(),
+        name='mcp-oauth-protected-resource-suffix',
+    ),
+    path(
+        'c/<int:company_id>/mcp/.well-known/oauth-protected-resource/',
+        OAuthProtectedResourceMetadataView.as_view(),
+        name='mcp-oauth-protected-resource-suffix-slash',
     ),
     path(
         '.well-known/oauth-protected-resource',

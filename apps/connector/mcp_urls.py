@@ -67,3 +67,9 @@ def company_id_from_resource(resource: str | None) -> int | None:
 
 def company_metadata_url(request: HttpRequest, company_id: int) -> str:
     return f'{public_origin(request)}/.well-known/oauth-protected-resource/c/{int(company_id)}/mcp'
+
+
+def mcp_www_authenticate(request: HttpRequest, company_id: int) -> str:
+    """RFC 9728 challenge. ``resource_metadata`` is the path-inserted protected-resource URL."""
+    metadata = company_metadata_url(request, company_id)
+    return f'Bearer realm="mcp", resource_metadata="{metadata}", scope="mcp"'

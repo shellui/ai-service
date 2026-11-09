@@ -511,7 +511,9 @@ CORS_ALLOW_HEADERS = list(
         'x-request-id',
     }
 )
-CORS_EXPOSE_HEADERS = ['X-Request-ID']
+CORS_ALLOW_HEADERS.append('mcp-protocol-version')
+# Browser MCP clients can read the 401 challenge only when it is exposed.
+CORS_EXPOSE_HEADERS = ['X-Request-ID', 'WWW-Authenticate']
 
 # HTTPS / cookie hardening (production defaults; override via env for local HTTP).
 SECURE_SSL_REDIRECT = _env_bool('SECURE_SSL_REDIRECT', not DEBUG)
