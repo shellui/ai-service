@@ -50,7 +50,7 @@ class BrowserErrorPageTests(TestCase):
         self.assertTrue(response['Content-Type'].startswith('text/html'))
         content = unescape(response.content.decode())
         self.assertIn("This page doesn't exist", content)
-        self.assertIn('Shellui Storage', content)
+        self.assertIn('Shellui AI', content)
         self.assertIn('href="/"', content)
         self.assertIn('css/site.css', content)
         self.assertNotIn('/no-such-page/', content)

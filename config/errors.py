@@ -1,6 +1,6 @@
 """Shellui error pages and JSON errors.
 
-Paths under ('/api/', '/storage/v1/') always get JSON, whatever the ``Accept`` header says,
+Paths under ('/api/', '/ai/v1/') always get JSON, whatever the ``Accept`` header says,
 in the same body shape as the API views. Every other path gets a branded HTML
 page. Neither one includes the exception, a stack trace, or the requested path.
 """
@@ -30,7 +30,7 @@ _COPY = {
 }
 
 _FALLBACK_HTML = (
-    '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Shellui Storage</title></head>'
+    '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Shellui AI</title></head>'
     '<body><h1>Something went wrong</h1><p>Try again in a moment.</p><p><a href="/">Back to home</a></p></body></html>'
 )
 
@@ -47,7 +47,7 @@ def _with_request_id(request: HttpRequest, body: dict) -> dict:
 
 def _json_body(request: HttpRequest, status: int, code: str, message: str) -> dict:
     if (request.path or '').startswith('/ai/v1/'):
-        # Supabase-compatible shape used by the storage API views.
+        # Structured error shape used by the AI API views.
         body = {'statusCode': str(status), 'error': code, 'message': message}
     else:
         body = {'detail': message}
