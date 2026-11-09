@@ -157,6 +157,108 @@ def complete_mcp_oauth_authorization(
     return code, state
 
 
+def complete_mcp_device_verification(
+    verification_uri_complete: str,
+    *,
+    user_code: str,
+    identity_origin: str,
+    email: str,
+    company_id: int,
+    compose_file: str,
+) -> None:
+    """Approve a device grant the same way the OAuth harness signs in: magic link, then consent.
+
+    Does not print the user code, device code, or any token.
+    """
+    session = requests.Session()
+    session.headers.update({'User-Agent': 'shellui-mcp-e2e/1.0'})
+    identity_origin = identity_origin.rstrip('/')
+
+    def get(url: str) -> requests.Response:
+        return session.get(url, allow_redirects=True, timeout=30)
+
+    def post(url: str, **kwargs) -> requests.Response:
+        return session.post(url, allow_redirects=False, timeout=30, **kwargs)
+
+    page = session.get(verification_uri_complete, allow_redirects=True, timeout=30)
+    if page.status_code >= 400:
+        raise RuntimeError(f'device verification page HTTP {page.status_code}')
+    device_url = urljoin(identity_origin, '/oauth/mcp/device')
+    submitted = post(
+        device_url,
+        data={'user_code': user_code, 'csrfmiddlewaretoken': _csrf(page.text)},
+        headers={'Referer': page.url},
+    )
+    if submitted.status_code not in (302, 303, 200):
+        raise RuntimeError(f'device code submit HTTP {submitted.status_code}')
+    current = submitted
+    if submitted.status_code in (302, 303):
+        current = get(urljoin(identity_origin, submitted.headers.get('Location') or device_url))
+
+    if 'name="email"' in current.text or '/oauth/mcp/signin' in (current.url or ''):
+        try:
+            token_before = _magic_token_from_logs(compose_file)
+        except RuntimeError:
+            token_before = ''
+        post(
+            urljoin(identity_origin, '/oauth/mcp/signin'),
+            data={'email': email, 'csrfmiddlewaretoken': _csrf(current.text)},
+            headers={'Referer': current.url},
+        )
+        deadline = time.time() + 45
+        raw_token = None
+        while time.time() < deadline:
+            time.sleep(0.5)
+            try:
+                candidate = _magic_token_from_logs(compose_file, since='30s')
+                if candidate != token_before:
+                    raw_token = candidate
+                    break
+            except RuntimeError:
+                continue
+        if not raw_token:
+            raise RuntimeError('timed out waiting for magic link email in identity logs')
+        verify_get_url = urljoin(
+            identity_origin,
+            f'/api/v1/magic-link/verify?token={raw_token}&company_id={company_id}',
+        )
+        verify_page = get(verify_get_url)
+        if verify_page.status_code >= 400:
+            raise RuntimeError(f'magic-link verify page failed: HTTP {verify_page.status_code}')
+        verify = post(
+            urljoin(identity_origin, '/api/v1/magic-link/verify'),
+            data={
+                'token': raw_token,
+                'company_id': str(company_id),
+                'csrfmiddlewaretoken': _csrf(verify_page.text),
+            },
+            headers={'Referer': verify_page.url, 'Accept': 'text/html'},
+        )
+        if verify.status_code not in (302, 303):
+            raise RuntimeError(f'magic-link verify failed: HTTP {verify.status_code}')
+        current = get(urljoin(identity_origin, verify.headers.get('Location') or device_url))
+
+    if 'name="access_mode"' not in current.text and 'Agent connected' not in current.text:
+        raise RuntimeError(f'device consent page not shown (HTTP {current.status_code})')
+    if 'Agent connected' in current.text:
+        return
+    payload = [
+        ('csrfmiddlewaretoken', _csrf(current.text)),
+        ('decision', 'approve'),
+        ('access_mode', 'full'),
+        ('read_level', 'safe'),
+        ('agent_name', 'e2e-device'),
+        ('services', 'identity'),
+        ('services', 'ai'),
+    ]
+    approve = post(device_url, data=payload, headers={'Referer': current.url})
+    if approve.status_code not in (302, 303):
+        raise RuntimeError(f'device consent POST failed: HTTP {approve.status_code}')
+    done = get(urljoin(identity_origin, approve.headers.get('Location') or device_url))
+    if done.status_code >= 400 or 'Agent connected' not in done.text:
+        raise RuntimeError(f'device approval did not finish (HTTP {done.status_code})')
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description='Headless Shellui MCP OAuth (magic link)')
     parser.add_argument('--authorization-url', required=True)

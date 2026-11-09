@@ -41,7 +41,7 @@ from apps.connector.mcp_urls import (
     PLAIN_MCP_MESSAGE,
     company_audience_matches,
     company_mcp_resource,
-    company_metadata_url,
+    mcp_www_authenticate,
 )
 from apps.connector.mcp_company_label import resolve_company_label
 from apps.connector.mcp_tenant import apply_tenant_to_arguments, tenant_binding_from_meta
@@ -865,27 +865,37 @@ def _agent_claims(request: HttpRequest, company_id: int) -> dict | None:
     return dict(claims)
 
 
+def _with_www_authenticate(response, request: HttpRequest, company_id: int):
+    """Every 401 from the company MCP URL carries the protected-resource challenge."""
+    if getattr(response, 'status_code', None) == 401:
+        response['WWW-Authenticate'] = mcp_www_authenticate(request, company_id)
+    return response
+
+
 def _unauthorized(request: HttpRequest, company_id: int) -> JsonResponse:
     response = JsonResponse({'error': 'unauthorized'}, status=401)
-    response['WWW-Authenticate'] = f'Bearer resource_metadata="{company_metadata_url(request, company_id)}"'
-    return response
+    return _with_www_authenticate(response, request, company_id)
 
 
 @csrf_exempt
 def mcp_endpoint(request: HttpRequest, company_id: int):
     if int(company_id) < 1:
+        # Same 404 as before for 0 / non-positive ids. No challenge: that would
+        # describe a company URL we do not serve.
         return JsonResponse({'error': 'not_found'}, status=404)
-    if request.method == 'GET':
-        return JsonResponse({'error': 'method_not_allowed'}, status=405)
     claims = _agent_claims(request, company_id)
-    if claims is None and request.method == 'POST':
+    if claims is None:
+        # GET and POST without a token both challenge. Clients such as Hermes
+        # probe with GET and read WWW-Authenticate before the well-known paths.
         return _unauthorized(request, company_id)
-    if claims is not None and identity_revocation_unavailable():
+    if request.method != 'POST':
+        return JsonResponse({'error': 'method_not_allowed'}, status=405)
+    if identity_revocation_unavailable():
         return JsonResponse({'error': 'identity_unavailable'}, status=503)
     token = _mcp_http_request.set(request)
     claims_token = _mcp_agent_claims.set(claims)
     try:
-        return _get_server().handle(request, agent_claims=claims)
+        return _with_www_authenticate(_get_server().handle(request, agent_claims=claims), request, company_id)
     except DownstreamTokenError:
         return JsonResponse({'error': 'downstream_token_unavailable'}, status=503)
     finally:

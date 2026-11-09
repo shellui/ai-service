@@ -64,6 +64,6 @@ docker compose up --build
 
 Health: `GET http://localhost:8006/ai/v1/health`
 
-MCP: `POST http://localhost:8006/c/<company_id>/mcp` with a Bearer agent token from identity OAuth.
+MCP: `POST http://localhost:8006/c/<company_id>/mcp`. Headless clients connect with OAuth device login against Identity (`http://localhost:8001`) and this gateway (`http://localhost:8006`). See [Device login](./mcp-device-login.md). Do not paste an access token into the agent chat.
 
 Sibling services on the host use `host.docker.internal` defaults in `docker-compose.yml`; inside the shellui stack use the internal URLs in the table above.

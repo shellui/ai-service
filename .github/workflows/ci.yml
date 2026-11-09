@@ -217,6 +217,7 @@ jobs:
           test -f docs/index.md
           test -f docs/configuration.md
           test -f docs/mcp.md
+          test -f docs/mcp-device-login.md
           test -f docs/mcp-e2e-conformance.md
           test -f docs/getting-started.md
           test -f docs/sidebars.js

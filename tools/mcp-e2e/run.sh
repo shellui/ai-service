@@ -170,6 +170,9 @@ log 'Negative OAuth / MCP checks'
 log 'OAuth token endpoint (form-urlencoded + refresh)'
 "${MCP_E2E_PYTHON}" "${E2E_DIR}/clients/run_oauth_form.py"
 
+log 'OAuth device login (RFC 8628)'
+"${MCP_E2E_PYTHON}" "${E2E_DIR}/clients/run_device_flow.py"
+
 log 'TypeScript MCP SDK client'
 node "${E2E_DIR}/clients/run_ts.mjs"
 

@@ -15,7 +15,7 @@ For the Shellui multi-service stack (`shellui/shellui/dev`), see [Local dev stac
 | `ALLOWED_HOSTS` | Comma-separated hostnames |
 | `CSRF_TRUSTED_ORIGINS` | HTTPS origins for admin |
 | `IDENTITY_SERVICE_URL` | identity origin; JWKS at `{url}/.well-known/jwks.json` when not pinned |
-| `IDENTITY_ISSUER` | JWT `iss` from identity |
+| `IDENTITY_ISSUER` | JWT `iss` from identity. Protected-resource `authorization_servers` is this value (Identity metadata `issuer`), not `IDENTITY_SERVICE_URL` when the two differ |
 | `IDENTITY_AUDIENCE` | Typically `shellui` |
 | `IDENTITY_JWKS` | Pin JWKS JSON in production |
 | `IDENTITY_JWKS_FILE` | Or pin JWKS file path |
