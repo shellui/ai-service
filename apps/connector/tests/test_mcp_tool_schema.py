@@ -120,7 +120,7 @@ class McpToolSchemaAuditTests(TestCase):
                         'properties': {
                             'mode': {
                                 'type': 'string',
-                                'enum': ['filter', 'pick', 'newsletter'],
+                                'enum': ['pick', 'newsletter'],
                                 'description': 'How recipients are chosen.',
                             },
                             'emails': {

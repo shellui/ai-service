@@ -145,7 +145,7 @@ def _translation_inline_node() -> dict[str, Any]:
             'text': _string('Translated text when type is text.'),
             'marks': {
                 'type': 'array',
-                'description': 'Optional inline marks on the translated text.',
+                'description': 'Optional marks on the translated text, such as a link.',
                 'items': _email_mark(),
             },
         },
