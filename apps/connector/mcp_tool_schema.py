@@ -16,6 +16,13 @@ def _components(root: dict[str, Any]) -> dict[str, Any]:
     return (root.get('components') or {}).get('schemas') or {}
 
 
+def _component_ref_name(schema: dict[str, Any]) -> str | None:
+    ref = schema.get('$ref')
+    if isinstance(ref, str) and ref.startswith('#/components/schemas/'):
+        return ref.rsplit('/', 1)[-1]
+    return None
+
+
 def resolve_schema(schema: dict[str, Any] | None, root: dict[str, Any], *, _seen: frozenset[str] | None = None) -> dict[str, Any]:
     if not schema or not isinstance(schema, dict):
         return {}
@@ -24,6 +31,10 @@ def resolve_schema(schema: dict[str, Any] | None, root: dict[str, Any], *, _seen
         name = ref.rsplit('/', 1)[-1]
         seen = _seen or frozenset()
         if name in seen:
+            if name == 'EmailDocumentNode':
+                from apps.connector.mcp_json_contracts import email_document_node
+
+                return email_document_node()
             return {'type': 'string', 'description': f'Unresolved circular $ref: {ref}'}
         target = _components(root).get(name)
         if isinstance(target, dict):
@@ -43,18 +54,70 @@ def _primary_type(schema: dict[str, Any]) -> str | None:
     return None
 
 
-def openapi_schema_to_json_schema(schema: dict[str, Any] | None, root: dict[str, Any]) -> dict[str, Any]:
+def _is_untyped_json(schema: dict[str, Any]) -> bool:
+    """True for spectacular ``JSONField`` fragments (``{}`` or a description only)."""
+    if not schema:
+        return True
+    if any(key in schema for key in ('type', 'properties', 'enum', 'const', 'items', 'anyOf', 'oneOf', 'allOf', '$ref')):
+        return False
+    return set(schema.keys()) <= {'description', 'title', 'example', 'nullable', 'readOnly', 'writeOnly', 'deprecated'}
+
+
+def _overlay_description(node: dict[str, Any], description: str | None) -> dict[str, Any]:
+    text = str(description or '').strip()
+    if not text:
+        return node
+    current = str(node.get('description') or '').strip()
+    if not current:
+        return {**node, 'description': text}
+    if text in current:
+        return node
+    return {**node, 'description': f'{text} {current}'.strip()}
+
+
+def openapi_schema_to_json_schema(
+    schema: dict[str, Any] | None,
+    root: dict[str, Any],
+    *,
+    _seen: set[str] | None = None,
+) -> dict[str, Any]:
     """Convert an OpenAPI 3.0/3.1 schema fragment to a JSON Schema node for MCP clients."""
     if not isinstance(schema, dict):
         return {'type': 'string', 'description': 'OpenAPI schema missing; treated as string.'}
-    resolved = resolve_schema(schema, root)
+    seen = _seen if _seen is not None else set()
+    ref_name = _component_ref_name(schema)
+    if ref_name:
+        if ref_name in seen:
+            if ref_name == 'EmailDocumentNode':
+                from apps.connector.mcp_json_contracts import email_document_node
+
+                cycled = ensure_validation_keywords(email_document_node())
+            else:
+                ref = schema.get('$ref')
+                cycled = {'type': 'string', 'description': f'Unresolved circular $ref: {ref}'}
+            return _overlay_description(cycled, schema.get('description') if isinstance(schema.get('description'), str) else None)
+        target = _components(root).get(ref_name)
+        if not isinstance(target, dict):
+            ref = schema.get('$ref')
+            return {'type': 'string', 'description': f'Unresolved $ref: {ref}'}
+        seen.add(ref_name)
+        try:
+            inlined = openapi_schema_to_json_schema(target, root, _seen=seen)
+        finally:
+            seen.discard(ref_name)
+        return _overlay_description(inlined, schema.get('description') if isinstance(schema.get('description'), str) else None)
+
+    resolved = schema
     # ``{}`` is a valid spectacular JSONField fragment — do not treat it as missing.
 
+    if 'allOf' in resolved and isinstance(resolved['allOf'], list):
+        return _merge_all_of(resolved['allOf'], root, description=resolved.get('description'), _seen=seen)
+
     if 'anyOf' in resolved and isinstance(resolved['anyOf'], list):
-        return _merge_any_of(resolved['anyOf'], root, description=resolved.get('description'))
+        return _merge_any_of(resolved['anyOf'], root, description=resolved.get('description'), _seen=seen)
 
     if 'oneOf' in resolved and isinstance(resolved['oneOf'], list):
-        return _merge_any_of(resolved['oneOf'], root, description=resolved.get('description'))
+        return _merge_any_of(resolved['oneOf'], root, description=resolved.get('description'), _seen=seen)
 
     out: dict[str, Any] = {}
     if resolved.get('description'):
@@ -100,7 +163,11 @@ def openapi_schema_to_json_schema(schema: dict[str, Any] | None, root: dict[str,
     if typ == 'array' or out.get('type') == 'array':
         out['type'] = 'array'
         items = resolved.get('items')
-        out['items'] = openapi_schema_to_json_schema(items if isinstance(items, dict) else {'type': 'string'}, root)
+        out['items'] = openapi_schema_to_json_schema(
+            items if isinstance(items, dict) else {'type': 'string'},
+            root,
+            _seen=seen,
+        )
         if 'minItems' in resolved:
             out['minItems'] = resolved['minItems']
         if 'maxItems' in resolved:
@@ -110,13 +177,14 @@ def openapi_schema_to_json_schema(schema: dict[str, Any] | None, root: dict[str,
     if isinstance(props, dict) or typ == 'object' or 'properties' in resolved:
         out['type'] = 'object'
         prop_map = props if isinstance(props, dict) else {}
+        sibling_names = {str(key) for key in prop_map}
         out['properties'] = {
-            str(key): openapi_schema_to_json_schema(val if isinstance(val, dict) else {}, root)
+            str(key): _convert_property(str(key), val if isinstance(val, dict) else {}, root, sibling_names, seen)
             for key, val in prop_map.items()
         }
-        # Keep free-form JSON objects writable when the source schema allows them
-        # (JSONField overlays set additionalProperties true).
-        out['additionalProperties'] = resolved.get('additionalProperties') is True
+        # Keep an explicit free-form object (additionalProperties: true). A schema
+        # for the extra values (DictField child, map of blocks) is preserved.
+        out['additionalProperties'] = _additional_keyword(resolved.get('additionalProperties'), root, seen)
         req = resolved.get('required')
         if isinstance(req, list):
             required = [str(k) for k in req if str(k) in out['properties']]
@@ -150,9 +218,103 @@ def _json_type_for_value(value: Any) -> str:
     return 'string'
 
 
-def _merge_any_of(branches: list[Any], root: dict[str, Any], *, description: str | None = None) -> dict[str, Any]:
+def _convert_property(
+    key: str,
+    raw: dict[str, Any],
+    root: dict[str, Any],
+    sibling_names: set[str],
+    seen: set[str],
+) -> dict[str, Any]:
+    """Type bare JSONField properties whose contract is known; otherwise convert normally."""
+    if not _component_ref_name(raw) and 'allOf' not in raw and 'anyOf' not in raw and 'oneOf' not in raw:
+        peeked = resolve_schema(raw, root)
+        if _is_untyped_json(peeked):
+            from apps.connector.mcp_json_contracts import contract_for_untyped_field
+
+            contract = contract_for_untyped_field(key, str(peeked.get('description') or ''), sibling_names)
+            if contract is not None:
+                return ensure_validation_keywords(contract)
+    return openapi_schema_to_json_schema(raw, root, _seen=seen)
+
+
+def _additional_keyword(value: Any, root: dict[str, Any], seen: set[str]) -> bool | dict[str, Any]:
+    """Preserve ``true`` and typed value schemas. An empty ``{}`` stays closed."""
+    if value is True:
+        return True
+    if not isinstance(value, dict):
+        return False
+    if not any(key in value for key in ('type', '$ref', 'allOf', 'anyOf', 'oneOf', 'properties', 'items', 'enum', 'const')):
+        return False
+    return openapi_schema_to_json_schema(value, root, _seen=seen)
+
+
+def _preserve_additional(value: Any) -> bool | dict[str, Any]:
+    if value is True:
+        return True
+    if isinstance(value, dict) and (
+        value.get('type') in _VALID_TYPES or value.get('properties') or value.get('items') or value.get('enum') or value.get('const')
+    ):
+        return value
+    return False
+
+
+def _merge_all_of(
+    branches: list[Any],
+    root: dict[str, Any],
+    *,
+    description: str | None = None,
+    _seen: set[str] | None = None,
+) -> dict[str, Any]:
+    """Inline ``allOf`` (spectacular wraps a described ``$ref`` this way) into one object."""
+    seen = _seen if _seen is not None else set()
+    parts = [
+        openapi_schema_to_json_schema(branch, root, _seen=seen)
+        for branch in branches
+        if isinstance(branch, dict)
+    ]
+    objects = [part for part in parts if part.get('type') == 'object' or isinstance(part.get('properties'), dict)]
+    if not objects:
+        merged = parts[0] if parts else {'type': 'object', 'properties': {}, 'additionalProperties': False}
+        return ensure_validation_keywords(_overlay_description(merged, description if isinstance(description, str) else None))
+    properties: dict[str, Any] = {}
+    required: list[str] = []
+    additional: bool | dict[str, Any] = False
+    merged_description = ''
+    for obj in objects:
+        obj_props = obj.get('properties')
+        if isinstance(obj_props, dict):
+            properties.update(obj_props)
+        for key in obj.get('required') or []:
+            if key not in required and key in properties:
+                required.append(str(key))
+        obj_additional = obj.get('additionalProperties')
+        if obj_additional is True:
+            additional = True
+        elif isinstance(obj_additional, dict) and additional is not True:
+            additional = obj_additional
+        if obj.get('description') and not merged_description:
+            merged_description = str(obj['description'])
+    merged = {
+        'type': 'object',
+        'description': merged_description or 'Combined schema.',
+        'properties': properties,
+        'additionalProperties': additional,
+    }
+    if required:
+        merged['required'] = required
+    return ensure_validation_keywords(_overlay_description(merged, description if isinstance(description, str) else None))
+
+
+def _merge_any_of(
+    branches: list[Any],
+    root: dict[str, Any],
+    *,
+    description: str | None = None,
+    _seen: set[str] | None = None,
+) -> dict[str, Any]:
+    seen = _seen if _seen is not None else set()
     normalized = [
-        openapi_schema_to_json_schema(branch, root) for branch in branches if isinstance(branch, dict)
+        openapi_schema_to_json_schema(branch, root, _seen=seen) for branch in branches if isinstance(branch, dict)
     ]
     normalized = [ensure_validation_keywords(n) for n in normalized if n]
     if not normalized:
@@ -182,22 +344,22 @@ def ensure_validation_keywords(node: dict[str, Any] | None) -> dict[str, Any]:
     if node.get('type') in _VALID_TYPES or 'enum' in node or 'const' in node:
         if node.get('type') == 'object':
             props = node.get('properties')
-            if props is None:
-                node = {**node, 'properties': {}, 'additionalProperties': bool(node.get('additionalProperties', False))}
-            elif not isinstance(props, dict):
-                node = {**node, 'properties': {}, 'additionalProperties': False}
-            elif 'additionalProperties' not in node:
-                node = {**node, 'additionalProperties': False}
+            additional = _preserve_additional(node.get('additionalProperties'))
+            if isinstance(additional, dict):
+                additional = ensure_validation_keywords(additional)
+            if not isinstance(props, dict):
+                node = {**node, 'properties': {}, 'additionalProperties': additional}
             else:
                 node = {
                     **node,
+                    'additionalProperties': additional,
                     'properties': {k: ensure_validation_keywords(v if isinstance(v, dict) else {}) for k, v in props.items()},
                 }
         if node.get('type') == 'array' and 'items' not in node:
             node = {**node, 'items': {'type': 'string'}}
         return node
     if 'properties' in node and isinstance(node['properties'], dict):
-        return ensure_validation_keywords({**node, 'type': 'object', 'additionalProperties': node.get('additionalProperties', False)})
+        return ensure_validation_keywords({**node, 'type': 'object', 'additionalProperties': _preserve_additional(node.get('additionalProperties'))})
     if 'items' in node:
         return ensure_validation_keywords({**node, 'type': 'array'})
     return {'type': 'string', 'description': node.get('description') or 'Untyped OpenAPI schema; treated as string.'}
@@ -231,12 +393,14 @@ def _finalize_schema_node(node: dict[str, Any], *, field_name: str = '') -> dict
         }
     if node.get('type') == 'object':
         props = node.get('properties')
-        # Preserve explicit free-form objects (spectacular JSONField → additionalProperties true).
-        allow_additional = node.get('additionalProperties') is True
+        # Preserve explicit free-form objects and typed additionalProperties schemas.
+        additional = _preserve_additional(node.get('additionalProperties'))
+        if isinstance(additional, dict):
+            additional = _finalize_schema_node(additional, field_name=f'{field_name}.*' if field_name else '')
         if isinstance(props, dict):
             node = {
                 **node,
-                'additionalProperties': True if allow_additional else False,
+                'additionalProperties': additional,
                 'properties': {
                     k: _finalize_schema_node(v if isinstance(v, dict) else {}, field_name=str(k))
                     for k, v in props.items()
