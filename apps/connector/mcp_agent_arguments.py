@@ -143,7 +143,8 @@ def coerce_call_arguments(
                 buckets['body'][key] = value
             else:
                 buckets['query'][key] = value
-    from apps.connector.mcp_tenant import is_hidden_agent_field
+    from apps.connector.mcp_tenant import is_hidden_agent_field, is_tenant_field
+    from shellui_django.mcp.routing import McpToolArgumentError
 
     out: dict[str, Any] = {}
     method = _registry_method(schema, meta)
@@ -156,7 +157,15 @@ def coerce_call_arguments(
     for section in _SECTIONS:
         if not buckets[section]:
             continue
-        cleaned = {key: value for key, value in buckets[section].items() if not is_hidden_agent_field(key)}
+        cleaned: dict[str, Any] = {}
+        for key, value in buckets[section].items():
+            if is_tenant_field(key):
+                # Kept so the token binding can reject a company mismatch.
+                cleaned[key] = value
+                continue
+            if is_hidden_agent_field(key):
+                raise McpToolArgumentError(f'{key} is not an argument for this tool.')
+            cleaned[key] = value
         if not cleaned:
             continue
         if section == 'headers':
