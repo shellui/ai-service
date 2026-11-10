@@ -320,7 +320,15 @@ class McpToolReleaseTests(TestCase):
         return [tool for tool in tools if tool['name'] not in {'ai_search_tools', 'ai_describe_tool', 'ai_call_tool'}]
 
     def _traits(self, name: str) -> tuple[bool, bool]:
-        row = _get_server()._cached_export_tool(name)
+        # The catalog cache is per company. This lookup runs after the HTTP request,
+        # so the request claims context is gone.
+        from apps.connector.mcp_views import _mcp_agent_claims
+
+        token = _mcp_agent_claims.set({'company_id': 10})
+        try:
+            row = _get_server()._cached_export_tool(name)
+        finally:
+            _mcp_agent_claims.reset(token)
         self.assertIsInstance(row, dict, name)
         meta = row.get('_meta') if isinstance(row, dict) else {}
         return tool_traits_from_export(row, method=str((meta or {}).get('method') or 'GET'))
