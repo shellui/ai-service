@@ -407,6 +407,8 @@ JWT_ALGORITHMS = _env_csv('JWT_ALGORITHMS', ('RS256',))
 
 # Downstream MCP gateway (aggregated ``POST /mcp``).
 MCP_GATEWAY_TOOLS_CACHE_TTL_SECONDS = _env_int('MCP_GATEWAY_TOOLS_CACHE_TTL_SECONDS', 30)
+# discovery: tools/list returns search, describe, and call. all: the full operational catalog.
+MCP_TOOLS_LIST_MODE = os.getenv('MCP_TOOLS_LIST_MODE', 'discovery').strip().lower() or 'discovery'
 MCP_GATEWAY_DOWNSTREAM_TIMEOUT_SECONDS = _env_float('MCP_GATEWAY_DOWNSTREAM_TIMEOUT_SECONDS', 5.0)
 # Internal approval assertions to identity: must allow longer JWTs during setup (identity #135).
 MCP_APPROVAL_ASSERTION_MAX_LIFETIME_SECONDS = max(60, _env_int('MCP_APPROVAL_ASSERTION_MAX_LIFETIME_SECONDS', 900))

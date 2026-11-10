@@ -71,6 +71,7 @@ OPTIONAL = (
     Var('SAAS_SERVICE_PUBLIC_URL', ''),
     Var('AI_PUBLIC_URL', '', 'Public origin of this gateway; the MCP URL is /c/<company_id>/mcp'),
     Var('MCP_GATEWAY_TOOLS_CACHE_TTL_SECONDS', '30', 'Aggregated MCP gateway'),
+    Var('MCP_TOOLS_LIST_MODE', 'discovery', 'tools/list default: discovery or all'),
     Var('MCP_GATEWAY_DOWNSTREAM_TIMEOUT_SECONDS', '5'),
     Var(
         'MCP_APPROVAL_ASSERTION_MAX_LIFETIME_SECONDS',

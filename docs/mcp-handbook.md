@@ -60,8 +60,14 @@ To count as **allow** here, Identity must return **`authorized`: true**, **`acti
 
 ### `tools/list`
 
+The default list is a discovery set (`ai_list_services`, `ai_search_tools`, `ai_describe_tool`, `ai_call_tool`, plus a few common reads). Ask for the full operational catalog with `?tools=all` or `"tools": "all"`.
+
 ```json
 { "jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {} }
+```
+
+```json
+{ "jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": { "tools": "all" } }
 ```
 
 ### `tools/call` (storage — names are gateway exports)

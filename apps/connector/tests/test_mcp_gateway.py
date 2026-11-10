@@ -243,7 +243,7 @@ class McpGatewayTests(TestCase):
         post.side_effect = side_effect
         token = _agent_token(secret=self.secret, issuer=self.issuer, scope='ai storage')
         response = self.client.post(
-            '/c/10/mcp',
+            '/c/10/mcp?tools=all',
             data=_rpc('tools/list'),
             content_type='application/json',
             **self._auth(token),
@@ -339,13 +339,15 @@ class McpGatewayTests(TestCase):
         self.assertTrue(str(meta.get('method') or '').strip())
 
     def test_route_resolves_from_tools_catalog_without_route_cache(self, _rev_ok):
-        from apps.connector.mcp_views import _get_server
+        from apps.connector.mcp_views import _get_server, _mcp_agent_claims, tools_list_cache_key
 
+        claims = _mcp_agent_claims.set({'company_id': 10})
         cache.set(
-            'mcp_gateway:tools:https://storage.test/mcp',
+            tools_list_cache_key(10, 'https://storage.test/mcp'),
             [{'name': 'list_buckets', 'description': 'List'}],
         )
         server = _get_server()
+        self.addCleanup(_mcp_agent_claims.reset, claims)
         self.assertEqual(
             server._lookup_route('storage_list_buckets'),
             {'service_id': 'storage', 'downstream_name': 'list_buckets'},
@@ -374,7 +376,7 @@ class McpGatewayTests(TestCase):
         post.side_effect = side_effect
         token = _agent_token(secret=self.secret, issuer=self.issuer, scope='ai email')
         list_response = self.client.post(
-            '/c/10/mcp',
+            '/c/10/mcp?tools=all',
             data=_rpc('tools/list'),
             content_type='application/json',
             **self._auth(token),
@@ -384,8 +386,10 @@ class McpGatewayTests(TestCase):
         self.assertIn('email_list_messages', names)
         self.assertIn('email_get_action_event_log', names)
 
-        cache.delete('mcp_gateway:route:email_list_messages')
-        cache.delete('mcp_gateway:route:email_get_action_event_log')
+        from apps.connector.mcp_views import route_cache_key
+
+        cache.delete(route_cache_key(10, 'email_list_messages'))
+        cache.delete(route_cache_key(10, 'email_get_action_event_log'))
 
         call_response = self.client.post(
             '/c/10/mcp',
@@ -396,8 +400,10 @@ class McpGatewayTests(TestCase):
         self.assertEqual(call_response.status_code, 200, call_response.content)
         self.assertEqual(forwarded['name'], 'api_v1_messages_list')
 
-        cache.delete('mcp_gateway:route:email_get_action_event_log')
-        cache.delete('mcp_gateway:tools:https://email.test/mcp')
+        from apps.connector.mcp_views import route_cache_key, tools_list_cache_key
+
+        cache.delete(route_cache_key(10, 'email_get_action_event_log'))
+        cache.delete(tools_list_cache_key(10, 'https://email.test/mcp'))
 
         self.client.post(
             '/c/10/mcp',
@@ -431,7 +437,7 @@ class McpGatewayTests(TestCase):
             company_name='Acme',
         )
         list_response = self.client.post(
-            '/c/10/mcp',
+            '/c/10/mcp?tools=all',
             data=_rpc('tools/list'),
             content_type='application/json',
             **self._auth(token),
@@ -487,8 +493,10 @@ class McpGatewayTests(TestCase):
     @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
     @patch('apps.connector.mcp_views.requests.post')
     def test_forward_tool_call_scope_forbidden_uses_negative_32603(self, post, _mint, _rev_ok):
+        from apps.connector.mcp_views import route_cache_key, tools_list_cache_key
+
         cache.set(
-            'mcp_gateway:tools:https://storage.test/mcp',
+            tools_list_cache_key(10, 'https://storage.test/mcp'),
             [
                 {
                     'name': 'list_buckets',
@@ -498,7 +506,7 @@ class McpGatewayTests(TestCase):
             ],
         )
         cache.set(
-            'mcp_gateway:route:storage_list_buckets',
+            route_cache_key(10, 'storage_list_buckets'),
             {'service_id': 'storage', 'downstream_name': 'list_buckets'},
         )
         post.side_effect = AssertionError('downstream MCP must not run when scope forbids service')

@@ -1,0 +1,103 @@
+[
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Search Shellui tools with a short phrase. Returns the best matches with read, write, destructive, and approval flags plus the full input schema, so you can call a match immediately. Optional filters: service (identity, storage, hosting, email) and access (read or write). limit defaults to 8. Then call the tool, or pass it to ai_call_tool.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "access": {
+          "description": "Optional. read keeps read-only tools. write keeps tools that change data.",
+          "enum": [
+            "read",
+            "write"
+          ],
+          "type": "string"
+        },
+        "limit": {
+          "description": "How many matches to return. Default 8, maximum 20.",
+          "maximum": 20,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "query": {
+          "description": "What you want to do, or an exact tool name.",
+          "type": "string"
+        },
+        "service": {
+          "description": "Optional service id: identity, storage, hosting, email, or saas.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "type": "object"
+    },
+    "name": "ai_search_tools",
+    "title": "AI: Search tools"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Return the full input schema, access flags, and a short usage note for one or more Shellui gateway tool names. Use this when a search result is not enough. Then call the tool directly or through ai_call_tool.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "One tool name. Use names when you need more than one.",
+          "type": "string"
+        },
+        "names": {
+          "description": "Gateway tool names, for example identity_list_users.",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "name": "ai_describe_tool",
+    "title": "AI: Describe tool"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false
+    },
+    "description": "Run any Shellui gateway tool by name. arguments are the same object you would pass to tools/call. Tenant scope, approvals, secret masking, and audit logging are identical to a direct call. In ask mode the person sees the real tool name and arguments, not ai_call_tool.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": {
+          "additionalProperties": true,
+          "description": "Arguments for that tool. Use the input schema from search or describe.",
+          "type": "object"
+        },
+        "name": {
+          "description": "Gateway tool name, for example identity_create_invitations.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "name": "ai_call_tool",
+    "title": "AI: Call tool"
+  }
+]

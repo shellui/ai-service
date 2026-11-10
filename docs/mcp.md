@@ -39,7 +39,31 @@ Upstream `tools/list` may use any of these names for the same operation:
 
 `tools/call` is forwarded with the name that upstream listed. Clients never see the legacy slug.
 
-**`tools/list`** exposes only those export names and registry-derived `_meta` (path, method, `operation_summary`, access flags, etc.). **LiteLLM** or other inference stacks are **not** part of this gateway path; this branch documents the gateway only.
+## Discovery instead of a 224-tool dump
+
+By default **`tools/list`** returns a short set an agent can use to find the right operation:
+
+1. **`ai_list_services`**: each connected service, a one-line summary, and example tasks. A tool count is included after the catalog has been loaded. This call does not fetch downstream services. If the count is missing, call `ai_search_tools` or `tools/list` first.
+2. **`ai_search_tools`**: natural-language `query`, optional `service`, optional `access` (`read` or `write`), and `limit` (default 8, maximum 20). Matches include the name, description, read/write/destructive/approval flags, and the full input schema.
+3. **`ai_describe_tool`**: full schema and a usage note for one or more tool names. Search and describe load the full catalog when it is missing or expired, through the same fetch, company scope, and cache lifetime as `tools/list?tools=all`. Each company has its own cache entry.
+4. **`ai_call_tool`**: `{name, arguments}` runs that tool through the same tenant, scope, approval, masking, and audit path as a direct **`tools/call`**. In ask mode the person sees the real tool and its arguments.
+5. Four common reads, when that service is connected: `identity_list_users`, `storage_list_bucket`, `hosting_list_apps`, `email_list_messages`. They answer "who, what files, what apps, what mail" without a search.
+
+Workflow: list services, search, then call. A direct **`tools/call`** of any of the 224 tools still works when that tool is not in the default list.
+
+Opt in to the full catalog with **`POST /c/<company_id>/mcp?tools=all`**, or **`tools/list`** params **`{"tools": "all"}`**. Set **`MCP_TOOLS_LIST_MODE=all`** when a deployment should keep the full list as the default. The full list is still paged (200 tools per page, `nextCursor`). This gateway does not push `notifications/tools/list_changed`, because the HTTP session has no server-to-client stream. Change the URL or the list params and call **`tools/list`** again.
+
+Example:
+
+```json
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ai_search_tools","arguments":{"query":"invite a user","limit":3}}}
+```
+
+```json
+{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"ai_call_tool","arguments":{"name":"identity_create_invitations","arguments":{"method":"POST","path":"/api/v1/invitations/","body":{"email":"ada@example.com"}}}}}
+```
+
+**`tools/list`** in full mode exposes the operational export names and registry-derived `_meta` (path, method, `operation_summary`, access flags, etc.), plus the three discovery tools. **LiteLLM** or other inference stacks are **not** part of this gateway path; this document covers the gateway only.
 
 ## Bounded authority: `mcp_access` and tool safety
 
