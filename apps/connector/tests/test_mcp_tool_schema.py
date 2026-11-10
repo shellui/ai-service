@@ -198,6 +198,88 @@ class McpToolSchemaAuditTests(TestCase):
         self.assertNotIn('untyped_or_empty', categories)
         self.assertNotIn('missing_description', categories)
 
+    def test_wire_catalog_recovers_operation_access_and_json_contracts(self):
+        """shellui tools/list drops _meta and opens JSON fields. Normalization must undo both."""
+        from apps.connector.mcp_approval_gate import tool_traits_from_export
+
+        listed = {
+            'name': 'storage_v1_bucket_empty_create',
+            'description': 'Delete every object in a bucket.',
+            'inputSchema': {
+                'type': 'object',
+                'properties': {
+                    'path': {'type': 'string', 'const': '/storage/v1/bucket/{bucket_id}/empty'},
+                    'method': {'type': 'string', 'enum': ['POST']},
+                    'query': {'type': 'object', 'additionalProperties': False, 'properties': {}},
+                    'body': {'type': 'object', 'additionalProperties': False, 'properties': {}},
+                    'path_params': {
+                        'type': 'object',
+                        'additionalProperties': False,
+                        'properties': {'bucket_id': {'type': 'string'}},
+                        'required': ['bucket_id'],
+                    },
+                },
+                'required': ['path', 'method', 'path_params'],
+                'additionalProperties': False,
+            },
+        }
+        fixed = normalize_mcp_tool(listed)
+        self.assertEqual(fixed['_meta']['operationId'], 'storage_v1_bucket_empty_create')
+        read_only, destructive = tool_traits_from_export(fixed, method='POST')
+        self.assertFalse(read_only)
+        self.assertTrue(destructive)
+        self.assertTrue(fixed['annotations']['destructiveHint'])
+
+        preview = normalize_mcp_tool(
+            {
+                'name': 'api_v1_broadcasts_preview',
+                'description': 'Render a broadcast without sending it to anyone.',
+                'inputSchema': {
+                    'type': 'object',
+                    'properties': {
+                        'path': {'type': 'string', 'const': '/api/v1/broadcasts/preview'},
+                        'method': {'type': 'string', 'enum': ['POST']},
+                    },
+                    'required': ['path', 'method'],
+                    'additionalProperties': False,
+                },
+            }
+        )
+        read_only, destructive = tool_traits_from_export(preview, method='POST')
+        self.assertTrue(read_only)
+        self.assertFalse(destructive)
+        self.assertTrue(preview['annotations']['readOnlyHint'])
+
+        document = normalize_mcp_tool(
+            {
+                'name': 'api_v1_library_create',
+                'description': 'Create a company email design from a document and theme.',
+                'inputSchema': {
+                    'type': 'object',
+                    'properties': {
+                        'path': {'type': 'string', 'const': '/api/v1/library'},
+                        'method': {'type': 'string', 'enum': ['POST']},
+                        'body': {
+                            'type': 'object',
+                            'additionalProperties': False,
+                            'properties': {
+                                'document': {
+                                    'type': 'object',
+                                    'additionalProperties': True,
+                                    'description': 'JSON value',
+                                },
+                            },
+                        },
+                    },
+                    'required': ['path', 'method'],
+                    'additionalProperties': False,
+                },
+            }
+        )
+        doc = document['inputSchema']['properties']['body']['properties']['document']
+        self.assertIn('type', doc['properties'])
+        self.assertIs(doc.get('additionalProperties'), False)
+
     def test_openapi_tools_never_expose_company_id(self):
         schema = SchemaGenerator().get_schema(request=None, public=True)
         tools = tools_from_schema(schema)

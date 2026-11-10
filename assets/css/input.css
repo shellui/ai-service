@@ -3,6 +3,8 @@
 
 @source "../../templates/**/*.html";
 @source not "../../static/vendor";
+/* OpenAPI fixtures contain prose such as "may filter"; do not treat that as a utility. */
+@source not "../../apps/connector/tests/fixtures";
 
 @custom-variant dark (&:where(.dark, .dark *));
 

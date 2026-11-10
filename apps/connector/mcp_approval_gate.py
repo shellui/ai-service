@@ -113,16 +113,26 @@ def tool_traits_from_export(tool: dict[str, Any] | None, *, method: str = 'GET')
     if not isinstance(tool, dict):
         return False, method.upper() in {'GET', 'HEAD', 'OPTIONS'}
     ann = tool.get('annotations') if isinstance(tool.get('annotations'), dict) else {}
-    read_only = bool(ann.get('readOnlyHint'))
-    destructive = bool(ann.get('destructiveHint'))
     meta = tool.get('_meta') if isinstance(tool.get('_meta'), dict) else {}
-    if meta.get('read_only') is True:
-        read_only = True
-    if meta.get('destructive') is True:
-        destructive = True
     m = str(method or meta.get('method') or 'GET').upper()
+    # Registry `_meta` is authoritative when present. Annotation hints are the
+    # fallback for catalogs that never carried `_meta` (and for DELETE, which is
+    # always destructive). A presentation hint must not upgrade a non-destructive
+    # PUT/PATCH into a destructive call.
+    if 'read_only' in meta:
+        read_only = bool(meta.get('read_only'))
+    else:
+        read_only = bool(ann.get('readOnlyHint'))
     if m in {'GET', 'HEAD', 'OPTIONS'}:
         read_only = True
+    if m == 'DELETE':
+        destructive = True
+    elif 'destructive' in meta:
+        destructive = bool(meta.get('destructive'))
+    else:
+        destructive = bool(ann.get('destructiveHint'))
+    if read_only and m != 'DELETE':
+        destructive = False
     return read_only, destructive
 
 

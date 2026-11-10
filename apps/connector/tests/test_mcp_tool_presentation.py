@@ -34,6 +34,13 @@ class McpToolPresentationTests(SimpleTestCase):
             'Identity: List users (Acme)',
         )
 
+    def test_empty_title_uses_local_name_not_service_prefix_word(self):
+        tool = apply_gateway_tool_presentation(
+            {'name': 'identity_create_action_rules', 'description': 'Create a webhook rule for this company.'},
+            company_label='Acme',
+        )
+        self.assertEqual(tool['title'], 'Identity: Create Action Rules (Acme)')
+
     def test_apply_gateway_tool_presentation(self):
         tool = apply_gateway_tool_presentation(
             {

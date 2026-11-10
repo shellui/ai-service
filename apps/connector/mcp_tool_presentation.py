@@ -107,9 +107,11 @@ def tool_description(operation: dict[str, Any], *, method: str, access: dict[str
 def tool_annotations(operation: dict[str, Any], *, method: str, access: dict[str, bool]) -> dict[str, bool]:
     verb = method.upper()
     read_only = bool(access.get('read_only')) or verb in {'GET', 'HEAD'}
+    # Destructive follows the registry (x-mcp / recovered operation id), not the verb.
+    # PUT and PATCH replace fields; only DELETE and explicitly destructive operations
+    # are destructive. Marking every update destructive hid session grants and made
+    # full-access agents ask for approval on ordinary edits.
     destructive = bool(access.get('destructive')) or verb == 'DELETE'
-    if not read_only and not destructive and verb in {'PUT', 'PATCH'}:
-        destructive = True
     idempotent = read_only or verb in {'PUT', 'DELETE', 'HEAD'}
     if verb == 'POST' and not read_only:
         idempotent = False
@@ -300,7 +302,14 @@ def apply_gateway_tool_presentation(tool: dict[str, Any], *, company_label: str)
 
     out = deepcopy(tool)
     name = str(out.get('name') or '')
-    title = ensure_service_first_title(str(out.get('title') or ''), tool_name=name)
+    raw_title = str(out.get('title') or '').strip()
+    if not raw_title:
+        # Humanize the local verb_noun, not ``identity_create_groups``. A title that
+        # merely starts with the service word would skip the ``Identity:`` prefix.
+        service_id = _gateway_service_id(name)
+        local = name[len(service_id) + 1 :] if service_id and name.startswith(f'{service_id}_') else name
+        raw_title = human_title_from_tool_name(local)
+    title = ensure_service_first_title(raw_title, tool_name=name)
     out['title'] = title
     desc = strip_presentation_noise(str(out.get('description') or ''))
     if desc:

@@ -218,6 +218,16 @@ def _json_type_for_value(value: Any) -> str:
     return 'string'
 
 
+def _is_shellui_open_object(schema: dict[str, Any]) -> bool:
+    """shellui turns OpenAPI ``additionalProperties: {}`` into an open object with no properties."""
+    if schema.get('type') != 'object' or schema.get('additionalProperties') is not True:
+        return False
+    props = schema.get('properties')
+    if isinstance(props, dict) and props:
+        return False
+    return not any(key in schema for key in ('enum', 'const', 'items', 'anyOf', 'oneOf', 'allOf', '$ref'))
+
+
 def _convert_property(
     key: str,
     raw: dict[str, Any],
@@ -228,12 +238,18 @@ def _convert_property(
     """Type bare JSONField properties whose contract is known; otherwise convert normally."""
     if not _component_ref_name(raw) and 'allOf' not in raw and 'anyOf' not in raw and 'oneOf' not in raw:
         peeked = resolve_schema(raw, root)
-        if _is_untyped_json(peeked):
+        if _is_untyped_json(peeked) or _is_shellui_open_object(peeked):
             from apps.connector.mcp_json_contracts import contract_for_untyped_field
 
             contract = contract_for_untyped_field(key, str(peeked.get('description') or ''), sibling_names)
             if contract is not None:
                 return ensure_validation_keywords(contract)
+        if _is_shellui_open_object(peeked):
+            # Audited converter closes an empty ``additionalProperties: {}`` schema.
+            closed = {k: v for k, v in peeked.items() if k != 'additionalProperties'}
+            closed['type'] = 'object'
+            closed['additionalProperties'] = {}
+            return openapi_schema_to_json_schema(closed, root, _seen=seen)
     return openapi_schema_to_json_schema(raw, root, _seen=seen)
 
 
@@ -528,6 +544,59 @@ def _operation_from_input_schema(schema: dict[str, Any] | None) -> tuple[str | N
     return path, method
 
 
+# Downstream tools/list omits `_meta`, so x-mcp flags that differ from the HTTP
+# method are not on the wire. These operation ids are the POST exceptions on the
+# identity, storage, hosting, and email OpenAPI registries: read-only searches
+# and previews, and destructive revokes / empty / rollback. The release contract
+# test fails if a fixture gains another exception that is not listed here.
+READ_ONLY_POST_OPERATION_IDS = frozenset(
+    {
+        'api_v1_broadcasts_preview',
+        'api_v1_templates_render_preview',
+        'storage_v1_object_list_create',
+    }
+)
+DESTRUCTIVE_POST_OPERATION_IDS = frozenset(
+    {
+        'api_v1_personal_access_tokens_revoke',
+        'api_v1_scim_tokens_revoke',
+        'hosting_v1_apps_deployments_rollback_create',
+        'hosting_v1_deploy_tokens_revoke_create',
+        'storage_v1_bucket_empty_create',
+    }
+)
+
+
+def recover_registry_access(
+    meta: dict[str, Any],
+    *,
+    tool_name: str,
+    explicit_read_only: bool = False,
+    explicit_destructive: bool = False,
+) -> dict[str, Any]:
+    """Fill operation id and access flags stripped from a downstream tools/list row."""
+    from apps.connector.mcp_tool_naming import legacy_operation_id_from_tool_name
+
+    out = dict(meta)
+    if not str(out.get('operationId') or '').strip():
+        legacy = legacy_operation_id_from_tool_name(tool_name)
+        if legacy:
+            out['operationId'] = legacy
+    oid = str(out.get('operationId') or '')
+    method = str(out.get('method') or '').upper()
+    if not explicit_read_only and oid in READ_ONLY_POST_OPERATION_IDS:
+        out['read_only'] = True
+        out['destructive'] = False
+    elif not explicit_destructive and oid in DESTRUCTIVE_POST_OPERATION_IDS:
+        out['destructive'] = True
+        out['read_only'] = False
+    elif method == 'DELETE' and not explicit_destructive:
+        out['destructive'] = True
+    elif method in {'GET', 'HEAD', 'OPTIONS'} and not explicit_read_only:
+        out['read_only'] = True
+    return out
+
+
 def _ensure_operation_meta(meta: dict[str, Any], schema: dict[str, Any] | None) -> dict[str, Any]:
     """Fill missing ``_meta.path`` / ``_meta.method`` from the tool's proxy input schema."""
     out = dict(meta) if isinstance(meta, dict) else {}
@@ -553,7 +622,10 @@ def normalize_mcp_tool(tool: dict[str, Any], root: dict[str, Any] | None = None)
     out = deepcopy(tool)
     schema = out.get('inputSchema')
     raw_schema = deepcopy(schema) if isinstance(schema, dict) else None
-    meta = out.get('_meta') if isinstance(out.get('_meta'), dict) else {}
+    incoming_meta = out.get('_meta') if isinstance(out.get('_meta'), dict) else {}
+    explicit_read_only = 'read_only' in incoming_meta
+    explicit_destructive = 'destructive' in incoming_meta
+    meta = dict(incoming_meta)
     meta = _ensure_operation_meta(meta, raw_schema)
     if isinstance(schema, dict):
         tenant_binding = strip_tenant_fields_from_input_schema(schema)
@@ -568,23 +640,33 @@ def normalize_mcp_tool(tool: dict[str, Any], root: dict[str, Any] | None = None)
     elif meta:
         out['_meta'] = meta
     name = str(out.get('name') or 'tool')
+    meta = out.get('_meta') if isinstance(out.get('_meta'), dict) else {}
+    meta = recover_registry_access(
+        meta,
+        tool_name=name,
+        explicit_read_only=explicit_read_only,
+        explicit_destructive=explicit_destructive,
+    )
+    out['_meta'] = meta
+    from apps.connector.mcp_tool_naming import legacy_operation_id_from_tool_name
     from apps.connector.mcp_tool_presentation import human_title_from_tool_name, strip_presentation_noise
 
-    if not str(out.get('title') or '').strip():
-        out['title'] = human_title_from_tool_name(name)
-    else:
+    # Leave titles empty for operation-id slugs so the gateway can title the
+    # renamed export (``list_users``) instead of ``api_v1_users_list``.
+    if str(out.get('title') or '').strip():
         out['title'] = strip_presentation_noise(str(out.get('title') or ''))
+    elif legacy_operation_id_from_tool_name(name) is None:
+        out['title'] = human_title_from_tool_name(name)
     desc = strip_presentation_noise(str(out.get('description') or '').strip())
     if len(desc) < 24:
-        from apps.connector.mcp_tool_presentation import human_title_from_tool_name
-
-        title = str(out.get('title') or human_title_from_tool_name(name)).strip()
-        op = (out.get('_meta') or {}).get('operationId') or name
+        title = str(out.get('title') or '').strip() or 'Shellui tool'
         if desc:
-            desc = f'{desc} Available through Shellui MCP as {name}.'
+            if desc[-1] not in '.!?':
+                desc += '.'
+            desc = f'{desc} Runs one company-scoped Shellui API operation.'
         else:
-            desc = f'{title}. Shellui MCP tool {name} ({op}).'
-        desc = sanitize_shellui_copy(desc)
+            desc = f'{title}. Runs one company-scoped Shellui API operation.'
+        desc = sanitize_shellui_copy(strip_presentation_noise(desc))
     out['description'] = desc
     ann = out.get('annotations')
     meta = out.get('_meta') if isinstance(out.get('_meta'), dict) else {}
