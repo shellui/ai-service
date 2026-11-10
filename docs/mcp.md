@@ -31,10 +31,11 @@ Downstream OpenAPI operations become MCP tools with stable names:
 
 So the string the client passes to **`tools/call`** is always the **prefixed** export name.
 
-Upstream `tools/list` may use either of two names for the same operation:
+Upstream `tools/list` may use any of these names for the same operation:
 
-- the export name itself (`identity_create_groups`) — kept as-is when it equals the name derived from the operation
-- a legacy operationId slug (`api_v1_groups_create`, `storage_v1_bucket_list`) — mapped to that same export name
+- the export name itself (`identity_create_groups`, `hosting_list_apps`) — kept as-is when it equals the name derived from the operation, and not prefixed again
+- `x-mcp.tool_name` without the service prefix (`list_apps`) — the gateway adds `<service>_` once
+- a legacy operationId slug (`api_v1_groups_create`, `storage_v1_bucket_list`, `hosting_v1_apps_list`) — mapped to that same export name
 
 `tools/call` is forwarded with the name that upstream listed. Clients never see the legacy slug.
 

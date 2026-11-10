@@ -256,6 +256,11 @@ _PUBLISHED_EXPORT_OPERATION_IDS: dict[str, str] = {
     'storage_create_object_list': 'storage_v1_object_list_create',
     'storage_empty_bucket': 'storage_v1_bucket_empty_create',
 }
+# Same operations when upstream sends only ``x-mcp.tool_name`` (no service prefix).
+_LOCAL_TOOL_NAME_OPERATION_IDS: dict[str, str] = {
+    published[len(published.split('_', 1)[0]) + 1 :]: operation_id
+    for published, operation_id in _PUBLISHED_EXPORT_OPERATION_IDS.items()
+}
 
 _SERVICE_PREFIXES = ('ai', 'identity', 'storage', 'hosting', 'email', 'saas')
 
@@ -274,11 +279,15 @@ def legacy_operation_id_from_tool_name(name: str) -> str | None:
 
 
 def operation_id_for_upstream_tool_name(name: str) -> str | None:
-    """Operation id for a legacy slug or for a gateway export name of a flagged POST."""
+    """Operation id for a legacy slug, a gateway export name, or a local ``x-mcp.tool_name``."""
     legacy = legacy_operation_id_from_tool_name(name)
     if legacy:
         return legacy
-    return _PUBLISHED_EXPORT_OPERATION_IDS.get(_sanitize_token(name))
+    slug = _sanitize_token(name)
+    published = _PUBLISHED_EXPORT_OPERATION_IDS.get(slug)
+    if published:
+        return published
+    return _LOCAL_TOOL_NAME_OPERATION_IDS.get(slug)
 
 
 def tool_name_has_service_prefix(name: str) -> bool:
@@ -338,7 +347,14 @@ def service_local_tool_name(tool: dict[str, Any], *, service_id: str | None = No
         name = _canonicalize_numeric_suffix(name)
     if method == 'put' and name.startswith('update_'):
         name = f'replace_{name[7:]}'
-    return clamp_tool_name(name)
+    name = clamp_tool_name(name)
+    # ``x-mcp.tool_name`` may already be ``storage_list_bucket``. The gateway adds
+    # the service prefix once, so drop a redundant copy here.
+    if service_id:
+        sid = _sanitize_token(service_id)
+        if name.startswith(f'{sid}_') and legacy_operation_id_from_tool_name(name) is None:
+            name = clamp_tool_name(name[len(sid) + 1 :])
+    return name
 
 
 def canonical_downstream_tool_name(name: str, *, service_id: str | None = None) -> str:
