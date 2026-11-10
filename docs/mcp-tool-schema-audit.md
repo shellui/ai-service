@@ -38,10 +38,13 @@ combinators, refs, nullable type arrays, required query/body fields).
 
 ## Tool name mapping (legacy → service → gateway)
 
-Legacy names are slugified `operationId` values (pre–shellui-django 0.4.2). Service names
-use `verb_noun` without `api/v1` segments. The ai gateway exports downstream tools as
-``{service}_{tool}`` (single underscore). Full list: `name_mappings` in
-`docs/mcp-tool-schema-audit.json`.
+Clients call the gateway export (`identity_create_groups`). Upstream `tools/list` may send
+that same name (identity's operation ids are already these exports), an unprefixed
+`x-mcp.tool_name` (`list_apps`), or the legacy operationId slug in the first column
+(`api_v1_groups_create`, `storage_v1_bucket_list`). A name that already starts with the
+service id is kept when it matches the gateway export and is not prefixed again; legacy
+slugs still map to that export. Service names use `verb_noun` without `api/v1` segments.
+Full list: `name_mappings` in `docs/mcp-tool-schema-audit.json`.
 
 | Service | Legacy | Service tool | Gateway export |
 | --- | --- | --- | --- |

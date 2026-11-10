@@ -4,6 +4,7 @@ from apps.connector.mcp_tool_naming import (
     canonical_downstream_tool_name,
     gateway_export_name,
     legacy_slug_tool_name,
+    published_upstream_tool_name,
     resolve_mcp_tool_name,
     select_newest_api_version_operations,
     service_local_tool_name,
@@ -107,6 +108,60 @@ class McpToolNamingTests(SimpleTestCase):
         }
         self.assertEqual(service_local_tool_name(actions, service_id='identity'), 'list_action_events')
 
+    def test_published_upstream_name_is_distinct_from_operation_id_slugs(self):
+        self.assertTrue(published_upstream_tool_name('identity_create_groups', 'identity'))
+        self.assertTrue(published_upstream_tool_name('storage_list_bucket', 'storage'))
+        self.assertFalse(published_upstream_tool_name('api_v1_groups_create', 'identity'))
+        self.assertFalse(published_upstream_tool_name('storage_v1_bucket_list', 'storage'))
+        self.assertFalse(published_upstream_tool_name('hosting_v1_apps_list', 'hosting'))
+
+    def test_published_name_that_disagrees_with_operation_is_dropped(self):
+        from apps.connector.mcp_tool_schema import normalize_mcp_tool
+        from apps.connector.mcp_views import iter_gateway_remote_exports
+
+        tool = normalize_mcp_tool(
+            {
+                'name': 'identity_create_groups',
+                'description': 'Create a manual group for the company.',
+                'operationId': 'api_v1_users_list',
+                'inputSchema': {
+                    'type': 'object',
+                    'properties': {
+                        'path': {'type': 'string', 'const': '/api/v1/users'},
+                        'method': {'type': 'string', 'enum': ['GET']},
+                    },
+                    'required': ['path', 'method'],
+                    'additionalProperties': False,
+                },
+            }
+        )
+        self.assertEqual(iter_gateway_remote_exports([tool], service_id='identity'), [])
+
+    def test_published_name_is_kept_and_forwarded_as_is(self):
+        from apps.connector.mcp_tool_schema import normalize_mcp_tool
+        from apps.connector.mcp_views import iter_gateway_remote_exports
+
+        tool = normalize_mcp_tool(
+            {
+                'name': 'identity_list_users',
+                'description': 'List company users for the authenticated company.',
+                'inputSchema': {
+                    'type': 'object',
+                    'properties': {
+                        'path': {'type': 'string', 'const': '/api/v1/users'},
+                        'method': {'type': 'string', 'enum': ['GET']},
+                    },
+                    'required': ['path', 'method'],
+                    'additionalProperties': False,
+                },
+            }
+        )
+        rows = iter_gateway_remote_exports([tool], service_id='identity')
+        self.assertEqual(len(rows), 1)
+        export_name, _exported, route = rows[0]
+        self.assertEqual(export_name, 'identity_list_users')
+        self.assertEqual(route['downstream_name'], 'identity_list_users')
+
     def test_newest_api_version(self):
         schema = {
             'paths': {
@@ -120,3 +175,33 @@ class McpToolNamingTests(SimpleTestCase):
 
     def test_clamp(self):
         self.assertEqual(validate_tool_name(clamp_tool_name('a' * 80)), [])
+
+    def test_published_operation_id_and_tool_name_are_not_prefixed_twice(self):
+        listed = {'operationId': 'identity_list_users'}
+        self.assertEqual(resolve_mcp_tool_name(listed, 'get', '/api/v1/users/'), 'list_users')
+        self.assertEqual(
+            gateway_export_name('identity', resolve_mcp_tool_name(listed, 'get', '/api/v1/users/')),
+            'identity_list_users',
+        )
+        self.assertEqual(
+            resolve_mcp_tool_name({'operationId': 'identity_get_scim_status'}, 'get', '/api/v1/scim/status/'),
+            'get_scim_status',
+        )
+        self.assertEqual(
+            resolve_mcp_tool_name(
+                {'operationId': 'identity_rotate_rule_secret'},
+                'post',
+                '/api/v1/actions/rules/rotate-secret/',
+            ),
+            'rotate_rule_secret',
+        )
+        email = {
+            'operationId': 'api_v1_newsletters_create',
+            'x-mcp': {'tool_name': 'email_create_newsletters'},
+        }
+        self.assertEqual(resolve_mcp_tool_name(email, 'post', '/api/v1/newsletters/'), 'create_newsletters')
+        hosting = {
+            'operationId': 'hosting_v1_apps_list',
+            'x-mcp': {'tool_name': 'list_apps'},
+        }
+        self.assertEqual(resolve_mcp_tool_name(hosting, 'get', '/api/v1/apps/'), 'list_apps')

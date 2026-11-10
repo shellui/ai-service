@@ -164,13 +164,22 @@ def resolve_mcp_tool_name(operation: dict[str, Any], method: str, path: str) -> 
     x_mcp = operation.get('x-mcp') if isinstance(operation.get('x-mcp'), dict) else {}
     explicit = str(x_mcp.get('tool_name') or x_mcp.get('name') or '').strip()
     if explicit:
-        return clamp_tool_name(_sanitize_token(explicit))
+        # ``email_create_newsletters`` is already the gateway export. Callers add
+        # ``<service>_`` once, so return the local verb_noun. ``list_apps`` is local.
+        local = published_local_tool_name(explicit)
+        return clamp_tool_name(local or _sanitize_token(explicit))
 
     op_id = str(operation.get('operationId') or '').strip()
     if op_id and op_id in _OPERATION_ID_TOOL_NAMES:
         return clamp_tool_name(_OPERATION_ID_TOOL_NAMES[op_id])
 
     if op_id:
+        # Identity #147 renamed operationId to ``identity_list_users``. Stripping only
+        # ``api_v1_`` would leave the service token and the gateway would emit
+        # ``identity_identity_list_users``.
+        local = published_local_tool_name(op_id)
+        if local:
+            return clamp_tool_name(local)
         tokens = _strip_version_and_service_prefix(_sanitize_token(op_id).split('_'))
         stripped = '_'.join(tokens)
         name = _base_name_from_stripped(stripped, method=method)
@@ -243,10 +252,48 @@ def _infer_http_method(operation_id: str | None, declared: str | None) -> str:
 _LEGACY_OPERATION_ID = re.compile(r'(?:^|_)v\d+_')
 
 
+# Published export name → operationId for POST tools whose x-mcp flags differ from
+# the HTTP method. When upstream renames the tool to the gateway name, ``_meta`` is
+# still omitted, so the operation id has to be recovered from that name.
+_PUBLISHED_EXPORT_OPERATION_IDS: dict[str, str] = {
+    'email_broadcasts_preview': 'api_v1_broadcasts_preview',
+    'email_render_preview_templates': 'api_v1_templates_render_preview',
+    'hosting_create_apps_deployments_rollback': 'hosting_v1_apps_deployments_rollback_create',
+    'hosting_revoke_deploy_token': 'hosting_v1_deploy_tokens_revoke_create',
+    'identity_revoke_personal_access_tokens': 'api_v1_personal_access_tokens_revoke',
+    'identity_revoke_scim_tokens': 'api_v1_scim_tokens_revoke',
+    'storage_create_object_list': 'storage_v1_object_list_create',
+    'storage_empty_bucket': 'storage_v1_bucket_empty_create',
+}
+# Same operations when upstream sends only ``x-mcp.tool_name`` (no service prefix).
+_LOCAL_TOOL_NAME_OPERATION_IDS: dict[str, str] = {
+    published[len(published.split('_', 1)[0]) + 1 :]: operation_id
+    for published, operation_id in _PUBLISHED_EXPORT_OPERATION_IDS.items()
+}
+
+_SERVICE_PREFIXES = ('ai', 'identity', 'storage', 'hosting', 'email', 'saas')
+
+
+def published_local_tool_name(name: str) -> str | None:
+    """Return the verb_noun when ``name`` is already ``<service>_<local>``.
+
+    Legacy slugs (``api_v1_*``, ``storage_v1_*``, ``hosting_v1_*``) are not published
+    names, even though ``storage`` and ``hosting`` are service ids.
+    """
+    slug = _sanitize_token(name)
+    if not slug or legacy_operation_id_from_tool_name(slug) is not None:
+        return None
+    for sid in _SERVICE_PREFIXES:
+        prefix = f'{sid}_'
+        if slug.startswith(prefix) and len(slug) > len(prefix):
+            return slug[len(prefix) :]
+    return None
+
+
 def legacy_operation_id_from_tool_name(name: str) -> str | None:
     """Return a shellui operation-id slug (``api_v1_*``, ``storage_v1_*``) when ``name`` is one.
 
-    Downstream ``tools/list`` drops ``_meta``, and the tool name is that slug.
+    Downstream ``tools/list`` drops ``_meta``, and the legacy tool name is that slug.
     """
     slug = _sanitize_token(name)
     if not slug:
@@ -254,6 +301,36 @@ def legacy_operation_id_from_tool_name(name: str) -> str | None:
     if slug.startswith('api_') or _LEGACY_OPERATION_ID.search(slug):
         return slug
     return None
+
+
+def operation_id_for_upstream_tool_name(name: str) -> str | None:
+    """Operation id for a legacy slug, a gateway export name, or a local ``x-mcp.tool_name``."""
+    legacy = legacy_operation_id_from_tool_name(name)
+    if legacy:
+        return legacy
+    slug = _sanitize_token(name)
+    published = _PUBLISHED_EXPORT_OPERATION_IDS.get(slug)
+    if published:
+        return published
+    return _LOCAL_TOOL_NAME_OPERATION_IDS.get(slug)
+
+
+def tool_name_has_service_prefix(name: str) -> bool:
+    slug = _sanitize_token(name)
+    return any(slug.startswith(f'{sid}_') for sid in _SERVICE_PREFIXES)
+
+
+def published_upstream_tool_name(name: str, service_id: str) -> bool:
+    """True when upstream already listed the gateway export name (``identity_create_groups``).
+
+    ``storage_v1_*`` and ``api_v1_*`` stay on the legacy mapping. They start with a
+    service or ``api`` token but are operation-id slugs, not published names.
+    """
+    slug = _sanitize_token(name)
+    sid = _sanitize_token(service_id)
+    if not slug.startswith(f'{sid}_'):
+        return False
+    return legacy_operation_id_from_tool_name(slug) is None
 
 
 def service_local_tool_name(tool: dict[str, Any], *, service_id: str | None = None) -> str:
@@ -295,7 +372,14 @@ def service_local_tool_name(tool: dict[str, Any], *, service_id: str | None = No
         name = _canonicalize_numeric_suffix(name)
     if method == 'put' and name.startswith('update_'):
         name = f'replace_{name[7:]}'
-    return clamp_tool_name(name)
+    name = clamp_tool_name(name)
+    # ``x-mcp.tool_name`` may already be ``storage_list_bucket``. The gateway adds
+    # the service prefix once, so drop a redundant copy here.
+    if service_id:
+        sid = _sanitize_token(service_id)
+        if name.startswith(f'{sid}_') and legacy_operation_id_from_tool_name(name) is None:
+            name = clamp_tool_name(name[len(sid) + 1 :])
+    return name
 
 
 def canonical_downstream_tool_name(name: str, *, service_id: str | None = None) -> str:

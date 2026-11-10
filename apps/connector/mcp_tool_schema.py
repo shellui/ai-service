@@ -575,13 +575,37 @@ def recover_registry_access(
     explicit_destructive: bool = False,
 ) -> dict[str, Any]:
     """Fill operation id and access flags stripped from a downstream tools/list row."""
-    from apps.connector.mcp_tool_naming import legacy_operation_id_from_tool_name
+    from apps.connector.mcp_tool_naming import (
+        legacy_operation_id_from_tool_name,
+        operation_id_for_upstream_tool_name,
+    )
 
     out = dict(meta)
-    if not str(out.get('operationId') or '').strip():
-        legacy = legacy_operation_id_from_tool_name(tool_name)
-        if legacy:
-            out['operationId'] = legacy
+    x_mcp = out.get('x-mcp') if isinstance(out.get('x-mcp'), dict) else {}
+    current = str(out.get('operationId') or '').strip()
+    if not current:
+        recovered = operation_id_for_upstream_tool_name(tool_name)
+        if recovered:
+            out['operationId'] = recovered
+    elif legacy_operation_id_from_tool_name(current) is None:
+        # ``identity_revoke_personal_access_tokens`` is the operation id after #147.
+        # The exception sets below still use the registry slug.
+        mapped = operation_id_for_upstream_tool_name(current) or operation_id_for_upstream_tool_name(tool_name)
+        if mapped:
+            out['operationId'] = mapped
+    # Upstream ``x-mcp`` is the access source when the service sent it. tools/list
+    # usually drops ``_meta``, and the operation-id sets remain the fallback.
+    if not explicit_destructive and 'destructive' in x_mcp:
+        out['destructive'] = bool(x_mcp.get('destructive'))
+        explicit_destructive = True
+        if out['destructive']:
+            out['read_only'] = False
+            explicit_read_only = True
+    if not explicit_read_only and 'read_only' in x_mcp:
+        out['read_only'] = bool(x_mcp.get('read_only'))
+        explicit_read_only = True
+    if out.get('destructive') and not explicit_read_only:
+        out['read_only'] = False
     oid = str(out.get('operationId') or '')
     method = str(out.get('method') or '').upper()
     if not explicit_read_only and oid in READ_ONLY_POST_OPERATION_IDS:
@@ -648,14 +672,17 @@ def normalize_mcp_tool(tool: dict[str, Any], root: dict[str, Any] | None = None)
         explicit_destructive=explicit_destructive,
     )
     out['_meta'] = meta
-    from apps.connector.mcp_tool_naming import legacy_operation_id_from_tool_name
+    from apps.connector.mcp_tool_naming import (
+        legacy_operation_id_from_tool_name,
+        tool_name_has_service_prefix,
+    )
     from apps.connector.mcp_tool_presentation import human_title_from_tool_name, strip_presentation_noise
 
-    # Leave titles empty for operation-id slugs so the gateway can title the
-    # renamed export (``list_users``) instead of ``api_v1_users_list``.
+    # Leave titles empty for operation-id slugs and for names that already carry a
+    # service prefix, so the gateway titles the export (``Identity: Create Groups``).
     if str(out.get('title') or '').strip():
         out['title'] = strip_presentation_noise(str(out.get('title') or ''))
-    elif legacy_operation_id_from_tool_name(name) is None:
+    elif legacy_operation_id_from_tool_name(name) is None and not tool_name_has_service_prefix(name):
         out['title'] = human_title_from_tool_name(name)
     desc = strip_presentation_noise(str(out.get('description') or '').strip())
     if len(desc) < 24:

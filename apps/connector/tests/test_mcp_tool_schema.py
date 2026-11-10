@@ -229,6 +229,16 @@ class McpToolSchemaAuditTests(TestCase):
         self.assertFalse(read_only)
         self.assertTrue(destructive)
         self.assertTrue(fixed['annotations']['destructiveHint'])
+        renamed = normalize_mcp_tool(
+            {
+                **listed,
+                'name': 'storage_empty_bucket',
+            }
+        )
+        read_only, destructive = tool_traits_from_export(renamed, method='POST')
+        self.assertFalse(read_only)
+        self.assertTrue(destructive)
+        self.assertEqual(renamed['_meta']['operationId'], 'storage_v1_bucket_empty_create')
 
         preview = normalize_mcp_tool(
             {
@@ -279,6 +289,55 @@ class McpToolSchemaAuditTests(TestCase):
         doc = document['inputSchema']['properties']['body']['properties']['document']
         self.assertIn('type', doc['properties'])
         self.assertIs(doc.get('additionalProperties'), False)
+
+        for name, path in (
+            ('identity_revoke_personal_access_tokens', '/api/v1/personal-access-tokens/{token_id}/revoke'),
+            ('identity_revoke_scim_tokens', '/api/v1/scim/tokens/{token_id}/revoke'),
+        ):
+            revoked = normalize_mcp_tool(
+                {
+                    'name': name,
+                    'description': 'Revoke a credential so it cannot be used again.',
+                    'inputSchema': {
+                        'type': 'object',
+                        'properties': {
+                            'path': {'type': 'string', 'const': path},
+                            'method': {'type': 'string', 'enum': ['POST']},
+                        },
+                        'required': ['path', 'method'],
+                        'additionalProperties': False,
+                    },
+                }
+            )
+            read_only, destructive = tool_traits_from_export(revoked, method='POST')
+            self.assertFalse(read_only, name)
+            self.assertTrue(destructive, name)
+            self.assertTrue(revoked['annotations']['destructiveHint'], name)
+
+        from_extension = normalize_mcp_tool(
+            {
+                'name': 'identity_custom_revoke',
+                'description': 'Revoke a credential that is not in the static exception list.',
+                'inputSchema': {
+                    'type': 'object',
+                    'properties': {
+                        'path': {'type': 'string', 'const': '/api/v1/custom/revoke'},
+                        'method': {'type': 'string', 'enum': ['POST']},
+                    },
+                    'required': ['path', 'method'],
+                    'additionalProperties': False,
+                },
+                '_meta': {
+                    'operationId': 'identity_custom_revoke',
+                    'method': 'POST',
+                    'path': '/api/v1/custom/revoke',
+                    'x-mcp': {'read_only': False, 'destructive': True},
+                },
+            }
+        )
+        read_only, destructive = tool_traits_from_export(from_extension, method='POST')
+        self.assertFalse(read_only)
+        self.assertTrue(destructive)
 
     def test_openapi_tools_never_expose_company_id(self):
         schema = SchemaGenerator().get_schema(request=None, public=True)
