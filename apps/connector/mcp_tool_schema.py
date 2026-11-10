@@ -190,7 +190,7 @@ def openapi_schema_to_json_schema(
             required = [str(k) for k in req if str(k) in out['properties']]
             if required:
                 out['required'] = required
-        return ensure_validation_keywords(out)
+        return _with_schema_default(out, resolved)
 
     # drf-spectacular JSONField often emits ``{}`` or description-only nodes. Treat those
     # as free-form objects so MCP clients can submit nested draft payloads (e.g. document).
@@ -199,8 +199,14 @@ def openapi_schema_to_json_schema(
         out['additionalProperties'] = True
         if not out.get('description'):
             out['description'] = 'JSON value (OpenAPI schema had no type).'
-        return ensure_validation_keywords(out)
+        return _with_schema_default(out, resolved)
 
+    return _with_schema_default(out, resolved)
+
+
+def _with_schema_default(out: dict[str, Any], resolved: dict[str, Any]) -> dict[str, Any]:
+    if 'default' in resolved and 'default' not in out:
+        out['default'] = resolved['default']
     return ensure_validation_keywords(out)
 
 
@@ -549,22 +555,90 @@ def _operation_from_input_schema(schema: dict[str, Any] | None) -> tuple[str | N
 # identity, storage, hosting, and email OpenAPI registries: read-only searches
 # and previews, and destructive revokes / empty / rollback. The release contract
 # test fails if a fixture gains another exception that is not listed here.
+# (service, operation id). The same operation id can be destructive in one
+# service and a normal write in another, so the pair is the key.
 READ_ONLY_POST_OPERATION_IDS = frozenset(
     {
-        'api_v1_broadcasts_preview',
-        'api_v1_templates_render_preview',
-        'storage_v1_object_list_create',
+        ('email', 'api_v1_broadcasts_preview'),
+        ('email', 'api_v1_templates_render_preview'),
+        ('storage', 'storage_v1_object_list_create'),
     }
 )
 DESTRUCTIVE_POST_OPERATION_IDS = frozenset(
     {
-        'api_v1_personal_access_tokens_revoke',
-        'api_v1_scim_tokens_revoke',
-        'hosting_v1_apps_deployments_rollback_create',
-        'hosting_v1_deploy_tokens_revoke_create',
-        'storage_v1_bucket_empty_create',
+        ('hosting', 'api_v1_actions_rules_rotate_secret'),
+        ('hosting', 'hosting_v1_apps_deployments_finalize_create'),
+        ('hosting', 'hosting_v1_apps_deployments_rollback_create'),
+        ('hosting', 'hosting_v1_apps_domains_create'),
+        ('hosting', 'hosting_v1_apps_domains_refresh_create'),
+        ('hosting', 'hosting_v1_apps_environment_create'),
+        ('hosting', 'hosting_v1_apps_environment_update'),
+        ('hosting', 'hosting_v1_deploy_tokens_revoke_create'),
+        ('identity', 'identity_revoke_personal_access_tokens'),
+        ('identity', 'identity_revoke_scim_tokens'),
+        ('storage', 'storage_v1_bucket_empty_create'),
     }
 )
+# Gateway export name -> operation id, so a tools/list that already uses the
+# published name still picks up the exception above.
+_EXPORT_OPERATION_IDS = {
+    'email_broadcasts_preview': 'api_v1_broadcasts_preview',
+    'email_render_preview_templates': 'api_v1_templates_render_preview',
+    'hosting_create_apps_deployments_finalize': 'hosting_v1_apps_deployments_finalize_create',
+    'hosting_create_apps_deployments_rollback': 'hosting_v1_apps_deployments_rollback_create',
+    'hosting_create_apps_domains': 'hosting_v1_apps_domains_create',
+    'hosting_create_apps_domains_refresh': 'hosting_v1_apps_domains_refresh_create',
+    'hosting_create_apps_environment': 'hosting_v1_apps_environment_create',
+    'hosting_replace_apps_environment': 'hosting_v1_apps_environment_update',
+    'hosting_revoke_deploy_token': 'hosting_v1_deploy_tokens_revoke_create',
+    'hosting_rotate_rule_secret': 'api_v1_actions_rules_rotate_secret',
+    'storage_create_object_list': 'storage_v1_object_list_create',
+    'storage_empty_bucket': 'storage_v1_bucket_empty_create',
+}
+
+
+def _service_from_tool_name(tool_name: str) -> str:
+    name = str(tool_name or '')
+    for service_id in ('identity', 'storage', 'hosting', 'email', 'saas'):
+        if name == service_id or name.startswith(f'{service_id}_'):
+            return service_id
+    return ''
+
+
+def apply_operation_access(meta: dict[str, Any], *, tool_name: str, service_id: str = '') -> dict[str, Any]:
+    """Apply the per-service read-only and destructive POST exceptions."""
+    out = dict(meta)
+    keys = {
+        str(out.get('operationId') or ''),
+        str(tool_name or ''),
+        str(out.get('legacy_tool_name') or ''),
+    }
+    keys.discard('')
+    keys.update(_EXPORT_OPERATION_IDS[key] for key in list(keys) if key in _EXPORT_OPERATION_IDS)
+    service = str(service_id or _service_from_tool_name(tool_name) or '')
+    if not service:
+        owners = {
+            pair_service
+            for pair_service, key in READ_ONLY_POST_OPERATION_IDS | DESTRUCTIVE_POST_OPERATION_IDS
+            if key in keys
+        }
+        if len(owners) == 1:
+            service = next(iter(owners))
+    if not service:
+        return out
+    if any((service, key) in READ_ONLY_POST_OPERATION_IDS for key in keys):
+        out['read_only'] = True
+        out['destructive'] = False
+    elif any((service, key) in DESTRUCTIVE_POST_OPERATION_IDS for key in keys):
+        out['destructive'] = True
+        out['read_only'] = False
+    elif str(out.get('method') or '').upper() != 'DELETE':
+        # The same operation id can be destructive for one service only.
+        # A guess made before the service was known must not stick.
+        foreign = {key for svc, key in DESTRUCTIVE_POST_OPERATION_IDS if svc != service}
+        if keys & foreign:
+            out['destructive'] = False
+    return out
 
 
 def recover_registry_access(
@@ -573,6 +647,7 @@ def recover_registry_access(
     tool_name: str,
     explicit_read_only: bool = False,
     explicit_destructive: bool = False,
+    service_id: str = '',
 ) -> dict[str, Any]:
     """Fill operation id and access flags stripped from a downstream tools/list row."""
     from apps.connector.mcp_tool_naming import (
@@ -588,8 +663,8 @@ def recover_registry_access(
         if recovered:
             out['operationId'] = recovered
     elif legacy_operation_id_from_tool_name(current) is None:
-        # ``identity_revoke_personal_access_tokens`` is the operation id after #147.
-        # The exception sets below still use the registry slug.
+        # Older catalogs used the registry slug. Keep a published operation id
+        # that is already in the exception sets above.
         mapped = operation_id_for_upstream_tool_name(current) or operation_id_for_upstream_tool_name(tool_name)
         if mapped:
             out['operationId'] = mapped
@@ -618,7 +693,7 @@ def recover_registry_access(
         out['destructive'] = True
     elif method in {'GET', 'HEAD', 'OPTIONS'} and not explicit_read_only:
         out['read_only'] = True
-    return out
+    return apply_operation_access(out, tool_name=tool_name, service_id=service_id)
 
 
 def _ensure_operation_meta(meta: dict[str, Any], schema: dict[str, Any] | None) -> dict[str, Any]:
@@ -718,9 +793,9 @@ def normalize_mcp_tool(tool: dict[str, Any], root: dict[str, Any] | None = None)
         else:
             core = name.split('_', 1)[1] if '_' in name else name
             read_only = core.startswith(('list_', 'get_')) or core.endswith(('_list', '_retrieve', '_get'))
-            destructive = core.startswith(('delete_', 'create_', 'update_', 'replace_', 'destroy_')) or core.endswith(
-                ('_destroy', '_delete', '_create', '_update')
-            )
+            # Names like update_ and replace_ are ordinary writes. Only a delete is
+            # destructive when the registry did not say so.
+            destructive = core.startswith(('delete_', 'destroy_')) or core.endswith(('_destroy', '_delete'))
             out['annotations'] = {
                 'readOnlyHint': read_only,
                 'destructiveHint': destructive and not read_only,
