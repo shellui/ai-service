@@ -832,6 +832,25 @@ class PrefixingMcpServer(AggregatingMcpServer):
         company_label = resolve_company_label(agent_claims, agent=agent)
         return [apply_gateway_tool_presentation(tool, company_label=company_label) for tool in tools]
 
+    def _cached_export_tools(self, agent_claims: dict) -> list[dict]:
+        """Operational tools already cached by tools/list. Does not call downstream."""
+        agent = self._gateway.resolve_agent(agent_claims)
+        if agent is None:
+            return []
+        allowed = scope_service_ids(agent_claims) & set(agent.services_allowed or [])
+        local = [normalize_mcp_tool(tool) for tool in tools_from_schema(self.schema_provider())]
+        local_id = self._gateway.local_service_id
+        remote: dict[str, list[dict]] = {}
+        for service_id, mcp_url in self._gateway.get_service_urls().items():
+            if service_id == local_id or service_id not in allowed:
+                continue
+            cached = self._cache().get(f'{_TOOLS_LIST_CACHE_PREFIX}{mcp_url}')
+            if isinstance(cached, list):
+                remote[service_id] = [normalize_mcp_tool(tool) if isinstance(tool, dict) else tool for tool in cached]
+        tools = prefixed_tool_catalog(local, remote, local_service_id=local_id)
+        company_label = resolve_company_label(agent_claims, agent=agent)
+        return [apply_gateway_tool_presentation(tool, company_label=company_label) for tool in tools]
+
     def _aggregated_tools_list(self, req_id, agent_claims, params=None):
         catalog = self._export_catalog(agent_claims)
         if catalog is None:

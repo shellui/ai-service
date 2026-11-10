@@ -14,17 +14,13 @@ from apps.connector.services import list_mcp_services
 
 
 def _connected_tool_catalog() -> list[dict] | None:
-    """Operational tools for the current MCP agent, when this request is a gateway call."""
-    from apps.connector.downstream_tokens import DownstreamTokenError
+    """Tools already cached by tools/list. Listing services does not call downstream."""
     from apps.connector.mcp_views import _get_server, _mcp_agent_claims
 
     claims = _mcp_agent_claims.get()
     if not isinstance(claims, dict):
         return None
-    try:
-        return _get_server()._export_catalog(claims)
-    except (DownstreamTokenError, OSError, RuntimeError):
-        return None
+    return _get_server()._cached_export_tools(claims)
 
 
 class HealthView(APIView):
