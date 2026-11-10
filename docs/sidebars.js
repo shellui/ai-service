@@ -6,6 +6,7 @@ const sidebars = {
     { type: 'doc', id: 'devstack', label: 'Local dev stack' },
     { type: 'doc', id: 'configuration', label: 'Configuration' },
     { type: 'doc', id: 'mcp', label: 'MCP gateway' },
+    { type: 'doc', id: 'mcp-handbook', label: 'MCP backend handbook' },
     { type: 'doc', id: 'mcp-device-login', label: 'Device login' },
   ],
 };

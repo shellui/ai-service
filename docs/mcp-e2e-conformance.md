@@ -20,6 +20,8 @@ On the **ai** service, **`STORAGE_SERVICE_URL`**, **`HOSTING_SERVICE_URL`**, and
 
 So the default suite proves **MCP + OAuth + ai gateway + identity** for the flows in `tools/mcp-e2e` (including negatives such as tenant isolation, revoked agents, and invalid OAuth where the scripts cover them). It does **not** prove routing through real **storage**, **hosting**, or **email** gateways, full delegated-downstream integration, or production SaaS behavior.
 
+The default `tools/list` result is the discovery set. `?tools=all` returns everything.
+
 The gateway **`initialize`** response echoes **`protocolVersion`** when the client sends one of the revisions in `apps.connector.mcp_protocol.SUPPORTED_PROTOCOL_VERSIONS`. A newer revision, such as the official SDK's `2025-11-25`, is answered with the newest revision this gateway implements (`2025-06-18`). A missing version is still **JSON-RPC -32600**. Default CI still uses empty downstream URLs and the SaaS mock, so **live** delegated downstream MCP is not exercised automatically.
 
 ## Optional downstream URLs (manual local evidence only)
