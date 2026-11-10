@@ -7,10 +7,10 @@ through the Django MCP endpoint with a company-scoped agent token. Upstream HTTP
 mocked at ``requests.post``.
 
 Pinned revisions:
-- identity-service 693c742f5f8d9d8aa5ceeec5c913896d5ee7f2d1
-- storage-service 244150942b72cc1df0c7dc945286a7bef572b0c0
-- hosting-service e21f8a9c53541ff1452c380d7dd5920f7bda3de9
-- email-service 3fcc5243c160f722000ddf758e8c9a753c51e49d
+- identity-service c38b4141dfa344d74bc7854bf351df83fcbd9088
+- storage-service 3da5cda21a48f9c16ca1af5bc5bd8daf71d2cdc3
+- hosting-service 3e4721a17ec8821c527a61d616b59b99e7805475
+- email-service f5b2cdfd5430d25dfa4140de32356b621adc521a
 
 saas-service is not published; the gateway exposes no saas tools.
 
