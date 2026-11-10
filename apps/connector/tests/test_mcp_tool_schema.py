@@ -7,7 +7,7 @@ from drf_spectacular.generators import SchemaGenerator
 
 from apps.connector.mcp_openapi_tools import tools_from_schema
 from apps.connector.mcp_tenant import input_schema_has_tenant_fields
-from apps.connector.mcp_tool_schema import audit_tool_input_schemas, normalize_mcp_tool
+from apps.connector.mcp_tool_schema import audit_tool_input_schemas, normalize_mcp_tool, openapi_schema_to_json_schema
 
 
 @override_settings(
@@ -108,6 +108,95 @@ class McpToolSchemaAuditTests(TestCase):
         self.assertTrue(fixed['_meta']['read_only'])
         self.assertTrue(fixed['annotations']['readOnlyHint'])
         self.assertFalse(fixed['annotations']['destructiveHint'])
+
+    def test_described_ref_allof_keeps_object_properties(self):
+        root = {
+            'components': {
+                'schemas': {
+                    'BroadcastAudience': {
+                        'type': 'object',
+                        'description': 'Who receives the broadcast.',
+                        'required': ['mode'],
+                        'properties': {
+                            'mode': {
+                                'type': 'string',
+                                'enum': ['filter', 'pick', 'newsletter'],
+                                'description': 'How recipients are chosen.',
+                            },
+                            'emails': {
+                                'type': 'array',
+                                'description': 'Addresses outside the directory.',
+                                'items': {'type': 'string', 'description': 'Email address.'},
+                            },
+                        },
+                    }
+                }
+            }
+        }
+        converted = openapi_schema_to_json_schema(
+            {
+                'allOf': [{'$ref': '#/components/schemas/BroadcastAudience'}],
+                'description': 'Defaults to the saved audience.',
+            },
+            root,
+        )
+        self.assertEqual(converted['type'], 'object')
+        self.assertIn('mode', converted['properties'])
+        self.assertIs(converted['additionalProperties'], False)
+        self.assertNotIn('allOf', converted)
+        self.assertNotIn('$ref', converted)
+
+    def test_untyped_editor_fields_are_not_free_form_objects(self):
+        from apps.connector.mcp_schema_inspector import inspect_tool
+
+        body = {
+            'type': 'object',
+            'properties': {
+                'document': {},
+                'theme': {'description': 'Colors that repaint a library design.'},
+                'translations': {'description': 'Other languages of the copy.'},
+                'variables': {'description': 'Placeholder map for tokens.'},
+                'first_name': {'type': 'string', 'description': 'Given name.'},
+                'group_ids': {
+                    'type': 'array',
+                    'description': 'Manual group ids.',
+                    'items': {'type': 'integer', 'description': 'Group id.'},
+                },
+                'data': {},
+            },
+        }
+        converted = openapi_schema_to_json_schema(body, {'components': {'schemas': {}}})
+        props = converted['properties']
+        for name in ('document', 'theme', 'translations', 'variables', 'data'):
+            self.assertIsNot(props[name].get('additionalProperties'), True, name)
+            self.assertTrue(props[name].get('properties') or props[name].get('additionalProperties'), name)
+        self.assertIn('type', props['document']['properties'])
+        self.assertIn('colors', props['theme']['properties'])
+        self.assertIn('fr', props['translations']['properties'])
+        self.assertEqual(props['variables']['additionalProperties']['type'], 'string')
+        self.assertIn('shelluiPreferences', props['data']['properties'])
+        tool = normalize_mcp_tool(
+            {
+                'name': 'email_create_library',
+                'description': 'Create a company email design from a document, theme, and translations.',
+                'inputSchema': {
+                    'type': 'object',
+                    'additionalProperties': False,
+                    'properties': {
+                        'body': {
+                            'type': 'object',
+                            'description': 'JSON request body.',
+                            'additionalProperties': False,
+                            'properties': props,
+                        }
+                    },
+                },
+            }
+        )
+        categories = {issue.category for issue in inspect_tool('email', tool)}
+        self.assertNotIn('broad_free_form_object', categories)
+        self.assertNotIn('untyped_or_empty', categories)
+        self.assertNotIn('missing_description', categories)
 
     def test_openapi_tools_never_expose_company_id(self):
         schema = SchemaGenerator().get_schema(request=None, public=True)

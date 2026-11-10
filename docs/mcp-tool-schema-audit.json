@@ -7,7 +7,7 @@
         "service": "ai",
         "legacy_name": "api_v1_mcp_services_list",
         "service_tool_name": "list_services",
-        "gateway_tool_name": "ai_list_services"
+        "gateway_tool_name": "list_services"
       }
     ],
     "before": [
@@ -76,6 +76,12 @@
     "name_mappings": [
       {
         "service": "identity",
+        "legacy_name": "api_v1_actions_rules_create",
+        "service_tool_name": "create_action_rules",
+        "gateway_tool_name": "identity_create_action_rules"
+      },
+      {
+        "service": "identity",
         "legacy_name": "api_v1_groups_create",
         "service_tool_name": "create_groups",
         "gateway_tool_name": "identity_create_groups"
@@ -112,15 +118,15 @@
       },
       {
         "service": "identity",
-        "legacy_name": "api_v1_actions_rules_create",
-        "service_tool_name": "create_rules",
-        "gateway_tool_name": "identity_create_rules"
-      },
-      {
-        "service": "identity",
         "legacy_name": "api_v1_scim_tokens_create",
         "service_tool_name": "create_scim_tokens",
         "gateway_tool_name": "identity_create_scim_tokens"
+      },
+      {
+        "service": "identity",
+        "legacy_name": "api_v1_actions_rules_destroy",
+        "service_tool_name": "delete_action_rules",
+        "gateway_tool_name": "identity_delete_action_rules"
       },
       {
         "service": "identity",
@@ -160,15 +166,21 @@
       },
       {
         "service": "identity",
-        "legacy_name": "api_v1_actions_rules_destroy",
-        "service_tool_name": "delete_rules",
-        "gateway_tool_name": "identity_delete_rules"
-      },
-      {
-        "service": "identity",
         "legacy_name": "api_v1_users_destroy",
         "service_tool_name": "delete_users",
         "gateway_tool_name": "identity_delete_users"
+      },
+      {
+        "service": "identity",
+        "legacy_name": "api_v1_actions_deliveries_retrieve",
+        "service_tool_name": "get_action_deliveries",
+        "gateway_tool_name": "identity_get_action_deliveries"
+      },
+      {
+        "service": "identity",
+        "legacy_name": "api_v1_actions_rules_retrieve",
+        "service_tool_name": "get_action_rules",
+        "gateway_tool_name": "identity_get_action_rules"
       },
       {
         "service": "identity",
@@ -181,12 +193,6 @@
         "legacy_name": "api_v1_companies_retrieve",
         "service_tool_name": "get_companies",
         "gateway_tool_name": "identity_get_companies"
-      },
-      {
-        "service": "identity",
-        "legacy_name": "api_v1_actions_deliveries_retrieve",
-        "service_tool_name": "get_deliveries",
-        "gateway_tool_name": "identity_get_deliveries"
       },
       {
         "service": "identity",
@@ -226,9 +232,9 @@
       },
       {
         "service": "identity",
-        "legacy_name": "api_v1_actions_rules_retrieve",
-        "service_tool_name": "get_rules",
-        "gateway_tool_name": "identity_get_rules"
+        "legacy_name": "api_v1_scim_status",
+        "service_tool_name": "get_scim_status",
+        "gateway_tool_name": "identity_get_scim_status"
       },
       {
         "service": "identity",
@@ -238,9 +244,27 @@
       },
       {
         "service": "identity",
-        "legacy_name": "api_v1_invitations_revoke",
-        "service_tool_name": "invitations_revoke",
-        "gateway_tool_name": "identity_invitations_revoke"
+        "legacy_name": "api_v1_users_audience",
+        "service_tool_name": "get_users_audience",
+        "gateway_tool_name": "identity_get_users_audience"
+      },
+      {
+        "service": "identity",
+        "legacy_name": "api_v1_actions_deliveries_list",
+        "service_tool_name": "list_action_deliveries",
+        "gateway_tool_name": "identity_list_action_deliveries"
+      },
+      {
+        "service": "identity",
+        "legacy_name": "api_v1_actions_events_list",
+        "service_tool_name": "list_action_events",
+        "gateway_tool_name": "identity_list_action_events"
+      },
+      {
+        "service": "identity",
+        "legacy_name": "api_v1_actions_rules_list",
+        "service_tool_name": "list_action_rules",
+        "gateway_tool_name": "identity_list_action_rules"
       },
       {
         "service": "identity",
@@ -250,21 +274,9 @@
       },
       {
         "service": "identity",
-        "legacy_name": "api_v1_actions_deliveries_list",
-        "service_tool_name": "list_deliveries",
-        "gateway_tool_name": "identity_list_deliveries"
-      },
-      {
-        "service": "identity",
-        "legacy_name": "api_v1_actions_events_list",
+        "legacy_name": "api_v1_events_list",
         "service_tool_name": "list_events",
         "gateway_tool_name": "identity_list_events"
-      },
-      {
-        "service": "identity",
-        "legacy_name": "api_v1_events_list",
-        "service_tool_name": "list_events_2",
-        "gateway_tool_name": "identity_list_events_2"
       },
       {
         "service": "identity",
@@ -310,12 +322,6 @@
       },
       {
         "service": "identity",
-        "legacy_name": "api_v1_actions_rules_list",
-        "service_tool_name": "list_rules",
-        "gateway_tool_name": "identity_list_rules"
-      },
-      {
-        "service": "identity",
         "legacy_name": "api_v1_scim_tokens_list",
         "service_tool_name": "list_scim_tokens",
         "gateway_tool_name": "identity_list_scim_tokens"
@@ -334,39 +340,87 @@
       },
       {
         "service": "identity",
-        "legacy_name": "api_v1_personal_access_tokens_revoke",
-        "service_tool_name": "personal_access_tokens_revoke",
-        "gateway_tool_name": "identity_personal_access_tokens_revoke"
+        "legacy_name": "api_v1_auth_methods_update",
+        "service_tool_name": "replace_auth_methods",
+        "gateway_tool_name": "identity_replace_auth_methods"
+      },
+      {
+        "service": "identity",
+        "legacy_name": "api_v1_companies_update",
+        "service_tool_name": "replace_companies",
+        "gateway_tool_name": "identity_replace_companies"
+      },
+      {
+        "service": "identity",
+        "legacy_name": "api_v1_groups_update",
+        "service_tool_name": "replace_groups",
+        "gateway_tool_name": "identity_replace_groups"
+      },
+      {
+        "service": "identity",
+        "legacy_name": "api_v1_hosting_oauth_redirects_update",
+        "service_tool_name": "replace_hosting_oauth_redirects",
+        "gateway_tool_name": "identity_replace_hosting_oauth_redirects"
+      },
+      {
+        "service": "identity",
+        "legacy_name": "api_v1_oauth_clients_update",
+        "service_tool_name": "replace_oauth_clients",
+        "gateway_tool_name": "identity_replace_oauth_clients"
+      },
+      {
+        "service": "identity",
+        "legacy_name": "api_v1_oauth_social_apps_update",
+        "service_tool_name": "replace_oauth_social_apps",
+        "gateway_tool_name": "identity_replace_oauth_social_apps"
+      },
+      {
+        "service": "identity",
+        "legacy_name": "api_v1_users_update",
+        "service_tool_name": "replace_users",
+        "gateway_tool_name": "identity_replace_users"
       },
       {
         "service": "identity",
         "legacy_name": "api_v1_actions_deliveries_requeue",
-        "service_tool_name": "requeue_deliveries",
-        "gateway_tool_name": "identity_requeue_deliveries"
+        "service_tool_name": "requeue_action_deliveries",
+        "gateway_tool_name": "identity_requeue_action_deliveries"
       },
       {
         "service": "identity",
-        "legacy_name": "api_v1_actions_rules_rotate_secret",
-        "service_tool_name": "rotate_secret_rules",
-        "gateway_tool_name": "identity_rotate_secret_rules"
+        "legacy_name": "api_v1_invitations_revoke",
+        "service_tool_name": "revoke_invitations",
+        "gateway_tool_name": "identity_revoke_invitations"
       },
       {
         "service": "identity",
-        "legacy_name": "api_v1_scim_status",
-        "service_tool_name": "scim_status",
-        "gateway_tool_name": "identity_scim_status"
+        "legacy_name": "api_v1_personal_access_tokens_revoke",
+        "service_tool_name": "revoke_personal_access_tokens",
+        "gateway_tool_name": "identity_revoke_personal_access_tokens"
       },
       {
         "service": "identity",
         "legacy_name": "api_v1_scim_tokens_revoke",
-        "service_tool_name": "scim_tokens_revoke",
-        "gateway_tool_name": "identity_scim_tokens_revoke"
+        "service_tool_name": "revoke_scim_tokens",
+        "gateway_tool_name": "identity_revoke_scim_tokens"
+      },
+      {
+        "service": "identity",
+        "legacy_name": "api_v1_actions_rules_rotate_secret",
+        "service_tool_name": "rotate_rule_secret",
+        "gateway_tool_name": "identity_rotate_rule_secret"
       },
       {
         "service": "identity",
         "legacy_name": "api_v1_actions_rules_send_test",
-        "service_tool_name": "send_test_rules",
-        "gateway_tool_name": "identity_send_test_rules"
+        "service_tool_name": "send_test_rule",
+        "gateway_tool_name": "identity_send_test_rule"
+      },
+      {
+        "service": "identity",
+        "legacy_name": "api_v1_actions_rules_partial_update",
+        "service_tool_name": "update_action_rules",
+        "gateway_tool_name": "identity_update_action_rules"
       },
       {
         "service": "identity",
@@ -376,21 +430,9 @@
       },
       {
         "service": "identity",
-        "legacy_name": "api_v1_auth_methods_update",
-        "service_tool_name": "update_auth_methods_2",
-        "gateway_tool_name": "identity_update_auth_methods_2"
-      },
-      {
-        "service": "identity",
         "legacy_name": "api_v1_companies_partial_update",
         "service_tool_name": "update_companies",
         "gateway_tool_name": "identity_update_companies"
-      },
-      {
-        "service": "identity",
-        "legacy_name": "api_v1_companies_update",
-        "service_tool_name": "update_companies_2",
-        "gateway_tool_name": "identity_update_companies_2"
       },
       {
         "service": "identity",
@@ -400,51 +442,9 @@
       },
       {
         "service": "identity",
-        "legacy_name": "api_v1_groups_update",
-        "service_tool_name": "update_groups_2",
-        "gateway_tool_name": "identity_update_groups_2"
-      },
-      {
-        "service": "identity",
-        "legacy_name": "api_v1_hosting_oauth_redirects_update",
-        "service_tool_name": "update_hosting_oauth_redirects",
-        "gateway_tool_name": "identity_update_hosting_oauth_redirects"
-      },
-      {
-        "service": "identity",
-        "legacy_name": "api_v1_oauth_clients_update",
-        "service_tool_name": "update_oauth_clients",
-        "gateway_tool_name": "identity_update_oauth_clients"
-      },
-      {
-        "service": "identity",
         "legacy_name": "api_v1_oauth_redirects_partial_update",
         "service_tool_name": "update_oauth_redirects",
         "gateway_tool_name": "identity_update_oauth_redirects"
-      },
-      {
-        "service": "identity",
-        "legacy_name": "api_v1_oauth_social_apps_update",
-        "service_tool_name": "update_oauth_social_apps",
-        "gateway_tool_name": "identity_update_oauth_social_apps"
-      },
-      {
-        "service": "identity",
-        "legacy_name": "api_v1_actions_rules_partial_update",
-        "service_tool_name": "update_rules",
-        "gateway_tool_name": "identity_update_rules"
-      },
-      {
-        "service": "identity",
-        "legacy_name": "api_v1_users_update",
-        "service_tool_name": "update_users",
-        "gateway_tool_name": "identity_update_users"
-      },
-      {
-        "service": "identity",
-        "legacy_name": "api_v1_users_audience",
-        "service_tool_name": "users_audience",
-        "gateway_tool_name": "identity_users_audience"
       }
     ],
     "before": [
@@ -2738,7 +2738,7 @@
   },
   {
     "service": "storage",
-    "tool_count": 44,
+    "tool_count": 53,
     "name_mappings": [
       {
         "service": "storage",
@@ -2751,6 +2751,36 @@
         "legacy_name": "storage_v1_access_grant_create",
         "service_tool_name": "create_access_grant",
         "gateway_tool_name": "storage_create_access_grant"
+      },
+      {
+        "service": "storage",
+        "legacy_name": "api_v1_actions_rules_create",
+        "service_tool_name": "create_action_rules",
+        "gateway_tool_name": "storage_create_action_rules"
+      },
+      {
+        "service": "storage",
+        "legacy_name": "storage_v1_connector_create",
+        "service_tool_name": "create_connector",
+        "gateway_tool_name": "storage_create_connector"
+      },
+      {
+        "service": "storage",
+        "legacy_name": "storage_v1_connector_configuration_check_create",
+        "service_tool_name": "create_connector_configuration_check",
+        "gateway_tool_name": "storage_create_connector_configuration_check"
+      },
+      {
+        "service": "storage",
+        "legacy_name": "storage_v1_connector_configuration_retry_create",
+        "service_tool_name": "create_connector_configuration_retry",
+        "gateway_tool_name": "storage_create_connector_configuration_retry"
+      },
+      {
+        "service": "storage",
+        "legacy_name": "storage_v1_connector_configuration_validate_create",
+        "service_tool_name": "create_connector_configuration_validate",
+        "gateway_tool_name": "storage_create_connector_configuration_validate"
       },
       {
         "service": "storage",
@@ -2772,12 +2802,6 @@
       },
       {
         "service": "storage",
-        "legacy_name": "api_v1_actions_rules_create",
-        "service_tool_name": "create_rules",
-        "gateway_tool_name": "storage_create_rules"
-      },
-      {
-        "service": "storage",
         "legacy_name": "storage_v1_share_create",
         "service_tool_name": "create_share",
         "gateway_tool_name": "storage_create_share"
@@ -2787,6 +2811,18 @@
         "legacy_name": "storage_v1_access_grant_destroy",
         "service_tool_name": "delete_access_grant",
         "gateway_tool_name": "storage_delete_access_grant"
+      },
+      {
+        "service": "storage",
+        "legacy_name": "api_v1_actions_rules_destroy",
+        "service_tool_name": "delete_action_rules",
+        "gateway_tool_name": "storage_delete_action_rules"
+      },
+      {
+        "service": "storage",
+        "legacy_name": "storage_v1_connector_destroy",
+        "service_tool_name": "delete_connector",
+        "gateway_tool_name": "storage_delete_connector"
       },
       {
         "service": "storage",
@@ -2814,15 +2850,33 @@
       },
       {
         "service": "storage",
-        "legacy_name": "api_v1_actions_rules_destroy",
-        "service_tool_name": "delete_rules",
-        "gateway_tool_name": "storage_delete_rules"
-      },
-      {
-        "service": "storage",
         "legacy_name": "storage_v1_bucket_empty_create",
         "service_tool_name": "empty_bucket",
         "gateway_tool_name": "storage_empty_bucket"
+      },
+      {
+        "service": "storage",
+        "legacy_name": "api_v1_actions_deliveries_retrieve",
+        "service_tool_name": "get_action_deliveries",
+        "gateway_tool_name": "storage_get_action_deliveries"
+      },
+      {
+        "service": "storage",
+        "legacy_name": "api_v1_actions_event_log_retrieve",
+        "service_tool_name": "get_action_event_log",
+        "gateway_tool_name": "storage_get_action_event_log"
+      },
+      {
+        "service": "storage",
+        "legacy_name": "api_v1_actions_event_log_retention_retrieve",
+        "service_tool_name": "get_action_event_log_retention",
+        "gateway_tool_name": "storage_get_action_event_log_retention"
+      },
+      {
+        "service": "storage",
+        "legacy_name": "api_v1_actions_rules_retrieve",
+        "service_tool_name": "get_action_rules",
+        "gateway_tool_name": "storage_get_action_rules"
       },
       {
         "service": "storage",
@@ -2832,33 +2886,15 @@
       },
       {
         "service": "storage",
-        "legacy_name": "api_v1_actions_deliveries_retrieve",
-        "service_tool_name": "get_deliveries",
-        "gateway_tool_name": "storage_get_deliveries"
-      },
-      {
-        "service": "storage",
-        "legacy_name": "api_v1_actions_event_log_retrieve",
-        "service_tool_name": "get_event_log",
-        "gateway_tool_name": "storage_get_event_log"
-      },
-      {
-        "service": "storage",
-        "legacy_name": "api_v1_actions_event_log_retention_retrieve",
-        "service_tool_name": "get_event_log_retention",
-        "gateway_tool_name": "storage_get_event_log_retention"
+        "legacy_name": "storage_v1_connector_retrieve",
+        "service_tool_name": "get_connector",
+        "gateway_tool_name": "storage_get_connector"
       },
       {
         "service": "storage",
         "legacy_name": "storage_v1_object_authenticated_retrieve",
         "service_tool_name": "get_object",
         "gateway_tool_name": "storage_get_object"
-      },
-      {
-        "service": "storage",
-        "legacy_name": "storage_v1_object_retrieve",
-        "service_tool_name": "get_object_2",
-        "gateway_tool_name": "storage_get_object_2"
       },
       {
         "service": "storage",
@@ -2880,15 +2916,15 @@
       },
       {
         "service": "storage",
-        "legacy_name": "storage_v1_quota_retrieve",
-        "service_tool_name": "get_quota",
-        "gateway_tool_name": "storage_get_quota"
+        "legacy_name": "storage_v1_object_retrieve",
+        "service_tool_name": "get_public_object",
+        "gateway_tool_name": "storage_get_public_object"
       },
       {
         "service": "storage",
-        "legacy_name": "api_v1_actions_rules_retrieve",
-        "service_tool_name": "get_rules",
-        "gateway_tool_name": "storage_get_rules"
+        "legacy_name": "storage_v1_quota_retrieve",
+        "service_tool_name": "get_quota",
+        "gateway_tool_name": "storage_get_quota"
       },
       {
         "service": "storage",
@@ -2904,39 +2940,45 @@
       },
       {
         "service": "storage",
+        "legacy_name": "api_v1_actions_deliveries_list",
+        "service_tool_name": "list_action_deliveries",
+        "gateway_tool_name": "storage_list_action_deliveries"
+      },
+      {
+        "service": "storage",
+        "legacy_name": "api_v1_actions_event_log_list",
+        "service_tool_name": "list_action_event_log",
+        "gateway_tool_name": "storage_list_action_event_log"
+      },
+      {
+        "service": "storage",
+        "legacy_name": "api_v1_actions_event_log_types_list",
+        "service_tool_name": "list_action_event_log_types",
+        "gateway_tool_name": "storage_list_action_event_log_types"
+      },
+      {
+        "service": "storage",
+        "legacy_name": "api_v1_actions_events_list",
+        "service_tool_name": "list_action_events",
+        "gateway_tool_name": "storage_list_action_events"
+      },
+      {
+        "service": "storage",
+        "legacy_name": "api_v1_actions_rules_list",
+        "service_tool_name": "list_action_rules",
+        "gateway_tool_name": "storage_list_action_rules"
+      },
+      {
+        "service": "storage",
         "legacy_name": "storage_v1_bucket_list",
         "service_tool_name": "list_bucket",
         "gateway_tool_name": "storage_list_bucket"
       },
       {
         "service": "storage",
-        "legacy_name": "api_v1_actions_deliveries_list",
-        "service_tool_name": "list_deliveries",
-        "gateway_tool_name": "storage_list_deliveries"
-      },
-      {
-        "service": "storage",
-        "legacy_name": "api_v1_actions_event_log_list",
-        "service_tool_name": "list_event_log",
-        "gateway_tool_name": "storage_list_event_log"
-      },
-      {
-        "service": "storage",
-        "legacy_name": "api_v1_actions_event_log_types_list",
-        "service_tool_name": "list_event_log_types",
-        "gateway_tool_name": "storage_list_event_log_types"
-      },
-      {
-        "service": "storage",
-        "legacy_name": "api_v1_actions_events_list",
-        "service_tool_name": "list_events",
-        "gateway_tool_name": "storage_list_events"
-      },
-      {
-        "service": "storage",
-        "legacy_name": "api_v1_actions_rules_list",
-        "service_tool_name": "list_rules",
-        "gateway_tool_name": "storage_list_rules"
+        "legacy_name": "storage_v1_connector_list",
+        "service_tool_name": "list_connector",
+        "gateway_tool_name": "storage_list_connector"
       },
       {
         "service": "storage",
@@ -2952,21 +2994,45 @@
       },
       {
         "service": "storage",
+        "legacy_name": "storage_v1_connector_update",
+        "service_tool_name": "replace_connector",
+        "gateway_tool_name": "storage_replace_connector"
+      },
+      {
+        "service": "storage",
+        "legacy_name": "storage_v1_object_update",
+        "service_tool_name": "replace_object",
+        "gateway_tool_name": "storage_replace_object"
+      },
+      {
+        "service": "storage",
+        "legacy_name": "storage_v1_quota_company_update",
+        "service_tool_name": "replace_quota_company",
+        "gateway_tool_name": "storage_replace_quota_company"
+      },
+      {
+        "service": "storage",
+        "legacy_name": "storage_v1_quota_company_user_update",
+        "service_tool_name": "replace_quota_company_user",
+        "gateway_tool_name": "storage_replace_quota_company_user"
+      },
+      {
+        "service": "storage",
         "legacy_name": "api_v1_actions_deliveries_requeue",
-        "service_tool_name": "requeue_deliveries",
-        "gateway_tool_name": "storage_requeue_deliveries"
+        "service_tool_name": "requeue_action_deliveries",
+        "gateway_tool_name": "storage_requeue_action_deliveries"
       },
       {
         "service": "storage",
         "legacy_name": "api_v1_actions_rules_rotate_secret",
-        "service_tool_name": "rotate_secret_rules",
-        "gateway_tool_name": "storage_rotate_secret_rules"
+        "service_tool_name": "rotate_rule_secret",
+        "gateway_tool_name": "storage_rotate_rule_secret"
       },
       {
         "service": "storage",
         "legacy_name": "api_v1_actions_rules_send_test",
-        "service_tool_name": "send_test_rules",
-        "gateway_tool_name": "storage_send_test_rules"
+        "service_tool_name": "send_test_rule",
+        "gateway_tool_name": "storage_send_test_rule"
       },
       {
         "service": "storage",
@@ -2977,32 +3043,20 @@
       {
         "service": "storage",
         "legacy_name": "storage_v1_object_sign_path_create",
-        "service_tool_name": "sign_path_object",
-        "gateway_tool_name": "storage_sign_path_object"
-      },
-      {
-        "service": "storage",
-        "legacy_name": "storage_v1_object_update",
-        "service_tool_name": "update_object",
-        "gateway_tool_name": "storage_update_object"
-      },
-      {
-        "service": "storage",
-        "legacy_name": "storage_v1_quota_company_update",
-        "service_tool_name": "update_quota_company",
-        "gateway_tool_name": "storage_update_quota_company"
-      },
-      {
-        "service": "storage",
-        "legacy_name": "storage_v1_quota_company_user_update",
-        "service_tool_name": "update_quota_company_user",
-        "gateway_tool_name": "storage_update_quota_company_user"
+        "service_tool_name": "sign_object_path",
+        "gateway_tool_name": "storage_sign_object_path"
       },
       {
         "service": "storage",
         "legacy_name": "api_v1_actions_rules_partial_update",
-        "service_tool_name": "update_rules",
-        "gateway_tool_name": "storage_update_rules"
+        "service_tool_name": "update_action_rules",
+        "gateway_tool_name": "storage_update_action_rules"
+      },
+      {
+        "service": "storage",
+        "legacy_name": "storage_v1_connector_partial_update",
+        "service_tool_name": "update_connector",
+        "gateway_tool_name": "storage_update_connector"
       }
     ],
     "before": [
@@ -3689,6 +3743,230 @@
         "service": "storage",
         "tool": "storage_v1_bucket_retrieve",
         "path": "properties.path_params.properties.bucket_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_connector_configuration_check_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_connector_configuration_check_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_connector_configuration_check_create",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_connector_configuration_check_create",
+        "path": "properties.path_params.properties.connector_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_connector_configuration_retry_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_connector_configuration_retry_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_connector_configuration_retry_create",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_connector_configuration_retry_create",
+        "path": "properties.path_params.properties.connector_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_connector_configuration_validate_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_connector_configuration_validate_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_connector_configuration_validate_create",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_connector_configuration_validate_create",
+        "path": "properties.path_params.properties.connector_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_connector_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_connector_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_connector_destroy",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_connector_destroy",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_connector_destroy",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_connector_destroy",
+        "path": "properties.path_params.properties.connector_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_connector_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_connector_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_connector_partial_update",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_connector_partial_update",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_connector_partial_update",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_connector_partial_update",
+        "path": "properties.path_params.properties.connector_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_connector_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_connector_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_connector_retrieve",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_connector_retrieve",
+        "path": "properties.path_params.properties.connector_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_connector_update",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_connector_update",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_connector_update",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "storage",
+        "tool": "storage_v1_connector_update",
+        "path": "properties.path_params.properties.connector_id",
         "category": "missing_description",
         "detail": "missing description"
       },
@@ -4564,17 +4842,17 @@
     "after_source": [],
     "after_gateway": [],
     "before_summary": {
-      "total_issues": 222,
-      "tools_with_issues": 44,
+      "total_issues": 254,
+      "tools_with_issues": 53,
       "by_category": {
-        "missing_annotations": 44,
-        "missing_description": 89,
-        "missing_title": 44,
+        "missing_annotations": 53,
+        "missing_description": 103,
+        "missing_title": 53,
         "untyped_or_empty": 26,
         "vague_tool_metadata": 19
       },
       "by_service": {
-        "storage": 222
+        "storage": 254
       }
     },
     "after_source_summary": {
@@ -4590,33 +4868,39 @@
       "by_service": {}
     },
     "presentation_before": {
-      "tools": 44,
+      "tools": 53,
       "with_title": 0,
-      "with_description": 25,
+      "with_description": 34,
       "with_annotations": 0,
       "with_output_schema": 0,
-      "input_properties": 184,
+      "input_properties": 216,
       "input_properties_with_description": 0
     },
     "presentation_after": {
-      "tools": 44,
-      "with_title": 44,
-      "with_description": 44,
-      "with_annotations": 44,
-      "with_output_schema": 28,
-      "input_properties": 238,
-      "input_properties_with_description": 238
+      "tools": 53,
+      "with_title": 53,
+      "with_description": 53,
+      "with_annotations": 53,
+      "with_output_schema": 36,
+      "input_properties": 278,
+      "input_properties_with_description": 278
     }
   },
   {
     "service": "hosting",
-    "tool_count": 29,
+    "tool_count": 43,
     "name_mappings": [
       {
         "service": "hosting",
         "legacy_name": "hosting_v1_access_request_create",
         "service_tool_name": "create_access_request",
         "gateway_tool_name": "hosting_create_access_request"
+      },
+      {
+        "service": "hosting",
+        "legacy_name": "api_v1_actions_rules_create",
+        "service_tool_name": "create_action_rules",
+        "gateway_tool_name": "hosting_create_action_rules"
       },
       {
         "service": "hosting",
@@ -4632,6 +4916,18 @@
       },
       {
         "service": "hosting",
+        "legacy_name": "hosting_v1_apps_deployments_artifact_upload_complete_create",
+        "service_tool_name": "create_apps_deployments_artifact_upload_complete",
+        "gateway_tool_name": "hosting_create_apps_deployments_artifact_upload_complete"
+      },
+      {
+        "service": "hosting",
+        "legacy_name": "hosting_v1_apps_deployments_artifact_upload_url_create",
+        "service_tool_name": "create_apps_deployments_artifact_upload_url",
+        "gateway_tool_name": "hosting_create_apps_deployments_artifact_upload_url"
+      },
+      {
+        "service": "hosting",
         "legacy_name": "hosting_v1_apps_deployments_finalize_create",
         "service_tool_name": "create_apps_deployments_finalize",
         "gateway_tool_name": "hosting_create_apps_deployments_finalize"
@@ -4644,15 +4940,27 @@
       },
       {
         "service": "hosting",
-        "legacy_name": "hosting_v1_apps_renew_expiry_create",
-        "service_tool_name": "create_apps_renew_expiry",
-        "gateway_tool_name": "hosting_create_apps_renew_expiry"
+        "legacy_name": "hosting_v1_apps_domains_create",
+        "service_tool_name": "create_apps_domains",
+        "gateway_tool_name": "hosting_create_apps_domains"
       },
       {
         "service": "hosting",
-        "legacy_name": "hosting_v1_deploy_tokens_revoke_create",
-        "service_tool_name": "create_deploy_tokens_revoke",
-        "gateway_tool_name": "hosting_create_deploy_tokens_revoke"
+        "legacy_name": "hosting_v1_apps_domains_refresh_create",
+        "service_tool_name": "create_apps_domains_refresh",
+        "gateway_tool_name": "hosting_create_apps_domains_refresh"
+      },
+      {
+        "service": "hosting",
+        "legacy_name": "hosting_v1_apps_environment_create",
+        "service_tool_name": "create_apps_environment",
+        "gateway_tool_name": "hosting_create_apps_environment"
+      },
+      {
+        "service": "hosting",
+        "legacy_name": "hosting_v1_apps_renew_expiry_create",
+        "service_tool_name": "create_apps_renew_expiry",
+        "gateway_tool_name": "hosting_create_apps_renew_expiry"
       },
       {
         "service": "hosting",
@@ -4662,9 +4970,9 @@
       },
       {
         "service": "hosting",
-        "legacy_name": "api_v1_actions_rules_create",
-        "service_tool_name": "create_rules",
-        "gateway_tool_name": "hosting_create_rules"
+        "legacy_name": "api_v1_actions_rules_destroy",
+        "service_tool_name": "delete_action_rules",
+        "gateway_tool_name": "hosting_delete_action_rules"
       },
       {
         "service": "hosting",
@@ -4674,9 +4982,39 @@
       },
       {
         "service": "hosting",
-        "legacy_name": "api_v1_actions_rules_destroy",
-        "service_tool_name": "delete_rules",
-        "gateway_tool_name": "hosting_delete_rules"
+        "legacy_name": "hosting_v1_apps_domains_destroy",
+        "service_tool_name": "delete_apps_domains",
+        "gateway_tool_name": "hosting_delete_apps_domains"
+      },
+      {
+        "service": "hosting",
+        "legacy_name": "hosting_v1_apps_environment_destroy",
+        "service_tool_name": "delete_apps_environment",
+        "gateway_tool_name": "hosting_delete_apps_environment"
+      },
+      {
+        "service": "hosting",
+        "legacy_name": "api_v1_actions_deliveries_retrieve",
+        "service_tool_name": "get_action_deliveries",
+        "gateway_tool_name": "hosting_get_action_deliveries"
+      },
+      {
+        "service": "hosting",
+        "legacy_name": "api_v1_actions_event_log_retrieve",
+        "service_tool_name": "get_action_event_log",
+        "gateway_tool_name": "hosting_get_action_event_log"
+      },
+      {
+        "service": "hosting",
+        "legacy_name": "api_v1_actions_event_log_retention_retrieve",
+        "service_tool_name": "get_action_event_log_retention",
+        "gateway_tool_name": "hosting_get_action_event_log_retention"
+      },
+      {
+        "service": "hosting",
+        "legacy_name": "api_v1_actions_rules_retrieve",
+        "service_tool_name": "get_action_rules",
+        "gateway_tool_name": "hosting_get_action_rules"
       },
       {
         "service": "hosting",
@@ -4686,9 +5024,15 @@
       },
       {
         "service": "hosting",
-        "legacy_name": "api_v1_actions_deliveries_retrieve",
-        "service_tool_name": "get_deliveries",
-        "gateway_tool_name": "hosting_get_deliveries"
+        "legacy_name": "hosting_v1_apps_domains_retrieve",
+        "service_tool_name": "get_apps_domains",
+        "gateway_tool_name": "hosting_get_apps_domains"
+      },
+      {
+        "service": "hosting",
+        "legacy_name": "hosting_v1_apps_environment_retrieve",
+        "service_tool_name": "get_apps_environment",
+        "gateway_tool_name": "hosting_get_apps_environment"
       },
       {
         "service": "hosting",
@@ -4698,27 +5042,39 @@
       },
       {
         "service": "hosting",
-        "legacy_name": "api_v1_actions_event_log_retrieve",
-        "service_tool_name": "get_event_log",
-        "gateway_tool_name": "hosting_get_event_log"
-      },
-      {
-        "service": "hosting",
-        "legacy_name": "api_v1_actions_event_log_retention_retrieve",
-        "service_tool_name": "get_event_log_retention",
-        "gateway_tool_name": "hosting_get_event_log_retention"
-      },
-      {
-        "service": "hosting",
-        "legacy_name": "api_v1_actions_rules_retrieve",
-        "service_tool_name": "get_rules",
-        "gateway_tool_name": "hosting_get_rules"
-      },
-      {
-        "service": "hosting",
         "legacy_name": "hosting_v1_stats_retrieve",
         "service_tool_name": "get_stats",
         "gateway_tool_name": "hosting_get_stats"
+      },
+      {
+        "service": "hosting",
+        "legacy_name": "api_v1_actions_deliveries_list",
+        "service_tool_name": "list_action_deliveries",
+        "gateway_tool_name": "hosting_list_action_deliveries"
+      },
+      {
+        "service": "hosting",
+        "legacy_name": "api_v1_actions_event_log_list",
+        "service_tool_name": "list_action_event_log",
+        "gateway_tool_name": "hosting_list_action_event_log"
+      },
+      {
+        "service": "hosting",
+        "legacy_name": "api_v1_actions_event_log_types_list",
+        "service_tool_name": "list_action_event_log_types",
+        "gateway_tool_name": "hosting_list_action_event_log_types"
+      },
+      {
+        "service": "hosting",
+        "legacy_name": "api_v1_actions_events_list",
+        "service_tool_name": "list_action_events",
+        "gateway_tool_name": "hosting_list_action_events"
+      },
+      {
+        "service": "hosting",
+        "legacy_name": "api_v1_actions_rules_list",
+        "service_tool_name": "list_action_rules",
+        "gateway_tool_name": "hosting_list_action_rules"
       },
       {
         "service": "hosting",
@@ -4734,57 +5090,63 @@
       },
       {
         "service": "hosting",
-        "legacy_name": "api_v1_actions_deliveries_list",
-        "service_tool_name": "list_deliveries",
-        "gateway_tool_name": "hosting_list_deliveries"
+        "legacy_name": "hosting_v1_apps_domains_list",
+        "service_tool_name": "list_apps_domains",
+        "gateway_tool_name": "hosting_list_apps_domains"
       },
       {
         "service": "hosting",
-        "legacy_name": "api_v1_actions_event_log_list",
-        "service_tool_name": "list_event_log",
-        "gateway_tool_name": "hosting_list_event_log"
+        "legacy_name": "hosting_v1_apps_environment_list",
+        "service_tool_name": "list_apps_environment",
+        "gateway_tool_name": "hosting_list_apps_environment"
       },
       {
         "service": "hosting",
-        "legacy_name": "api_v1_actions_event_log_types_list",
-        "service_tool_name": "list_event_log_types",
-        "gateway_tool_name": "hosting_list_event_log_types"
+        "legacy_name": "hosting_v1_apps_request_logs_list",
+        "service_tool_name": "list_apps_request_logs",
+        "gateway_tool_name": "hosting_list_apps_request_logs"
       },
       {
         "service": "hosting",
-        "legacy_name": "api_v1_actions_events_list",
-        "service_tool_name": "list_events",
-        "gateway_tool_name": "hosting_list_events"
+        "legacy_name": "hosting_v1_apps_runtime_logs_list",
+        "service_tool_name": "list_apps_runtime_logs",
+        "gateway_tool_name": "hosting_list_apps_runtime_logs"
       },
       {
         "service": "hosting",
-        "legacy_name": "api_v1_actions_rules_list",
-        "service_tool_name": "list_rules",
-        "gateway_tool_name": "hosting_list_rules"
+        "legacy_name": "hosting_v1_apps_environment_update",
+        "service_tool_name": "replace_apps_environment",
+        "gateway_tool_name": "hosting_replace_apps_environment"
       },
       {
         "service": "hosting",
         "legacy_name": "api_v1_actions_deliveries_requeue",
-        "service_tool_name": "requeue_deliveries",
-        "gateway_tool_name": "hosting_requeue_deliveries"
+        "service_tool_name": "requeue_action_deliveries",
+        "gateway_tool_name": "hosting_requeue_action_deliveries"
+      },
+      {
+        "service": "hosting",
+        "legacy_name": "hosting_v1_deploy_tokens_revoke_create",
+        "service_tool_name": "revoke_deploy_token",
+        "gateway_tool_name": "hosting_revoke_deploy_token"
       },
       {
         "service": "hosting",
         "legacy_name": "api_v1_actions_rules_rotate_secret",
-        "service_tool_name": "rotate_secret_rules",
-        "gateway_tool_name": "hosting_rotate_secret_rules"
+        "service_tool_name": "rotate_rule_secret",
+        "gateway_tool_name": "hosting_rotate_rule_secret"
       },
       {
         "service": "hosting",
         "legacy_name": "api_v1_actions_rules_send_test",
-        "service_tool_name": "send_test_rules",
-        "gateway_tool_name": "hosting_send_test_rules"
+        "service_tool_name": "send_test_rule",
+        "gateway_tool_name": "hosting_send_test_rule"
       },
       {
         "service": "hosting",
         "legacy_name": "api_v1_actions_rules_partial_update",
-        "service_tool_name": "update_rules",
-        "gateway_tool_name": "hosting_update_rules"
+        "service_tool_name": "update_action_rules",
+        "gateway_tool_name": "hosting_update_action_rules"
       }
     ],
     "before": [
@@ -5294,6 +5656,83 @@
       },
       {
         "service": "hosting",
+        "tool": "hosting_v1_apps_deployments_artifact_upload_complete_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_deployments_artifact_upload_complete_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_deployments_artifact_upload_complete_create",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_deployments_artifact_upload_complete_create",
+        "path": "properties.path_params.properties.app_ref",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_deployments_artifact_upload_complete_create",
+        "path": "properties.path_params.properties.deployment_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_deployments_artifact_upload_url_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_deployments_artifact_upload_url_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_deployments_artifact_upload_url_create",
+        "path": "properties.query.properties.expires_in",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_deployments_artifact_upload_url_create",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_deployments_artifact_upload_url_create",
+        "path": "properties.path_params.properties.app_ref",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_deployments_artifact_upload_url_create",
+        "path": "properties.path_params.properties.deployment_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
         "tool": "hosting_v1_apps_deployments_create",
         "path": "_tool.title",
         "category": "missing_title",
@@ -5462,6 +5901,328 @@
       },
       {
         "service": "hosting",
+        "tool": "hosting_v1_apps_domains_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_domains_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_domains_create",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_domains_create",
+        "path": "properties.path_params.properties.app_ref",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_domains_destroy",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_domains_destroy",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_domains_destroy",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_domains_destroy",
+        "path": "properties.path_params.properties.app_ref",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_domains_destroy",
+        "path": "properties.path_params.properties.domain_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_domains_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_domains_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_domains_list",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_domains_list",
+        "path": "properties.path_params.properties.app_ref",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_domains_refresh_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_domains_refresh_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_domains_refresh_create",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_domains_refresh_create",
+        "path": "properties.path_params.properties.app_ref",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_domains_refresh_create",
+        "path": "properties.path_params.properties.domain_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_domains_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_domains_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_domains_retrieve",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_domains_retrieve",
+        "path": "properties.path_params.properties.app_ref",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_domains_retrieve",
+        "path": "properties.path_params.properties.domain_id",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_environment_create",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_environment_create",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_environment_create",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_environment_create",
+        "path": "properties.path_params.properties.app_ref",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_environment_destroy",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_environment_destroy",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_environment_destroy",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_environment_destroy",
+        "path": "properties.path_params.properties.app_ref",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_environment_destroy",
+        "path": "properties.path_params.properties.key",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_environment_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_environment_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_environment_list",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_environment_list",
+        "path": "properties.path_params.properties.app_ref",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_environment_retrieve",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_environment_retrieve",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_environment_retrieve",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_environment_retrieve",
+        "path": "properties.path_params.properties.app_ref",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_environment_retrieve",
+        "path": "properties.path_params.properties.key",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_environment_update",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_environment_update",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_environment_update",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_environment_update",
+        "path": "properties.path_params.properties.app_ref",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_environment_update",
+        "path": "properties.path_params.properties.key",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
         "tool": "hosting_v1_apps_list",
         "path": "_tool.title",
         "category": "missing_title",
@@ -5504,6 +6265,62 @@
       },
       {
         "service": "hosting",
+        "tool": "hosting_v1_apps_request_logs_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_request_logs_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_request_logs_list",
+        "path": "properties.query.properties.cursor",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_request_logs_list",
+        "path": "properties.query.properties.limit",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_request_logs_list",
+        "path": "properties.query.properties.status_max",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_request_logs_list",
+        "path": "properties.query.properties.status_min",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_request_logs_list",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_request_logs_list",
+        "path": "properties.path_params.properties.app_ref",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
         "tool": "hosting_v1_apps_retrieve",
         "path": "_tool.title",
         "category": "missing_title",
@@ -5540,6 +6357,41 @@
       {
         "service": "hosting",
         "tool": "hosting_v1_apps_retrieve",
+        "path": "properties.path_params.properties.app_ref",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_runtime_logs_list",
+        "path": "_tool.title",
+        "category": "missing_title",
+        "detail": "missing title"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_runtime_logs_list",
+        "path": "_tool.annotations",
+        "category": "missing_annotations",
+        "detail": "missing annotations"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_runtime_logs_list",
+        "path": "properties.query.properties.limit",
+        "category": "untyped_or_empty",
+        "detail": "untyped or empty"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_runtime_logs_list",
+        "path": "properties.path_params",
+        "category": "missing_description",
+        "detail": "missing description"
+      },
+      {
+        "service": "hosting",
+        "tool": "hosting_v1_apps_runtime_logs_list",
         "path": "properties.path_params.properties.app_ref",
         "category": "missing_description",
         "detail": "missing description"
@@ -5632,17 +6484,17 @@
     "after_source": [],
     "after_gateway": [],
     "before_summary": {
-      "total_issues": 120,
-      "tools_with_issues": 29,
+      "total_issues": 190,
+      "tools_with_issues": 43,
       "by_category": {
-        "missing_annotations": 29,
-        "missing_description": 37,
-        "missing_title": 29,
-        "untyped_or_empty": 22,
+        "missing_annotations": 43,
+        "missing_description": 73,
+        "missing_title": 43,
+        "untyped_or_empty": 28,
         "vague_tool_metadata": 3
       },
       "by_service": {
-        "hosting": 120
+        "hosting": 190
       }
     },
     "after_source_summary": {
@@ -5658,22 +6510,22 @@
       "by_service": {}
     },
     "presentation_before": {
-      "tools": 29,
+      "tools": 43,
       "with_title": 0,
-      "with_description": 26,
+      "with_description": 40,
       "with_annotations": 0,
       "with_output_schema": 0,
-      "input_properties": 114,
+      "input_properties": 184,
       "input_properties_with_description": 0
     },
     "presentation_after": {
-      "tools": 29,
-      "with_title": 29,
-      "with_description": 29,
-      "with_annotations": 29,
-      "with_output_schema": 27,
-      "input_properties": 139,
-      "input_properties_with_description": 139
+      "tools": 43,
+      "with_title": 43,
+      "with_description": 43,
+      "with_annotations": 43,
+      "with_output_schema": 39,
+      "input_properties": 206,
+      "input_properties_with_description": 206
     }
   },
   {
@@ -5697,6 +6549,12 @@
         "legacy_name": "api_v1_messages_cancel",
         "service_tool_name": "cancel_messages",
         "gateway_tool_name": "email_cancel_messages"
+      },
+      {
+        "service": "email",
+        "legacy_name": "api_v1_actions_rules_create",
+        "service_tool_name": "create_action_rules",
+        "gateway_tool_name": "email_create_action_rules"
       },
       {
         "service": "email",
@@ -5724,15 +6582,9 @@
       },
       {
         "service": "email",
-        "legacy_name": "api_v1_actions_rules_create",
+        "legacy_name": "api_v1_rules_create",
         "service_tool_name": "create_rules",
         "gateway_tool_name": "email_create_rules"
-      },
-      {
-        "service": "email",
-        "legacy_name": "api_v1_rules_create",
-        "service_tool_name": "create_rules_2",
-        "gateway_tool_name": "email_create_rules_2"
       },
       {
         "service": "email",
@@ -5745,6 +6597,12 @@
         "legacy_name": "api_v1_template_versions_create",
         "service_tool_name": "create_template_versions",
         "gateway_tool_name": "email_create_template_versions"
+      },
+      {
+        "service": "email",
+        "legacy_name": "api_v1_actions_rules_destroy",
+        "service_tool_name": "delete_action_rules",
+        "gateway_tool_name": "email_delete_action_rules"
       },
       {
         "service": "email",
@@ -5772,15 +6630,9 @@
       },
       {
         "service": "email",
-        "legacy_name": "api_v1_actions_rules_destroy",
+        "legacy_name": "api_v1_rules_destroy",
         "service_tool_name": "delete_rules",
         "gateway_tool_name": "email_delete_rules"
-      },
-      {
-        "service": "email",
-        "legacy_name": "api_v1_rules_destroy",
-        "service_tool_name": "delete_rules_2",
-        "gateway_tool_name": "email_delete_rules_2"
       },
       {
         "service": "email",
@@ -5793,6 +6645,36 @@
         "legacy_name": "api_v1_templates_destroy",
         "service_tool_name": "delete_templates",
         "gateway_tool_name": "email_delete_templates"
+      },
+      {
+        "service": "email",
+        "legacy_name": "api_v1_newsletters_subscribers_export",
+        "service_tool_name": "export_newsletter_subscribers",
+        "gateway_tool_name": "email_export_newsletter_subscribers"
+      },
+      {
+        "service": "email",
+        "legacy_name": "api_v1_actions_deliveries_retrieve",
+        "service_tool_name": "get_action_deliveries",
+        "gateway_tool_name": "email_get_action_deliveries"
+      },
+      {
+        "service": "email",
+        "legacy_name": "api_v1_actions_event_log_retrieve",
+        "service_tool_name": "get_action_event_log",
+        "gateway_tool_name": "email_get_action_event_log"
+      },
+      {
+        "service": "email",
+        "legacy_name": "api_v1_actions_event_log_retention_retrieve",
+        "service_tool_name": "get_action_event_log_retention",
+        "gateway_tool_name": "email_get_action_event_log_retention"
+      },
+      {
+        "service": "email",
+        "legacy_name": "api_v1_actions_rules_retrieve",
+        "service_tool_name": "get_action_rules",
+        "gateway_tool_name": "email_get_action_rules"
       },
       {
         "service": "email",
@@ -5811,24 +6693,6 @@
         "legacy_name": "api_v1_catalog_retrieve",
         "service_tool_name": "get_catalog",
         "gateway_tool_name": "email_get_catalog"
-      },
-      {
-        "service": "email",
-        "legacy_name": "api_v1_actions_deliveries_retrieve",
-        "service_tool_name": "get_deliveries",
-        "gateway_tool_name": "email_get_deliveries"
-      },
-      {
-        "service": "email",
-        "legacy_name": "api_v1_actions_event_log_retrieve",
-        "service_tool_name": "get_event_log",
-        "gateway_tool_name": "email_get_event_log"
-      },
-      {
-        "service": "email",
-        "legacy_name": "api_v1_actions_event_log_retention_retrieve",
-        "service_tool_name": "get_event_log_retention",
-        "gateway_tool_name": "email_get_event_log_retention"
       },
       {
         "service": "email",
@@ -5856,15 +6720,9 @@
       },
       {
         "service": "email",
-        "legacy_name": "api_v1_actions_rules_retrieve",
+        "legacy_name": "api_v1_rules_retrieve",
         "service_tool_name": "get_rules",
         "gateway_tool_name": "email_get_rules"
-      },
-      {
-        "service": "email",
-        "legacy_name": "api_v1_rules_retrieve",
-        "service_tool_name": "get_rules_2",
-        "gateway_tool_name": "email_get_rules_2"
       },
       {
         "service": "email",
@@ -5886,33 +6744,45 @@
       },
       {
         "service": "email",
-        "legacy_name": "api_v1_broadcasts_list",
-        "service_tool_name": "list_broadcasts",
-        "gateway_tool_name": "email_list_broadcasts"
+        "legacy_name": "api_v1_newsletters_subscribers_import",
+        "service_tool_name": "import_newsletter_subscribers",
+        "gateway_tool_name": "email_import_newsletter_subscribers"
       },
       {
         "service": "email",
         "legacy_name": "api_v1_actions_deliveries_list",
-        "service_tool_name": "list_deliveries",
-        "gateway_tool_name": "email_list_deliveries"
+        "service_tool_name": "list_action_deliveries",
+        "gateway_tool_name": "email_list_action_deliveries"
       },
       {
         "service": "email",
         "legacy_name": "api_v1_actions_event_log_list",
-        "service_tool_name": "list_event_log",
-        "gateway_tool_name": "email_list_event_log"
+        "service_tool_name": "list_action_event_log",
+        "gateway_tool_name": "email_list_action_event_log"
       },
       {
         "service": "email",
         "legacy_name": "api_v1_actions_event_log_types_list",
-        "service_tool_name": "list_event_log_types",
-        "gateway_tool_name": "email_list_event_log_types"
+        "service_tool_name": "list_action_event_log_types",
+        "gateway_tool_name": "email_list_action_event_log_types"
       },
       {
         "service": "email",
         "legacy_name": "api_v1_actions_events_list",
-        "service_tool_name": "list_events",
-        "gateway_tool_name": "email_list_events"
+        "service_tool_name": "list_action_events",
+        "gateway_tool_name": "email_list_action_events"
+      },
+      {
+        "service": "email",
+        "legacy_name": "api_v1_actions_rules_list",
+        "service_tool_name": "list_action_rules",
+        "gateway_tool_name": "email_list_action_rules"
+      },
+      {
+        "service": "email",
+        "legacy_name": "api_v1_broadcasts_list",
+        "service_tool_name": "list_broadcasts",
+        "gateway_tool_name": "email_list_broadcasts"
       },
       {
         "service": "email",
@@ -5940,15 +6810,9 @@
       },
       {
         "service": "email",
-        "legacy_name": "api_v1_actions_rules_list",
+        "legacy_name": "api_v1_rules_list",
         "service_tool_name": "list_rules",
         "gateway_tool_name": "email_list_rules"
-      },
-      {
-        "service": "email",
-        "legacy_name": "api_v1_rules_list",
-        "service_tool_name": "list_rules_2",
-        "gateway_tool_name": "email_list_rules_2"
       },
       {
         "service": "email",
@@ -5970,24 +6834,6 @@
       },
       {
         "service": "email",
-        "legacy_name": "api_v1_newsletters_rotate_key",
-        "service_tool_name": "newsletters_rotate_key",
-        "gateway_tool_name": "email_newsletters_rotate_key"
-      },
-      {
-        "service": "email",
-        "legacy_name": "api_v1_newsletters_subscribers_export",
-        "service_tool_name": "newsletters_subscribers_export",
-        "gateway_tool_name": "email_newsletters_subscribers_export"
-      },
-      {
-        "service": "email",
-        "legacy_name": "api_v1_newsletters_subscribers_import",
-        "service_tool_name": "newsletters_subscribers_import",
-        "gateway_tool_name": "email_newsletters_subscribers_import"
-      },
-      {
-        "service": "email",
         "legacy_name": "api_v1_template_versions_publish",
         "service_tool_name": "publish_template_versions",
         "gateway_tool_name": "email_publish_template_versions"
@@ -6000,21 +6846,45 @@
       },
       {
         "service": "email",
+        "legacy_name": "api_v1_auth_link_hosts_update",
+        "service_tool_name": "replace_auth_link_hosts",
+        "gateway_tool_name": "email_replace_auth_link_hosts"
+      },
+      {
+        "service": "email",
+        "legacy_name": "api_v1_library_update",
+        "service_tool_name": "replace_library",
+        "gateway_tool_name": "email_replace_library"
+      },
+      {
+        "service": "email",
+        "legacy_name": "api_v1_provider_update",
+        "service_tool_name": "replace_provider",
+        "gateway_tool_name": "email_replace_provider"
+      },
+      {
+        "service": "email",
         "legacy_name": "api_v1_actions_deliveries_requeue",
-        "service_tool_name": "requeue_deliveries",
-        "gateway_tool_name": "email_requeue_deliveries"
+        "service_tool_name": "requeue_action_deliveries",
+        "gateway_tool_name": "email_requeue_action_deliveries"
+      },
+      {
+        "service": "email",
+        "legacy_name": "api_v1_newsletters_rotate_key",
+        "service_tool_name": "rotate_newsletter_key",
+        "gateway_tool_name": "email_rotate_newsletter_key"
       },
       {
         "service": "email",
         "legacy_name": "api_v1_actions_rules_rotate_secret",
-        "service_tool_name": "rotate_secret_rules",
-        "gateway_tool_name": "email_rotate_secret_rules"
+        "service_tool_name": "rotate_rule_secret",
+        "gateway_tool_name": "email_rotate_rule_secret"
       },
       {
         "service": "email",
         "legacy_name": "api_v1_actions_rules_send_test",
-        "service_tool_name": "send_test_rules",
-        "gateway_tool_name": "email_send_test_rules"
+        "service_tool_name": "send_test_rule",
+        "gateway_tool_name": "email_send_test_rule"
       },
       {
         "service": "email",
@@ -6030,9 +6900,9 @@
       },
       {
         "service": "email",
-        "legacy_name": "api_v1_auth_link_hosts_update",
-        "service_tool_name": "update_auth_link_hosts",
-        "gateway_tool_name": "email_update_auth_link_hosts"
+        "legacy_name": "api_v1_actions_rules_partial_update",
+        "service_tool_name": "update_action_rules",
+        "gateway_tool_name": "email_update_action_rules"
       },
       {
         "service": "email",
@@ -6042,33 +6912,15 @@
       },
       {
         "service": "email",
-        "legacy_name": "api_v1_library_update",
-        "service_tool_name": "update_library",
-        "gateway_tool_name": "email_update_library"
-      },
-      {
-        "service": "email",
         "legacy_name": "api_v1_newsletters_partial_update",
         "service_tool_name": "update_newsletters",
         "gateway_tool_name": "email_update_newsletters"
       },
       {
         "service": "email",
-        "legacy_name": "api_v1_provider_update",
-        "service_tool_name": "update_provider",
-        "gateway_tool_name": "email_update_provider"
-      },
-      {
-        "service": "email",
-        "legacy_name": "api_v1_actions_rules_partial_update",
+        "legacy_name": "api_v1_rules_partial_update",
         "service_tool_name": "update_rules",
         "gateway_tool_name": "email_update_rules"
-      },
-      {
-        "service": "email",
-        "legacy_name": "api_v1_rules_partial_update",
-        "service_tool_name": "update_rules_2",
-        "gateway_tool_name": "email_update_rules_2"
       }
     ],
     "before": [
@@ -8020,8 +8872,8 @@
       "with_description": 65,
       "with_annotations": 65,
       "with_output_schema": 56,
-      "input_properties": 349,
-      "input_properties_with_description": 349
+      "input_properties": 318,
+      "input_properties_with_description": 318
     }
   },
   {
