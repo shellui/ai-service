@@ -240,6 +240,22 @@ def _infer_http_method(operation_id: str | None, declared: str | None) -> str:
     return 'get'
 
 
+_LEGACY_OPERATION_ID = re.compile(r'(?:^|_)v\d+_')
+
+
+def legacy_operation_id_from_tool_name(name: str) -> str | None:
+    """Return a shellui operation-id slug (``api_v1_*``, ``storage_v1_*``) when ``name`` is one.
+
+    Downstream ``tools/list`` drops ``_meta``, and the tool name is that slug.
+    """
+    slug = _sanitize_token(name)
+    if not slug:
+        return None
+    if slug.startswith('api_') or _LEGACY_OPERATION_ID.search(slug):
+        return slug
+    return None
+
+
 def service_local_tool_name(tool: dict[str, Any], *, service_id: str | None = None) -> str:
     """Resolve the service-local MCP tool name before the gateway adds a service prefix."""
     raw = str(tool.get('name') or '')
@@ -257,6 +273,13 @@ def service_local_tool_name(tool: dict[str, Any], *, service_id: str | None = No
         str(operation_id) if operation_id else None,
         str(meta.get('method') or '') or None,
     )
+    if not operation_id and path:
+        # Path is recovered from inputSchema. The operation id is the tool name itself.
+        legacy = legacy_operation_id_from_tool_name(raw)
+        if legacy:
+            operation_id = legacy
+            if not str(meta.get('method') or '').strip():
+                method = _infer_http_method(legacy, None)
     if had_numeric_suffix and raw_local.startswith('update_'):
         base = re.sub(r'_\d+$', '', raw_local)
         return clamp_tool_name(f'replace_{base[7:]}')

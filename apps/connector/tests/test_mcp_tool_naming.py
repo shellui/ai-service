@@ -89,6 +89,24 @@ class McpToolNamingTests(SimpleTestCase):
             'replace_auth_methods',
         )
 
+    def test_stripped_meta_storage_slug_uses_operation_id_and_path(self):
+        """Downstream tools/list omits _meta; the tool name is the operation id slug."""
+        tool = {
+            'name': 'storage_v1_bucket_list',
+            '_meta': {'path': '/storage/v1/bucket', 'method': 'GET'},
+        }
+        self.assertEqual(service_local_tool_name(tool, service_id='storage'), 'list_bucket')
+        public_object = {
+            'name': 'storage_v1_object_retrieve',
+            '_meta': {'path': '/storage/v1/object/{bucket_id}/{object_path}', 'method': 'GET'},
+        }
+        self.assertEqual(service_local_tool_name(public_object, service_id='storage'), 'get_public_object')
+        actions = {
+            'name': 'api_v1_actions_events_list',
+            '_meta': {'path': '/api/v1/actions/events', 'method': 'GET'},
+        }
+        self.assertEqual(service_local_tool_name(actions, service_id='identity'), 'list_action_events')
+
     def test_newest_api_version(self):
         schema = {
             'paths': {

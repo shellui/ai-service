@@ -165,6 +165,14 @@ def strip_tenant_fields_from_input_schema(input_schema: dict[str, Any]) -> dict[
         tenant = [str(k) for k in before if is_tenant_field(str(k))]
         if tenant:
             binding['path_params'] = tenant
+        remaining = path_params.get('properties') if isinstance(path_params.get('properties'), dict) else {}
+        if not remaining:
+            # The only path parameters were tenant fields. Drop the empty object so
+            # clients are not asked for path_params the token already supplies.
+            props.pop('path_params', None)
+            required = input_schema.get('required')
+            if isinstance(required, list):
+                input_schema['required'] = [key for key in required if key != 'path_params']
 
     for loc in ('query', 'body'):
         section = props.get(loc)
