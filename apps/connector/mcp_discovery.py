@@ -383,8 +383,13 @@ def listed_tools(full_catalog: list[dict[str, Any]], *, mode: str, company_label
     return listed
 
 
-def enrich_service_rows(services: list[dict[str, str]], catalog: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
-    """Add a one-line summary, example tasks, and a tool count to each connected service."""
+def enrich_service_rows(
+    services: list[dict[str, str]],
+    catalog: list[dict[str, Any]] | None,
+    *,
+    include_counts: bool = True,
+) -> list[dict[str, Any]]:
+    """Add a one-line summary and example tasks. Counts are omitted when the catalog is cold."""
     counts: dict[str, int] = {}
     for tool in catalog or []:
         name = str(tool.get('name') or '')
@@ -394,22 +399,22 @@ def enrich_service_rows(services: list[dict[str, str]], catalog: list[dict[str, 
         counts[service_id] = counts.get(service_id, 0) + 1
     rows: list[dict[str, Any]] = []
     ai_profile = SERVICE_PROFILES['ai']
-    rows.append(
-        {
-            'id': 'ai',
-            'name': 'AI',
-            'summary': ai_profile['summary'],
-            'examples': list(ai_profile['examples']),
-            'tool_count': counts.get('ai', 0) + len(DISCOVERY_ONLY_TOOLS),
-        }
-    )
+    ai_row: dict[str, Any] = {
+        'id': 'ai',
+        'name': 'AI',
+        'summary': ai_profile['summary'],
+        'examples': list(ai_profile['examples']),
+    }
+    if include_counts:
+        ai_row['tool_count'] = counts.get('ai', 0) + len(DISCOVERY_ONLY_TOOLS)
+    rows.append(ai_row)
     for item in services:
         service_id = str(item.get('id') or '')
         profile = SERVICE_PROFILES.get(service_id, {})
         row = dict(item)
         row['summary'] = profile.get('summary') or f'{item.get("name") or service_id} tools for this company.'
         row['examples'] = list(profile.get('examples') or [])
-        if catalog is not None:
+        if include_counts and catalog is not None:
             row['tool_count'] = counts.get(service_id, 0)
         rows.append(row)
     return rows

@@ -43,9 +43,9 @@ Upstream `tools/list` may use any of these names for the same operation:
 
 By default **`tools/list`** returns a short set an agent can use to find the right operation:
 
-1. **`ai_list_services`**: each connected service, a one-line summary, a tool count, and example tasks. The count uses the catalog `tools/list` already loaded for this connection, so it does not call downstream services again.
+1. **`ai_list_services`**: each connected service, a one-line summary, and example tasks. A tool count is included after the catalog has been loaded. This call does not fetch downstream services. If the count is missing, call `ai_search_tools` or `tools/list` first.
 2. **`ai_search_tools`**: natural-language `query`, optional `service`, optional `access` (`read` or `write`), and `limit` (default 8, maximum 20). Matches include the name, description, read/write/destructive/approval flags, and the full input schema.
-3. **`ai_describe_tool`**: full schema and a usage note for one or more tool names.
+3. **`ai_describe_tool`**: full schema and a usage note for one or more tool names. Search and describe load the full catalog when it is missing or expired, through the same fetch, company scope, and cache lifetime as `tools/list?tools=all`. Each company has its own cache entry.
 4. **`ai_call_tool`**: `{name, arguments}` runs that tool through the same tenant, scope, approval, masking, and audit path as a direct **`tools/call`**. In ask mode the person sees the real tool and its arguments.
 5. Four common reads, when that service is connected: `identity_list_users`, `storage_list_bucket`, `hosting_list_apps`, `email_list_messages`. They answer "who, what files, what apps, what mail" without a search.
 

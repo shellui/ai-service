@@ -203,7 +203,14 @@ def _rpc(method: str, **params) -> str:
     return json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': method, 'params': params or {}})
 
 
-def _token(*, secret: str, issuer: str, mcp_access: str = 'ask', scope: str = 'ai storage') -> str:
+def _token(
+    *,
+    secret: str,
+    issuer: str,
+    mcp_access: str = 'ask',
+    scope: str = 'ai storage',
+    company_id: int = 10,
+) -> str:
     import time
 
     now = int(time.time())
@@ -212,14 +219,14 @@ def _token(*, secret: str, issuer: str, mcp_access: str = 'ask', scope: str = 'a
         'sub': f'agent:{_AGENT}',
         'agent_id': _AGENT,
         'agent_name': 'Test Agent',
-        'company_id': 10,
+        'company_id': company_id,
         'company_name': 'Acme',
         'scope': scope,
         'mcp_access': mcp_access,
         'mcp_read': 'safe',
         'mcp_destructive': False,
         'grant_version': 1,
-        'aud': AI_MCP,
+        'aud': f'https://ai.test/c/{company_id}/mcp',
         'iss': issuer,
         'iat': now,
         'exp': now + 3600,
@@ -539,6 +546,131 @@ class DiscoveryGatewayTests(TestCase):
         )
         hint = json.loads(allowed.json()['result']['content'][0]['text'])
         self.assertIn('ai_search_tools', hint['error'])
+
+    @patch('apps.connector.mcp_identity._http_post', side_effect=_identity_http)
+    @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
+    @patch('apps.connector.mcp_identity.forward_call_log')
+    @patch('shellui_django.mcp.gateway.requests.post')
+    def test_cold_cache_search_describe_and_call_load_the_catalog(self, post, _log, _mint, _http, *_mocks):
+        self._storage(post)
+        token = _token(secret=self.secret, issuer=self.issuer, mcp_access='full')
+
+        def listed_posts() -> int:
+            return sum(
+                1
+                for call in post.call_args_list
+                if (call.kwargs.get('json') or {}).get('method') == 'tools/list'
+            )
+
+        cache.clear()
+        search = self.client.post(
+            '/c/10/mcp',
+            data=_rpc('tools/call', name='ai_search_tools', arguments={'query': 'list buckets', 'limit': 3}),
+            content_type='application/json',
+            **self._auth(token),
+        )
+        search_body = json.loads(search.json()['result']['content'][0]['text'])
+        self.assertEqual(search_body['matches'][0]['name'], 'storage_list_buckets')
+        self.assertEqual(listed_posts(), 1)
+
+        cache.clear()
+        described = self.client.post(
+            '/c/10/mcp',
+            data=_rpc('tools/call', name='ai_describe_tool', arguments={'name': 'storage_list_buckets'}),
+            content_type='application/json',
+            **self._auth(token),
+        )
+        detail = json.loads(described.json()['result']['content'][0]['text'])
+        self.assertEqual(detail['tools'][0]['name'], 'storage_list_buckets')
+        self.assertIn('inputSchema', detail['tools'][0])
+        self.assertEqual(listed_posts(), 2)
+
+        cache.clear()
+        called = self.client.post(
+            '/c/10/mcp',
+            data=_rpc(
+                'tools/call',
+                name='ai_call_tool',
+                arguments={'name': 'storage_list_buckets', 'arguments': {'method': 'GET', 'path': '/api/v1/buckets/'}},
+            ),
+            content_type='application/json',
+            **self._auth(token),
+        )
+        self.assertFalse(called.json()['result'].get('isError'))
+        forwarded = [
+            (call.kwargs.get('json') or {}).get('params', {}).get('name')
+            for call in post.call_args_list
+            if (call.kwargs.get('json') or {}).get('method') == 'tools/call'
+        ]
+        self.assertIn('list_buckets', forwarded)
+
+    @patch('apps.connector.mcp_identity._http_post', side_effect=_identity_http)
+    @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
+    @patch('shellui_django.mcp.gateway.requests.post')
+    def test_catalog_cache_is_isolated_by_company(self, post, _mint, _http, *_mocks):
+        lists = {'n': 0}
+
+        def side_effect(url, **kwargs):
+            resp = Mock()
+            resp.status_code = 200
+            payload = kwargs.get('json') or {}
+            if payload.get('method') == 'tools/list':
+                lists['n'] += 1
+                local = 'list_alpha' if lists['n'] == 1 else 'list_beta'
+                resp.json.return_value = {
+                    'jsonrpc': '2.0',
+                    'id': 1,
+                    'result': {
+                        'tools': [
+                            {
+                                'name': local,
+                                'description': 'List buckets',
+                                'inputSchema': {
+                                    'type': 'object',
+                                    'properties': {
+                                        'path': {'type': 'string', 'const': '/api/v1/buckets/'},
+                                        'method': {'type': 'string', 'enum': ['GET']},
+                                    },
+                                    'required': ['path', 'method'],
+                                    'additionalProperties': False,
+                                },
+                                '_meta': {'method': 'GET', 'path': '/api/v1/buckets/', 'read_only': True},
+                            }
+                        ]
+                    },
+                }
+            else:
+                resp.json.return_value = {
+                    'jsonrpc': '2.0',
+                    'id': 1,
+                    'result': {'content': [{'type': 'text', 'text': 'ok'}], 'isError': False},
+                }
+            return resp
+
+        post.side_effect = side_effect
+        token_10 = _token(secret=self.secret, issuer=self.issuer, company_id=10)
+        token_11 = _token(secret=self.secret, issuer=self.issuer, company_id=11)
+
+        def search(company: int, token: str) -> list[str]:
+            response = self.client.post(
+                f'/c/{company}/mcp',
+                data=_rpc('tools/call', name='ai_search_tools', arguments={'query': 'list buckets', 'limit': 5}),
+                content_type='application/json',
+                **self._auth(token),
+            )
+            body = json.loads(response.json()['result']['content'][0]['text'])
+            return [match['name'] for match in body['matches']]
+
+        first = search(10, token_10)
+        second = search(10, token_10)
+        other = search(11, token_11)
+        again = search(10, token_10)
+        self.assertEqual(first, second)
+        self.assertEqual(again, first)
+        self.assertIn('storage_list_alpha', first)
+        self.assertIn('storage_list_beta', other)
+        self.assertNotIn('storage_list_alpha', other)
+        self.assertEqual(lists['n'], 2)
 
     def test_direct_read_names_are_stable(self, *_mocks):
         self.assertEqual(

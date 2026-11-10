@@ -13,14 +13,22 @@ from apps.connector.mcp_discovery import enrich_service_rows
 from apps.connector.services import list_mcp_services
 
 
-def _connected_tool_catalog() -> list[dict] | None:
-    """Tools already cached by tools/list. Listing services does not call downstream."""
+def _service_directory() -> list[dict]:
+    """Summaries always. Counts only after tools/list or search has cached this company.
+
+    A cold ``ai_list_services`` call does not fetch downstream. Search and describe do.
+    """
     from apps.connector.mcp_views import _get_server, _mcp_agent_claims
 
     claims = _mcp_agent_claims.get()
-    if not isinstance(claims, dict):
-        return None
-    return _get_server()._cached_export_tools(claims)
+    server = _get_server()
+    if isinstance(claims, dict) and server._remote_catalog_cached(claims):
+        return enrich_service_rows(
+            list_mcp_services(),
+            server._cached_export_tools(claims),
+            include_counts=True,
+        )
+    return enrich_service_rows(list_mcp_services(), None, include_counts=False)
 
 
 class HealthView(APIView):
@@ -53,5 +61,4 @@ class McpServicesListView(APIView):
     )
     @mcp_expose_tool(name='list_services', description='Return MCP URLs for connected Shellui services.')
     def get(self, request):
-        catalog = _connected_tool_catalog()
-        return Response({'services': enrich_service_rows(list_mcp_services(), catalog)})
+        return Response({'services': _service_directory()})

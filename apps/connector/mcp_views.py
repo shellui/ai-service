@@ -67,6 +67,15 @@ logger = logging.getLogger(__name__)
 
 _TOOLS_LIST_CACHE_PREFIX = 'mcp_gateway:tools:'
 
+
+def tools_list_cache_key(company_id: int, mcp_url: str) -> str:
+    """Downstream tools/list cache. One entry per company so tenants do not share a catalog."""
+    return f'{_TOOLS_LIST_CACHE_PREFIX}{int(company_id)}:{mcp_url}'
+
+
+def route_cache_key(company_id: int, export_name: str) -> str:
+    return f'mcp_gateway:route:{int(company_id)}:{export_name}'
+
 _server: AggregatingMcpServer | None = None
 _mcp_http_request: contextvars.ContextVar[HttpRequest | None] = contextvars.ContextVar(
     'mcp_http_request', default=None
@@ -228,10 +237,21 @@ class PrefixingMcpServer(AggregatingMcpServer):
         if tenant:
             payload['tenant'] = tenant
         self._cache().set(
-            f'mcp_gateway:route:{export_name}',
+            route_cache_key(self._company_cache_id(), export_name),
             payload,
             self._gateway.tools_cache_ttl_seconds,
         )
+
+    def _company_cache_id(self) -> int:
+        claims = _mcp_agent_claims.get()
+        if isinstance(claims, dict):
+            cid = strict_numeric_company_id(claims.get('company_id'))
+            if cid is not None:
+                return int(cid)
+        return 0
+
+    def _tools_cache_key(self, mcp_url: str) -> str:
+        return tools_list_cache_key(self._company_cache_id(), mcp_url)
 
     def _meta_for_export_tool(self, export_name: str) -> dict:
         """OpenAPI `_meta` for the export plus optional tenant binding (for argument injection)."""
@@ -285,7 +305,7 @@ class PrefixingMcpServer(AggregatingMcpServer):
             dns = str(route.get('downstream_name') or '').strip()
             if dns and service_id != self._gateway.local_service_id:
                 mcp_url = self._gateway.get_service_urls().get(service_id)
-                raw_list = self._cache().get(f'{_TOOLS_LIST_CACHE_PREFIX}{mcp_url}') if mcp_url else None
+                raw_list = self._cache().get(self._tools_cache_key(mcp_url)) if mcp_url else None
                 if not isinstance(raw_list, list):
                     return None, 'route_mismatch'
                 enriched = [normalize_mcp_tool(t) if isinstance(t, dict) else t for t in raw_list]
@@ -336,7 +356,7 @@ class PrefixingMcpServer(AggregatingMcpServer):
         if service_id is None:
             return None
         mcp_url = self._gateway.get_service_urls()[service_id]
-        tools = self._cache().get(f'{_TOOLS_LIST_CACHE_PREFIX}{mcp_url}')
+        tools = self._cache().get(self._tools_cache_key(mcp_url))
         if not isinstance(tools, list):
             return None
         enriched = [normalize_mcp_tool(tool) if isinstance(tool, dict) else tool for tool in tools]
@@ -360,7 +380,7 @@ class PrefixingMcpServer(AggregatingMcpServer):
 
         Parent ``public_mcp_tools`` strips `_meta` before cache; we need full registry metadata.
         """
-        cache_key = f'{_TOOLS_LIST_CACHE_PREFIX}{mcp_url}'
+        cache_key = self._tools_cache_key(mcp_url)
         cached = self._cache().get(cache_key)
         if isinstance(cached, list) and cached:
             first = cached[0]
@@ -422,7 +442,7 @@ class PrefixingMcpServer(AggregatingMcpServer):
             self._remember_routes_for_service_tools(service_id, tools)
 
     def _lookup_route(self, tool_name: str) -> dict[str, str] | None:
-        meta = self._cache().get(f'mcp_gateway:route:{tool_name}')
+        meta = self._cache().get(route_cache_key(self._company_cache_id(), tool_name))
         if isinstance(meta, dict) and meta.get('service_id') and meta.get('downstream_name'):
             return meta
         route = self._route_from_cached_tools_list(tool_name)
@@ -433,7 +453,7 @@ class PrefixingMcpServer(AggregatingMcpServer):
                 route['downstream_name'],
                 tenant=route.get('tenant') if isinstance(route.get('tenant'), dict) else None,
             )
-            return self._cache().get(f'mcp_gateway:route:{tool_name}')
+            return self._cache().get(route_cache_key(self._company_cache_id(), tool_name))
         return None
 
     def _local_tool_export_name(self, export_name: str) -> str | None:
@@ -495,7 +515,7 @@ class PrefixingMcpServer(AggregatingMcpServer):
         mcp_url = self._gateway.get_service_urls().get(service_id)
         if not mcp_url:
             return None
-        tools = self._cache().get(f'{_TOOLS_LIST_CACHE_PREFIX}{mcp_url}')
+        tools = self._cache().get(self._tools_cache_key(mcp_url))
         if not isinstance(tools, list):
             return None
         enriched = [normalize_mcp_tool(tool) if isinstance(tool, dict) else tool for tool in tools]
@@ -842,7 +862,7 @@ class PrefixingMcpServer(AggregatingMcpServer):
         for service_id, mcp_url in self._gateway.get_service_urls().items():
             if service_id == local_id or service_id not in allowed:
                 continue
-            if not isinstance(self._cache().get(f'{_TOOLS_LIST_CACHE_PREFIX}{mcp_url}'), list):
+            if not isinstance(self._cache().get(self._tools_cache_key(mcp_url)), list):
                 return False
         return True
 
@@ -858,7 +878,7 @@ class PrefixingMcpServer(AggregatingMcpServer):
         for service_id, mcp_url in self._gateway.get_service_urls().items():
             if service_id == local_id or service_id not in allowed:
                 continue
-            cached = self._cache().get(f'{_TOOLS_LIST_CACHE_PREFIX}{mcp_url}')
+            cached = self._cache().get(self._tools_cache_key(mcp_url))
             if isinstance(cached, list):
                 remote[service_id] = [normalize_mcp_tool(tool) if isinstance(tool, dict) else tool for tool in cached]
         tools = prefixed_tool_catalog(local, remote, local_service_id=local_id)
@@ -897,9 +917,13 @@ class PrefixingMcpServer(AggregatingMcpServer):
         arguments = (params or {}).get('arguments')
         if not isinstance(arguments, dict):
             arguments = {}
-        # Search, describe, and list services read the catalog tools/list already
-        # cached. They must not call a downstream service themselves.
-        catalog = self._cached_export_tools(agent_claims)
+        # Search and describe load the full catalog when it is missing or expired.
+        # That is the same fetch, tenant check, and TTL as tools/list?tools=all.
+        # ai_list_services stays on the cache and omits counts when it is cold.
+        if export_name in {'ai_search_tools', 'ai_describe_tool'}:
+            catalog = self._export_catalog(agent_claims) or []
+        else:
+            catalog = self._cached_export_tools(agent_claims)
         access_mode = str(agent_claims.get('mcp_access') or 'ask')
         if export_name == 'ai_search_tools':
             payload = search_payload(catalog, arguments, access_mode=access_mode)
