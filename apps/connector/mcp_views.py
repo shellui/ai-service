@@ -213,13 +213,23 @@ def prefixed_tool_catalog(
         export_name = gateway_export_name(local_service_id, name, taken=taken)
         taken.add(export_name)
         exported = {**tool, 'name': export_name}
-        merged.append({k: v for k, v in exported.items() if not str(k).startswith('_')})
+        merged.append(_public_tool(exported))
     for service_id, tools in remote_by_service.items():
         for export_name, exported, route in iter_gateway_remote_exports(tools, service_id=service_id):
             if remember_route is not None:
                 remember_route(export_name, route)
-            merged.append({k: v for k, v in exported.items() if not str(k).startswith('_')})
+            merged.append(_public_tool(exported))
     return merged
+
+
+def _public_tool(tool: dict) -> dict:
+    """Client catalog row: no registry meta, and no HTTP method or path arguments."""
+    from apps.connector.mcp_agent_arguments import public_input_schema
+
+    out = {k: v for k, v in tool.items() if not str(k).startswith('_')}
+    if isinstance(out.get('inputSchema'), dict):
+        out['inputSchema'] = public_input_schema(out['inputSchema'])
+    return out
 
 
 class PrefixingMcpServer(AggregatingMcpServer):
@@ -274,8 +284,35 @@ class PrefixingMcpServer(AggregatingMcpServer):
         arguments: dict,
         agent_claims: dict,
     ) -> dict:
+        from apps.connector.mcp_agent_arguments import coerce_call_arguments
+
+        tool_row = self._cached_export_tool(export_name)
+        schema = tool_row.get('inputSchema') if isinstance(tool_row, dict) else {}
         meta = self._meta_for_export_tool(export_name)
+        arguments = coerce_call_arguments(arguments, schema if isinstance(schema, dict) else {}, meta)
         return apply_tenant_to_arguments(arguments, agent_claims, meta)
+
+    def _refill_remote_tools(self, service_id: str, agent_claims: dict) -> list | None:
+        """Load one service's tools/list when the route is known but the catalog cache is cold."""
+        mcp_url = self._gateway.get_service_urls().get(service_id)
+        if not mcp_url:
+            return None
+        agent = self._gateway.resolve_agent(agent_claims)
+        if agent is None:
+            return None
+        try:
+            token = self._gateway.mint_downstream_token(agent, mcp_url)
+        except Exception as exc:
+            logger.warning(
+                'MCP gateway tools refill token error service=%s err=%s',
+                service_id,
+                type(exc).__name__,
+            )
+            return None
+        tools = self._fetch_remote_tools_list(mcp_url=mcp_url, bearer_token=token)
+        if isinstance(tools, list):
+            self._remember_routes_for_service_tools(service_id, tools)
+        return tools
 
     def _trusted_tool_operation(
         self,
@@ -283,6 +320,7 @@ class PrefixingMcpServer(AggregatingMcpServer):
         *,
         service_id: str,
         route: dict | None = None,
+        agent_claims: dict | None = None,
     ) -> tuple[dict | None, str | None]:
         """
         Return (tool_row, error_detail) for approval gate and audit.
@@ -291,6 +329,11 @@ class PrefixingMcpServer(AggregatingMcpServer):
         from the tools/call arguments.
         """
         tool_row = self._cached_export_tool(export_name)
+        if not isinstance(tool_row, dict) and agent_claims is not None:
+            service_guess = self._service_id_from_export_name(export_name)
+            if service_guess:
+                self._refill_remote_tools(service_guess, agent_claims)
+                tool_row = self._cached_export_tool(export_name)
         if not isinstance(tool_row, dict):
             return None, 'unknown_tool'
         meta = tool_row.get('_meta') if isinstance(tool_row.get('_meta'), dict) else {}
@@ -306,13 +349,21 @@ class PrefixingMcpServer(AggregatingMcpServer):
             if dns and service_id != self._gateway.local_service_id:
                 mcp_url = self._gateway.get_service_urls().get(service_id)
                 raw_list = self._cache().get(self._tools_cache_key(mcp_url)) if mcp_url else None
+                if not isinstance(raw_list, list) and agent_claims is not None:
+                    self._refill_remote_tools(service_id, agent_claims)
+                    raw_list = self._cache().get(self._tools_cache_key(mcp_url)) if mcp_url else None
                 if not isinstance(raw_list, list):
-                    return None, 'route_mismatch'
+                    return None, 'catalog_unavailable'
                 enriched = [normalize_mcp_tool(t) if isinstance(t, dict) else t for t in raw_list]
                 expected = {str(nm) for nm, _exp, _rt in iter_gateway_remote_exports(enriched, service_id=service_id)}
                 if export_name not in expected:
-                    return None, 'route_mismatch'
+                    return None, 'tool_not_found'
         return tool_row, None
+
+    def _tool_call_error_text(self, detail: str) -> str:
+        if detail in {'unknown_tool', 'tool_not_found'}:
+            return 'This tool was not found. Call ai_search_tools or tools/list, then try again.'
+        return 'The tool catalog could not be loaded. Try again shortly.'
 
     def _tool_call_error_response(self, req_id, *, detail: str) -> JsonResponse:
         """JSON-RPC tool error: HTTP 200, isError true, allowlisted error_code only."""
@@ -320,7 +371,7 @@ class PrefixingMcpServer(AggregatingMcpServer):
             McpServer._result(
                 req_id,
                 {
-                    'content': [{'type': 'text', 'text': 'Tool call rejected.'}],
+                    'content': [{'type': 'text', 'text': self._tool_call_error_text(detail)}],
                     'isError': True,
                     '_meta': {'error_code': 'mcp_tool_error', 'error_detail': detail},
                 },
@@ -330,6 +381,8 @@ class PrefixingMcpServer(AggregatingMcpServer):
     def _prepare_tool_call_params(self, params: dict | None, agent_claims: dict, req_id) -> tuple[dict, JsonResponse | None]:
         call_params = dict(params or {})
         export_name = str(call_params.get('name') or '')
+        if self._service_id_from_export_name(export_name):
+            self._ensure_routes_for_export(export_name, agent_claims)
         local_name = self._local_tool_export_name(export_name)
         if local_name is not None:
             call_params['name'] = local_name
@@ -420,10 +473,18 @@ class PrefixingMcpServer(AggregatingMcpServer):
         return normalized
 
     def _ensure_routes_for_export(self, export_name: str, agent_claims: dict) -> None:
-        if self._lookup_route(export_name) is not None:
-            return
+        """Load the service catalog when the route or the tools list is missing.
+
+        A route lookup can refresh the route key without extending the tools list.
+        The next call then still has a route after the list expires. Treat that as a
+        miss and refill both from the downstream tools/list.
+        """
         service_id = self._service_id_from_export_name(export_name)
         if service_id is None:
+            return
+        mcp_url = self._gateway.get_service_urls().get(service_id)
+        tools_ready = isinstance(self._cache().get(self._tools_cache_key(mcp_url)), list) if mcp_url else False
+        if self._lookup_route(export_name) is not None and tools_ready:
             return
         agent = self._gateway.resolve_agent(agent_claims)
         if agent is None:
@@ -524,6 +585,49 @@ class PrefixingMcpServer(AggregatingMcpServer):
                 return exported
         return None
 
+    def _form_elicitation_response(self, req_id, outcome, on_approved):
+        import json as _json
+
+        from apps.connector.mcp_approval_gate import apply_elicitation_result
+        from apps.connector.mcp_form_elicitation import form_elicitation_response
+
+        elicit = outcome.elicit or {}
+        fallback = outcome.response
+
+        def on_decision(result):
+            if isinstance(result, dict):
+                applied = apply_elicitation_result(req_id, elicit, result)
+                if applied is not None:
+                    if applied.log and self.on_call:
+                        self.on_call(dict(applied.log))
+                    if applied.proceed:
+                        forwarded = on_approved()
+                        if forwarded is not None:
+                            try:
+                                return _json.loads(forwarded.content)
+                            except (TypeError, ValueError, AttributeError):
+                                pass
+                    if applied.response is not None:
+                        try:
+                            return _json.loads(applied.response.content)
+                        except (TypeError, ValueError, AttributeError):
+                            pass
+            try:
+                return _json.loads(fallback.content)
+            except (TypeError, ValueError, AttributeError):
+                return {'content': [{'type': 'text', 'text': 'Approval pending.'}], 'isError': False}
+
+        response = form_elicitation_response(
+            session_id=str(elicit.get('session_id') or ''),
+            call_id=req_id,
+            message=str(elicit.get('message') or ''),
+            on_decision=on_decision,
+        )
+        # The view resets request context before Django iterates this stream.
+        # Forwarding the approved call still needs the company cache key.
+        response.streaming_content = _bind_mcp_context(response.streaming_content)
+        return response
+
     def _gate_tool_call(
         self,
         request: HttpRequest,
@@ -534,12 +638,14 @@ class PrefixingMcpServer(AggregatingMcpServer):
         export_name: str,
         service_id: str,
         arguments: dict,
+        on_approved=None,
     ) -> JsonResponse | None:
         route = self._lookup_route(export_name)
         tool_row, err_detail = self._trusted_tool_operation(
             export_name,
             service_id=service_id,
             route=route if isinstance(route, dict) else None,
+            agent_claims=agent_claims,
         )
         if err_detail is not None or tool_row is None:
             audit = build_call_audit_log(
@@ -575,6 +681,8 @@ class PrefixingMcpServer(AggregatingMcpServer):
             path=path,
             arguments=arguments if isinstance(arguments, dict) else {},
         )
+        if outcome.elicit and outcome.response is not None and on_approved is not None:
+            return self._form_elicitation_response(req_id, outcome, on_approved)
         if outcome.log and self.on_call:
             self.on_call(dict(outcome.log))
         if not outcome.proceed:
@@ -701,6 +809,16 @@ class PrefixingMcpServer(AggregatingMcpServer):
         route = self._lookup_route(export_name)
         if route is not None:
             arguments = call_params.get('arguments') if isinstance(call_params.get('arguments'), dict) else {}
+
+            def _forward_approved():
+                return self._using_connector_tool_catalog(
+                    lambda *args: self._shellui_base_maybe_forward_tool_call(*args),
+                    request,
+                    req_id,
+                    call_params,
+                    agent_claims,
+                )
+
             blocked = self._gate_tool_call(
                 request,
                 req_id,
@@ -709,6 +827,7 @@ class PrefixingMcpServer(AggregatingMcpServer):
                 export_name=export_name,
                 service_id=str(route['service_id']),
                 arguments=arguments,
+                on_approved=_forward_approved,
             )
             if blocked is not None:
                 return blocked
@@ -738,6 +857,7 @@ class PrefixingMcpServer(AggregatingMcpServer):
             tool_name,
             service_id=str(route['service_id']),
             route=route,
+            agent_claims=agent_claims,
         )
         if err_detail is not None or tool_row is None:
             audit = build_call_audit_log(
@@ -789,6 +909,25 @@ class PrefixingMcpServer(AggregatingMcpServer):
         export_name = str(gateway_export_name or (params or {}).get('name') or '')
         local_name = str(call_params.get('name') or '')
         arguments = call_params.get('arguments') if isinstance(call_params.get('arguments'), dict) else {}
+
+        def _run_local_approved():
+            import shellui_django.mcp.server as mcp_server_module
+
+            bypass = bypass_shellui_write_gate()
+            orig_decide = mcp_server_module.decide_write
+            mcp_server_module.decide_write = patched_decide_write
+            try:
+                return self._using_connector_tool_catalog(
+                    lambda *args: super(PrefixingMcpServer, self)._tools_call(*args),
+                    request,
+                    req_id,
+                    call_params,
+                    agent_claims,
+                )
+            finally:
+                mcp_server_module.decide_write = orig_decide
+                reset_shellui_write_gate(bypass)
+
         blocked = self._gate_tool_call(
             request,
             req_id,
@@ -797,6 +936,7 @@ class PrefixingMcpServer(AggregatingMcpServer):
             export_name=export_name or f'{self._gateway.local_service_id}_{local_name}',
             service_id=self._gateway.local_service_id,
             arguments=arguments,
+            on_approved=_run_local_approved,
         )
         if blocked is not None:
             return blocked
@@ -1061,6 +1201,23 @@ def _with_www_authenticate(response, request: HttpRequest, company_id: int):
     if getattr(response, 'status_code', None) == 401:
         response['WWW-Authenticate'] = mcp_www_authenticate(request, company_id)
     return response
+
+
+def _bind_mcp_context(chunks):
+    """Re-apply MCP request context while a streaming tools/call body is read."""
+    request = _mcp_http_request.get()
+    claims = _mcp_agent_claims.get()
+
+    def bound():
+        request_token = _mcp_http_request.set(request)
+        claims_token = _mcp_agent_claims.set(claims)
+        try:
+            yield from chunks
+        finally:
+            _mcp_agent_claims.reset(claims_token)
+            _mcp_http_request.reset(request_token)
+
+    return bound()
 
 
 def _unauthorized(request: HttpRequest, company_id: int) -> JsonResponse:

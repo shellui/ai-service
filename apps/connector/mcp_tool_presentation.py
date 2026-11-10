@@ -352,7 +352,7 @@ def shellui_gateway_instructions(
         'Shellui exposes company-scoped HTTP APIs as MCP tools. The default tools/list is a short discovery set, '
         'not every operation.\n'
         'Workflow: call ai_list_services, then ai_search_tools with a short phrase, then tools/call or ai_call_tool. '
-        'Use ai_describe_tool when you need the full input schema. '
+        'Use ai_describe_tool for argument names. Pass those names. Do not pass HTTP method or path. '
         'If a tool result says approval pending, show the approval link to the user. '
         'After they approve, call the same tool again. ai_get_approval reads the decision without running the tool.\n'
         f'Connected services for this agent: {services}.\n'

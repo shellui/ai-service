@@ -160,6 +160,16 @@ def _sample(schema: dict, name: str) -> object:
     return 'example'
 
 
+def _flat_call_arguments(tool: dict | None) -> dict:
+    """Sample required fields from the public (flattened) schema."""
+    from apps.connector.mcp_agent_arguments import public_input_schema
+
+    schema = public_input_schema((tool or {}).get('inputSchema') if isinstance(tool, dict) else {})
+    props = schema.get('properties') if isinstance(schema.get('properties'), dict) else {}
+    required = [str(key) for key in (schema.get('required') or []) if str(key) in props]
+    return {key: _sample(props[key], key) for key in required}
+
+
 def _call_arguments(tool: dict) -> dict:
     props = (tool.get('inputSchema') or {}).get('properties') or {}
     arguments: dict = {}
@@ -181,10 +191,10 @@ def _call_arguments(tool: dict) -> dict:
     return arguments
 
 
-def _client_contract(tool: dict, *, traits: tuple[bool, bool]) -> dict:
+def _client_contract(tool: dict, *, traits: tuple[bool, bool], method: str = 'GET') -> dict:
     read_only, destructive = traits
     decision = decide_write(
-        method=str(((tool.get('inputSchema') or {}).get('properties') or {}).get('method', {}).get('enum', ['GET'])[0]),
+        method=method,
         access_mode='ask',
         destructive=destructive,
         allow_destructive_without_asking=False,
@@ -321,9 +331,7 @@ class McpToolReleaseTests(TestCase):
 
         return [tool for tool in tools if tool['name'] not in DISCOVERY_ONLY_TOOLS]
 
-    def _traits(self, name: str) -> tuple[bool, bool]:
-        # The catalog cache is per company. This lookup runs after the HTTP request,
-        # so the request claims context is gone.
+    def _internal_tool(self, name: str) -> dict:
         from apps.connector.mcp_views import _mcp_agent_claims
 
         token = _mcp_agent_claims.set({'company_id': 10})
@@ -332,6 +340,12 @@ class McpToolReleaseTests(TestCase):
         finally:
             _mcp_agent_claims.reset(token)
         self.assertIsInstance(row, dict, name)
+        return row
+
+    def _traits(self, name: str) -> tuple[bool, bool]:
+        # The catalog cache is per company. This lookup runs after the HTTP request,
+        # so the request claims context is gone.
+        row = self._internal_tool(name)
         meta = row.get('_meta') if isinstance(row, dict) else {}
         return tool_traits_from_export(row, method=str((meta or {}).get('method') or 'GET'))
 
@@ -377,31 +391,23 @@ class McpToolReleaseTests(TestCase):
                 self.assertIn(export, by_name, export)
                 tool = by_name[export]
                 props = tool['inputSchema']['properties']
-                self.assertEqual(props['path']['const'], path, export)
-                self.assertEqual(props['method']['enum'], [method.upper()], export)
+                required = list(tool['inputSchema'].get('required') or [])
+                self.assertNotIn('path', props, export)
+                self.assertNotIn('method', props, export)
+                self.assertNotIn('path', required, export)
+                self.assertNotIn('method', required, export)
                 agent_path = [name for name in path_parameter_names(path) if not is_tenant_field(name)]
-                if agent_path:
-                    path_props = props['path_params']['properties']
-                    self.assertEqual(sorted(path_props), sorted(agent_path), export)
-                    self.assertEqual(props['path_params']['required'], agent_path, export)
-                    self.assertIn('path_params', tool['inputSchema']['required'])
-                else:
-                    self.assertNotIn('path_params', props, export)
-                query_props = (props.get('query') or {}).get('properties') or {}
-                body_props = (props.get('body') or {}).get('properties') or {}
-                self.assertNotIn('company_id', query_props, export)
-                self.assertNotIn('companyId', query_props, export)
-                self.assertNotIn('company_id', body_props, export)
-                self.assertEqual(
-                    sorted((props.get('query') or {}).get('required') or []),
-                    sorted(_query_required(operation)),
-                    export,
-                )
-                self.assertEqual(
-                    sorted((props.get('body') or {}).get('required') or []),
-                    sorted(_body_required(operation, schema)),
-                    export,
-                )
+                for name in agent_path:
+                    self.assertIn(name, props, export)
+                    self.assertIn(name, required, export)
+                self.assertNotIn('company_id', props, export)
+                self.assertNotIn('companyId', props, export)
+                for name in _query_required(operation):
+                    self.assertIn(name, props, export)
+                    self.assertIn(name, required, export)
+                for name in _body_required(operation, schema):
+                    self.assertIn(name, props, export)
+                    self.assertIn(name, required, export)
                 read_only, destructive = self._traits(export)
                 self.assertEqual(read_only, bool(flags['read_only']), export)
                 self.assertEqual(destructive, bool(flags['destructive']), export)
@@ -411,7 +417,7 @@ class McpToolReleaseTests(TestCase):
                 self.assertIn(f'({COMPANY_LABEL})', tool['title'])
                 self.assertNotIn('api_v', tool['name'])
                 seen_operations.add((service, path, method.upper()))
-                contracts.append(_client_contract(tool, traits=(read_only, destructive)))
+                contracts.append(_client_contract(tool, traits=(read_only, destructive), method=method))
 
         ai = by_name['ai_list_services']
         read_only, destructive = self._traits('ai_list_services')
@@ -455,7 +461,8 @@ class McpToolReleaseTests(TestCase):
             name = tool['name']
             with self.subTest(tool=name):
                 self.forwarded.clear()
-                arguments = _call_arguments(tool)
+                internal = self._internal_tool(name)
+                arguments = _flat_call_arguments(internal)
                 response = self._post('tools/call', name=name, arguments=arguments)
                 self.assertEqual(response.status_code, 200, response.content[:800])
                 body = response.json()
@@ -467,21 +474,31 @@ class McpToolReleaseTests(TestCase):
                     text = result['content'][0]['text']
                     self.assertIn('identity', text)
                     continue
+                meta = internal.get('_meta') or {}
+                path = str(meta.get('path') or '')
+                method = str(meta.get('method') or '').upper()
                 service = name.split('_', 1)[0]
-                props = tool['inputSchema']['properties']
-                path = props['path']['const']
-                method = props['method']['enum'][0]
                 self.assertEqual(len(self.forwarded), 1, self.forwarded)
                 forwarded = self.forwarded[0]
                 self.assertEqual(forwarded['url'], f'https://{service}.test/mcp')
                 self.assertEqual(forwarded['name'], downstream_by_route[(service, path, method)])
                 self.assertEqual(forwarded['arguments'].get('path'), path)
                 self.assertEqual(forwarded['arguments'].get('method'), method)
-                for section in ('path_params', 'query', 'body'):
-                    expected = arguments.get(section) or {}
-                    actual = forwarded['arguments'].get(section) or {}
-                    for key, value in expected.items():
-                        self.assertEqual(actual.get(key), value, f'{name} {section}.{key}')
+                self.assertNotIn('method', arguments)
+                self.assertNotIn('path', arguments)
+                schema_props = (internal.get('inputSchema') or {}).get('properties') or {}
+                for key, value in arguments.items():
+                    if key in ((schema_props.get('path_params') or {}).get('properties') or {}):
+                        section = 'path_params'
+                    elif key in ((schema_props.get('query') or {}).get('properties') or {}):
+                        section = 'query'
+                    else:
+                        section = 'body'
+                    self.assertEqual(
+                        (forwarded['arguments'].get(section) or {}).get(key),
+                        value,
+                        f'{name} {section}.{key}',
+                    )
                 operation = self.operations[service][(path, method)]
                 template_params = path_parameter_names(path)
                 if any(is_tenant_field(param) for param in template_params):
@@ -526,12 +543,9 @@ class McpToolReleaseTests(TestCase):
         listed = self._list_tools()
         contracts = []
         for tool in listed:
-            if tool['name'] == 'ai_list_services':
-                read_only, destructive = self._traits(tool['name'])
-                contracts.append(_client_contract(tool, traits=(read_only, destructive)))
-                continue
             read_only, destructive = self._traits(tool['name'])
-            contracts.append(_client_contract(tool, traits=(read_only, destructive)))
+            method = str((self._internal_tool(tool['name']).get('_meta') or {}).get('method') or 'GET')
+            contracts.append(_client_contract(tool, traits=(read_only, destructive), method=method))
         contracts.sort(key=lambda row: row['name'])
         pinned = json.loads(SNAPSHOT_PATH.read_text(encoding='utf-8'))
         self.assertEqual(contracts, pinned)
@@ -540,7 +554,11 @@ class McpToolReleaseTests(TestCase):
             name = tool['name']
             with self.subTest(tool=name):
                 self.forwarded.clear()
-                response = self._post('tools/call', name=name, arguments=_call_arguments(tool))
+                response = self._post(
+                    'tools/call',
+                    name=name,
+                    arguments=_flat_call_arguments(self._internal_tool(name)),
+                )
                 self.assertEqual(response.status_code, 200, response.content[:800])
                 body = response.json()
                 self.assertNotIn('error', body, body)

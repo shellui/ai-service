@@ -250,9 +250,9 @@ def discovery_tool_definitions() -> list[dict[str, Any]]:
             'name': 'ai_search_tools',
             'title': 'AI: Search tools',
             'description': (
-                'Search Shellui tools with a short phrase. Returns the best matches with '
-                'read, write, destructive, and approval flags plus the full input schema, '
-                'so you can call a match immediately. Optional filters: service '
+                'Search Shellui tools with a short phrase. Returns compact matches: name, '
+                'a one-line description, and read_only, destructive, and needs_approval. '
+                'Use ai_describe_tool for the argument names. Optional filters: service '
                 '(identity, storage, hosting, email) and access (read or write). '
                 'limit defaults to 8. Then call the tool, or pass it to ai_call_tool.'
             ),
@@ -288,8 +288,8 @@ def discovery_tool_definitions() -> list[dict[str, Any]]:
             'name': 'ai_describe_tool',
             'title': 'AI: Describe tool',
             'description': (
-                'Return the full input schema, access flags, and a short usage note for one '
-                'or more Shellui gateway tool names. Use this when a search result is not enough. '
+                'Return a trimmed input schema and access flags for one or more Shellui tool names. '
+                'Arguments are named fields such as event_type or email. Do not pass HTTP method or path. '
                 'Then call the tool directly or through ai_call_tool.'
             ),
             'inputSchema': {
@@ -315,8 +315,8 @@ def discovery_tool_definitions() -> list[dict[str, Any]]:
             'name': 'ai_call_tool',
             'title': 'AI: Call tool',
             'description': (
-                'Run any Shellui gateway tool by name. arguments are the same object you would pass '
-                'to tools/call. Tenant scope, approvals, secret masking, and audit logging '
+                'Run any Shellui gateway tool by name. arguments are named fields from ai_describe_tool, '
+                'not HTTP method or path. Tenant scope, approvals, secret masking, and audit logging '
                 'are identical to a direct call. In ask mode the person sees the real tool '
                 'name and arguments, not ai_call_tool.'
             ),
@@ -592,18 +592,31 @@ def _needs_approval(tool: dict[str, Any], access_mode: str) -> bool:
 
 
 def public_match(tool: dict[str, Any], *, access_mode: str) -> dict[str, Any]:
+    """Compact search row. Schemas stay on ai_describe_tool."""
+    from apps.connector.mcp_agent_arguments import one_line
+
+    read_only, destructive = _traits(tool)
+    return {
+        'name': tool.get('name'),
+        'description': one_line(tool.get('description') or ''),
+        'read_only': read_only,
+        'destructive': destructive,
+        'needs_approval': _needs_approval(tool, access_mode),
+    }
+
+
+def describe_match(tool: dict[str, Any], *, access_mode: str) -> dict[str, Any]:
+    from apps.connector.mcp_agent_arguments import one_line, public_input_schema
+
     read_only, destructive = _traits(tool)
     schema = tool.get('inputSchema') if isinstance(tool.get('inputSchema'), dict) else {'type': 'object'}
     return {
         'name': tool.get('name'),
-        'title': tool.get('title') or tool.get('name'),
-        'description': tool.get('description') or '',
-        'service': str(tool.get('name') or '').split('_', 1)[0],
+        'description': one_line(tool.get('description') or ''),
         'read_only': read_only,
         'destructive': destructive,
         'needs_approval': _needs_approval(tool, access_mode),
-        'inputSchema': schema,
-        'usage': 'Call this name with tools/call, or pass {name, arguments} to ai_call_tool.',
+        'inputSchema': public_input_schema(schema),
     }
 
 
@@ -682,6 +695,8 @@ def describe_payload(catalog: list[dict[str, Any]], arguments: dict[str, Any], *
             'tools': [],
         }
     by_name = {str(tool.get('name') or ''): tool for tool in catalog}
+    from apps.connector.mcp_agent_arguments import bound_describe_tools
+
     tools = []
     missing = []
     for name in names[:8]:
@@ -689,7 +704,8 @@ def describe_payload(catalog: list[dict[str, Any]], arguments: dict[str, Any], *
         if tool is None:
             missing.append(name)
             continue
-        tools.append(public_match(tool, access_mode=access_mode))
+        tools.append(describe_match(tool, access_mode=access_mode))
+    tools = bound_describe_tools(tools)
     payload: dict[str, Any] = {'tools': tools}
     if missing:
         suggestions = []

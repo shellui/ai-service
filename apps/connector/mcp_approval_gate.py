@@ -7,7 +7,7 @@ import hashlib
 import json
 import logging
 import secrets
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from django.http import HttpRequest, JsonResponse
@@ -48,6 +48,7 @@ class GateOutcome:
     proceed: bool
     response: JsonResponse | None = None
     log: dict[str, Any] | None = None
+    elicit: dict[str, Any] | None = None
 
 
 def access_mode_from_claims(agent_claims: dict[str, Any]) -> str:
@@ -113,10 +114,85 @@ def _form_consent(params: dict[str, Any] | None) -> str | None:
     action = str(block.get('action') or '').strip().lower()
     content = block.get('content') if isinstance(block.get('content'), dict) else {}
     decision = str(content.get('decision') or '').strip().lower()
-    if action in {'decline', 'cancel'} or decision in {'deny', 'decline'}:
+    if action == 'cancel':
+        return None
+    if action == 'decline' or decision in {'deny', 'decline'}:
         return 'deny'
     if action == 'accept' and decision in {'', 'approve', 'allow'}:
         return 'approve'
+    return None
+
+
+def apply_elicitation_result(req_id: Any, elicit: dict[str, Any], result: dict[str, Any]) -> GateOutcome | None:
+    """Turn a classic elicitation/create result into an in-chat decision. None falls back to the link."""
+    if elicit.get('destructive'):
+        return None
+    action = str(result.get('action') or '').strip().lower()
+    content = result.get('content') if isinstance(result.get('content'), dict) else {}
+    decision = str(content.get('decision') or '').strip().lower()
+    if action == 'cancel':
+        return None
+    if action == 'decline' or decision in {'deny', 'decline'}:
+        chosen = 'deny'
+    elif action == 'accept' and decision in {'', 'approve', 'allow'}:
+        chosen = 'allow'
+    else:
+        return None
+    approval_id = str(elicit.get('approval_id') or '')
+    payload = elicit.get('approval_payload') if isinstance(elicit.get('approval_payload'), dict) else {}
+    decided = approvals.decide_approval(
+        approval_id=approval_id,
+        payload=payload,
+        decision=chosen,
+        connection_id=str(elicit.get('connection_id') or ''),
+        actor_email=elicit.get('actor_email'),
+        consent='in_chat',
+        client_name=str(elicit.get('client_name') or ''),
+    )
+    logger.info(
+        'MCP in-chat approval company_id=%s tool=%s client_name=%s decision=%s identity_ok=%s',
+        payload.get('company_id'),
+        elicit.get('export_name'),
+        elicit.get('client_name') or 'unknown',
+        chosen,
+        decided.ok,
+    )
+    export_name = str(elicit.get('export_name') or '')
+    if not decided.ok:
+        return None
+    if chosen == 'deny':
+        return GateOutcome(
+            proceed=False,
+            response=_approval_result(
+                req_id,
+                text=copy.after_deny_text(tool_name=export_name),
+                meta={'shellui_approval': {'status': 'denied', 'channel': 'form', 'approval_id': approval_id}},
+            ),
+            log=_log_entry(
+                agent_claims=elicit.get('agent_claims') if isinstance(elicit.get('agent_claims'), dict) else {},
+                service=str(elicit.get('service_id') or ''),
+                export_name=export_name,
+                tool=elicit.get('tool') if isinstance(elicit.get('tool'), dict) else None,
+                method=str(elicit.get('method') or 'GET'),
+                path=str(elicit.get('path') or ''),
+                log_result='client_denied',
+                approval_id=approval_id,
+            ),
+        )
+    if approvals.approval_consume_detail(approval_id, payload).consumed:
+        return GateOutcome(
+            proceed=True,
+            log=_log_entry(
+                agent_claims=elicit.get('agent_claims') if isinstance(elicit.get('agent_claims'), dict) else {},
+                service=str(elicit.get('service_id') or ''),
+                export_name=export_name,
+                tool=elicit.get('tool') if isinstance(elicit.get('tool'), dict) else None,
+                method=str(elicit.get('method') or 'GET'),
+                path=str(elicit.get('path') or ''),
+                log_result='client_allowed',
+                approval_id=approval_id,
+            ),
+        )
     return None
 
 
@@ -150,8 +226,10 @@ def parse_client_decision(params: dict[str, Any] | None) -> tuple[str | None, st
         return None, None
     decision = str(block.get('decision') or '').strip().lower()
     approval_id = str(block.get('approval_id') or '').strip() or None
-    if decision in {'allow', 'deny', 'session_allow'}:
-        return decision, approval_id
+    # allow and session_allow are not decisions. An agent must not approve itself.
+    # The id is only a correlation hint for an approval Identity already recorded.
+    if decision == 'deny':
+        return 'deny', approval_id
     return None, approval_id
 
 
@@ -212,6 +290,7 @@ def pending_approval_payload(
         'approval_id': approval_id,
         'expires_at': expires_at,
         'approval_url': approval_url,
+        'tool': tool_name,
         'instruction': copy.pending_agent_instruction(tool_name=tool_name),
     }
 
@@ -219,8 +298,10 @@ def pending_approval_payload(
 def pending_approval_text(payload: dict[str, Any]) -> str:
     instruction = str(payload.get('instruction') or '').strip()
     url = str(payload.get('approval_url') or '').strip()
+    tool = str(payload.get('tool') or '').strip()
+    lead = f'Approval pending for {tool}.' if tool else 'Approval pending.'
     body = json.dumps(payload, sort_keys=True, default=str)
-    return f'Approval pending. {instruction} Link: {url}\n{body}'
+    return f'{lead} {instruction}\n{url}\n{body}'
 
 
 def build_elicitation_meta(
@@ -437,6 +518,8 @@ def _pending_approval_outcome(
     form_mode: bool,
     url_mode: bool,
     channel: str,
+    delivery: str = 'link',
+    include_url_elicitation: bool = False,
 ) -> GateOutcome:
     created_url = str(created.get('approval_url') or '') if isinstance(created, dict) else ''
     created_path = str(created.get('fallback_path') or '') if isinstance(created, dict) else ''
@@ -468,8 +551,8 @@ def _pending_approval_outcome(
         'approvals_list_url': approvals.approval_settings_url(),
         'channel': channel,
     }
-    if channel == 'form':
-        message = copy.form_approval_message(tool_name=export_name)
+    if channel == 'form' and delivery == 'input_required':
+        message = copy.form_approval_message(tool_name=export_name, approval_url=page_url)
         structured = {
             'status': 'pending',
             'approval_id': approval_id,
@@ -526,7 +609,7 @@ def _pending_approval_outcome(
             ),
         )
     extra: dict[str, Any] | None = None
-    if url_mode and channel != 'form':
+    if include_url_elicitation and url_mode and channel != 'form':
         # Current spec (2026-07-28) delivers URL elicitation as an InputRequiredResult
         # on tools/call. elicitationId is required by @modelcontextprotocol/sdk 1.32.2
         # URL params and is ignored by clients that only read mode, url, and message.
@@ -657,13 +740,21 @@ def enforce_tool_call_approval(
     client_decision, client_approval_id = parse_client_decision(params)
     actor_email = str(agent_claims.get('email') or '').strip() or None
 
-    def _decide(approval_id: str, decision: str) -> approvals.DecideResult:
+    def _decide(
+        approval_id: str,
+        decision: str,
+        *,
+        consent: str | None = None,
+        client_name: str | None = None,
+    ) -> approvals.DecideResult:
         return approvals.decide_approval(
             approval_id=approval_id,
             payload=approval_payload,
             decision=decision,
             connection_id=connection_id,
             actor_email=actor_email,
+            consent=consent,
+            client_name=client_name,
         )
 
     if client_decision == 'deny' and client_approval_id:
@@ -712,34 +803,6 @@ def enforce_tool_call_approval(
                 ),
             )
         return GateOutcome(proceed=True)
-
-    # Identity rejects session allow on destructive rows (409). Do not consume or
-    # record session_used; fall through so a duplicate executed row stays failed.
-    if client_decision == 'session_allow' and client_approval_id and not destructive:
-        decided = _decide(client_approval_id, 'allow_session')
-        if decided.status_code == 409 or not decided.ok:
-            return GateOutcome(
-                proceed=False,
-                response=_approval_result(
-                    req_id,
-                    text=copy.approval_title(tool_name=export_name, destructive=destructive),
-                    meta={'shellui_approval': {'status': 'pending', 'session_allow': False}},
-                ),
-            )
-        if approvals.approval_consume(client_approval_id, approval_payload):
-            log_result = _log_result_from_decide(decided, fallback='client_session_allowed')
-            return GateOutcome(
-                proceed=True,
-                log=_log_entry(
-                    agent_claims=agent_claims,
-                    service=service_id,
-                    export_name=export_name,
-                    tool=tool,
-                    method=method,
-                    path=path,
-                    log_result=log_result,
-                ),
-            )
 
     state = approvals.approval_state(approval_payload)
     if state == 'expired':
@@ -816,31 +879,25 @@ def enforce_tool_call_approval(
             path=path,
         )
 
-    if client_decision == 'allow' and client_approval_id:
-        decided = _decide(client_approval_id, 'allow')
-        if decided.ok and approvals.approval_consume(client_approval_id, approval_payload):
-            log_result = _log_result_from_decide(decided, fallback='client_allowed')
-            return GateOutcome(
-                proceed=True,
-                log=_log_entry(
-                    agent_claims=agent_claims,
-                    service=service_id,
-                    export_name=export_name,
-                    tool=tool,
-                    method=method,
-                    path=path,
-                    log_result=log_result,
-                ),
-            )
-
     from apps.connector.mcp_approval_channel import CHANNEL_FORM, approval_channel
-    from apps.connector.mcp_protocol import session_client_name
+    from apps.connector.mcp_form_elicitation import (
+        elicitation_wait_seconds,
+        form_delivery,
+        request_accepts_sse,
+    )
+    from apps.connector.mcp_protocol import session_client_name, session_protocol_version
 
     form_mode, url_mode = _client_elicitation_modes(request, params)
+    delivery = form_delivery(
+        protocol_version=session_protocol_version(_connection_id(request)),
+        form_declared=form_mode,
+        accepts_sse=request_accepts_sse(request),
+        wait_seconds=elicitation_wait_seconds(),
+    )
     channel = approval_channel(
         destructive=destructive,
         company_id=company_id,
-        form_supported=form_mode,
+        form_supported=delivery != 'link',
     )
     url_action = _url_elicitation_action(params)
     form_decision = _form_consent(params) if channel == CHANNEL_FORM else None
@@ -869,7 +926,7 @@ def enforce_tool_call_approval(
         )
 
     created: dict[str, Any] | None = None
-    approval_id = client_approval_id or str(approval_payload.get('approval_id') or '')
+    approval_id = str(approval_payload.get('approval_id') or '') or client_approval_id or ''
     if state != 'pending' or not approval_id:
         approvals.take_approval_create_error()
         created = approvals.create_approval_request(approval_payload, is_destructive=destructive)
@@ -880,7 +937,12 @@ def enforce_tool_call_approval(
     if channel == CHANNEL_FORM and form_decision in {'approve', 'deny'}:
         client_name = session_client_name(_connection_id(request))
         identity_decision = 'allow' if form_decision == 'approve' else 'deny'
-        decided = _decide(approval_id, identity_decision)
+        decided = _decide(
+            approval_id,
+            identity_decision,
+            consent='in_chat',
+            client_name=client_name,
+        )
         logger.info(
             'MCP in-chat approval company_id=%s agent_id=%s tool=%s client_name=%s decision=%s identity_ok=%s',
             company_id,
@@ -997,7 +1059,7 @@ def enforce_tool_call_approval(
                 ),
             )
 
-    return _pending_approval_outcome(
+    outcome = _pending_approval_outcome(
         req_id,
         agent_claims=agent_claims,
         export_name=export_name,
@@ -1012,5 +1074,35 @@ def enforce_tool_call_approval(
         destructive=destructive,
         form_mode=form_mode,
         url_mode=url_mode,
-        channel=channel,
+        channel='link' if delivery == 'sse' else channel,
+        delivery=delivery,
+        include_url_elicitation=False,
     )
+    if channel == CHANNEL_FORM and delivery == 'sse' and approval_id:
+        created_url = str(created.get('approval_url') or '') if isinstance(created, dict) else ''
+        created_path = str(created.get('fallback_path') or '') if isinstance(created, dict) else ''
+        page_url = approvals.resolve_approval_url(
+            approval_id,
+            approval_url=created_url or str(approval_payload.get('approval_url_field') or ''),
+            fallback_path=created_path or str(approval_payload.get('approval_fallback_path') or ''),
+        )
+        outcome = replace(
+            outcome,
+            elicit={
+            'session_id': _connection_id(request),
+            'message': copy.form_approval_message(tool_name=export_name, approval_url=page_url),
+            'approval_id': approval_id,
+            'client_name': session_client_name(_connection_id(request)),
+            'approval_payload': approval_payload,
+            'connection_id': connection_id,
+            'actor_email': actor_email,
+            'export_name': export_name,
+            'service_id': service_id,
+            'destructive': destructive,
+            'agent_claims': agent_claims,
+            'tool': tool,
+            'method': method,
+            'path': path,
+            },
+        )
+    return outcome

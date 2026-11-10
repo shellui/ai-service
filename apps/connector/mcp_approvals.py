@@ -573,6 +573,30 @@ def consume_approval(approval_id: str, payload: dict[str, Any]) -> bool:
     return consume_approval_detail(approval_id, payload).consumed
 
 
+_CLIENT_NAME_MAX = 80
+
+
+def client_name_for_identity(name: str | None) -> str:
+    """Match identity PR #150: control characters become spaces, then collapse, max 80."""
+    cleaned = ''.join(' ' if ord(ch) < 32 else ch for ch in str(name or ''))
+    return ' '.join(cleaned.split())[:_CLIENT_NAME_MAX]
+
+
+def _consent_fields_rejected(response: requests.Response) -> bool:
+    """True when an older identity rejected optional consent fields. Destructive 409 is not a retry."""
+    if response.status_code != 400:
+        return False
+    try:
+        data = response.json()
+    except ValueError:
+        data = None
+    message = str(data.get('error') or '') if isinstance(data, dict) else ''
+    lowered = message.lower()
+    if 'destructive' in lowered:
+        return False
+    return 'consent' in lowered or 'client_name' in lowered or not lowered
+
+
 def decide_approval(
     *,
     approval_id: str,
@@ -580,8 +604,10 @@ def decide_approval(
     decision: str,
     connection_id: str,
     actor_email: str | None = None,
+    consent: str | None = None,
+    client_name: str | None = None,
 ) -> DecideResult:
-    """Identity #134: decision is allow, deny, or allow_session."""
+    """Identity decide. ``consent`` and ``client_name`` are optional (identity PR #150)."""
     origin = _identity_origin()
     binding = approval_binding_from_payload(payload)
     if not origin or binding is None or not approval_id:
@@ -602,8 +628,18 @@ def decide_approval(
     }
     if actor_email:
         body['actor_email'] = actor_email
+    consent_value = str(consent or '').strip()
+    if consent_value in {'in_chat', 'link'}:
+        body['consent'] = consent_value
+    identity_client = client_name_for_identity(client_name)
+    if identity_client:
+        body['client_name'] = identity_client
     try:
         response = requests.post(url, json=body, headers=headers, timeout=5)
+        if _consent_fields_rejected(response):
+            # Identity without PR #150 does not know these fields. Retry the same decision.
+            retry_body = {key: value for key, value in body.items() if key not in {'consent', 'client_name'}}
+            response = requests.post(url, json=retry_body, headers=headers, timeout=5)
     except requests.RequestException:
         return DecideResult(ok=False, status_code=503)
     audit_status = None

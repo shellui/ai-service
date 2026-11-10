@@ -207,6 +207,13 @@ def session_client_name(session_id: str) -> str:
     return str(record.get('client_name') or '')[:120]
 
 
+def session_protocol_version(session_id: str) -> str:
+    record = _session_record(session_id)
+    if record is None:
+        return ''
+    return str(record.get('protocol_version') or '')
+
+
 def _session_record(session_id: str) -> dict[str, Any] | None:
     meta = cache.get(f'{MCP_SESSION_CACHE_PREFIX}{session_id}')
     return meta if isinstance(meta, dict) else None
@@ -398,6 +405,15 @@ def handle_mcp_gateway_request(
     )
     if session_error is not None:
         return session_error
+
+    if 'method' not in payload and ('result' in payload or 'error' in payload):
+        from apps.connector.mcp_form_elicitation import store_elicitation_result
+
+        session_id = str(request.headers.get('Mcp-Session-Id') or request.headers.get('MCP-Session-Id') or '')
+        result = payload.get('result') if isinstance(payload.get('result'), dict) else {}
+        if session_id and store_elicitation_result(session_id, str(payload.get('id') or ''), result):
+            return HttpResponse(status=202)
+        return JsonResponse(McpServer._error(req_id, -32600, 'Unexpected response'), status=400)
 
     if _is_jsonrpc_notification(payload):
         if method == 'notifications/initialized':

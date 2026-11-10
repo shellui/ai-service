@@ -64,6 +64,7 @@ def _token(*, mcp_access: str = 'ask') -> str:
     STORAGE_SERVICE_URL='https://storage.test',
     AI_PUBLIC_URL='https://ai.test',
     AUTH_RATE_LIMIT_ENABLED=False,
+    MCP_APPROVAL_FORM_ELICITATION_WAIT_SECONDS=0,
     CACHES={
         'default': {
             'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
@@ -102,6 +103,7 @@ class McpIdentityConformanceTests(TestCase):
         }
 
         approvals: list[dict] = []
+        state_calls = {'n': 0}
 
         def http_post(url, **kwargs):
             """Single handler: inner ``patch(..., gateway.requests.post)`` shadows ``requests.post`` globally."""
@@ -127,7 +129,17 @@ class McpIdentityConformanceTests(TestCase):
                 approvals.append(dict(jb))
                 return _ok_json({'id': 'appr-e2e', 'status': 'pending'})
             if jb == {}:
-                return _ok_json({'id': 'appr-e2e', 'status': 'pending'})
+                state_calls['n'] += 1
+                status = 'pending' if state_calls['n'] == 1 else 'approved'
+                return _ok_json(
+                    {
+                        'id': 'appr-e2e',
+                        'status': status,
+                        'expires_at': '2026-11-10T22:00:00+00:00',
+                        'is_destructive': True,
+                        'approval_url': 'https://identity.test/oauth/mcp/approval/appr-e2e?token=signed',
+                    }
+                )
             if 'decision' in jb and 'approval_id' in jb:
                 return _ok_json({'status': 'approved', 'audit_status': 'ok'})
             if jb.keys() == {'approval_id'}:
@@ -154,14 +166,7 @@ class McpIdentityConformanceTests(TestCase):
 
                         r2 = client.post(
                             '/c/10/mcp',
-                            data=_rpc(
-                                'tools/call',
-                                name='storage_delete_bucket',
-                                arguments={},
-                                _meta={
-                                    'shellui_approval': {'decision': 'allow', 'approval_id': 'appr-e2e'},
-                                },
-                            ),
+                            data=_rpc('tools/call', name='storage_delete_bucket', arguments={}),
                             content_type='application/json',
                             HTTP_HOST='ai.test',
                             **headers,

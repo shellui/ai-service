@@ -6,7 +6,7 @@
       "openWorldHint": false,
       "readOnlyHint": true
     },
-    "description": "Search Shellui tools with a short phrase. Returns the best matches with read, write, destructive, and approval flags plus the full input schema, so you can call a match immediately. Optional filters: service (identity, storage, hosting, email) and access (read or write). limit defaults to 8. Then call the tool, or pass it to ai_call_tool.",
+    "description": "Search Shellui tools with a short phrase. Returns compact matches: name, a one-line description, and read_only, destructive, and needs_approval. Use ai_describe_tool for the argument names. Optional filters: service (identity, storage, hosting, email) and access (read or write). limit defaults to 8. Then call the tool, or pass it to ai_call_tool.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -48,7 +48,7 @@
       "openWorldHint": false,
       "readOnlyHint": true
     },
-    "description": "Return the full input schema, access flags, and a short usage note for one or more Shellui gateway tool names. Use this when a search result is not enough. Then call the tool directly or through ai_call_tool.",
+    "description": "Return a trimmed input schema and access flags for one or more Shellui tool names. Arguments are named fields such as event_type or email. Do not pass HTTP method or path. Then call the tool directly or through ai_call_tool.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -78,7 +78,7 @@
       "openWorldHint": true,
       "readOnlyHint": false
     },
-    "description": "Run any Shellui gateway tool by name. arguments are the same object you would pass to tools/call. Tenant scope, approvals, secret masking, and audit logging are identical to a direct call. In ask mode the person sees the real tool name and arguments, not ai_call_tool.",
+    "description": "Run any Shellui gateway tool by name. arguments are named fields from ai_describe_tool, not HTTP method or path. Tenant scope, approvals, secret masking, and audit logging are identical to a direct call. In ask mode the person sees the real tool name and arguments, not ai_call_tool.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
