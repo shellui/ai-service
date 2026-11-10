@@ -417,6 +417,8 @@ MCP_APPROVAL_SETUP_SESSION_TTL_MAX_SECONDS = max(
     MCP_APPROVAL_SETUP_SESSION_TTL_MIN_SECONDS,
     _env_int('MCP_APPROVAL_SETUP_SESSION_TTL_MAX_SECONDS', 900),
 )
+# JSON object of company id to form or link. Destructive tools always use the link.
+MCP_APPROVAL_CHANNEL_BY_COMPANY = os.getenv('MCP_APPROVAL_CHANNEL_BY_COMPANY', '').strip()
 # Connected Shellui services (origins only; MCP paths are appended in code).
 STORAGE_SERVICE_URL = os.getenv('STORAGE_SERVICE_URL', '').strip().rstrip('/') or None
 HOSTING_SERVICE_URL = os.getenv('HOSTING_SERVICE_URL', '').strip().rstrip('/') or None

@@ -58,6 +58,21 @@ def url_elicitation_message(*, tool_name: str) -> str:
     return f'Approve {tool_name} in your browser, then return here.'
 
 
+def form_approval_message(*, tool_name: str) -> str:
+    return f'Allow {tool_name}? Choose Approve or Deny.'
+
+
+def form_approval_instruction(*, tool_name: str) -> str:
+    return (
+        f'Ask the user to approve or deny {tool_name} in chat. '
+        'After they approve, call this tool again with the same arguments and their decision.'
+    )
+
+
+def form_consent_failed_text() -> str:
+    return 'Approval could not be recorded. Try again shortly.'
+
+
 def approved_retry_instruction(*, tool_name: str) -> str:
     return f'Approved. Call {tool_name} again with the same arguments. It will run once.'
 

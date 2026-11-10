@@ -397,12 +397,15 @@ class DiscoveryGatewayTests(TestCase):
             **self._auth(token, session_id=session),
         )
         for response in (direct, via):
-            meta = response.json()['result']['_meta']['shellui_approval']
-            self.assertIn('storage_create_bucket', meta['elicitation']['title'])
-            self.assertNotIn('ai_call_tool', meta['elicitation']['title'])
-            self.assertIn('Ada', meta['elicitation']['body'])
-            self.assertNotIn('sekret-value', meta['elicitation']['body'])
-            self.assertIn('***', meta['elicitation']['body'])
+            result = response.json()['result']
+            message = result['inputRequests']['approval']['params']['message']
+            self.assertIn('storage_create_bucket', message)
+            self.assertNotIn('ai_call_tool', message)
+            self.assertNotIn('sekret-value', result['content'][0]['text'])
+        summary = _create.call_args.args[0]['_arguments_summary']
+        self.assertIn('Ada', summary)
+        self.assertNotIn('sekret-value', summary)
+        self.assertIn('***', summary)
         forwarded = [
             call for call in post.call_args_list if (call.kwargs.get('json') or {}).get('method') == 'tools/call'
         ]
@@ -456,10 +459,12 @@ class DiscoveryGatewayTests(TestCase):
             content_type='application/json',
             **self._auth(token, session_id=session),
         )
-        meta = response.json()['result']['_meta']['shellui_approval']
-        self.assertIn('storage_delete_bucket', meta['elicitation']['title'])
-        self.assertIn('change data', meta['elicitation']['title'])
-        self.assertNotIn('session_allow', meta['elicitation']['buttons'])
+        result = response.json()['result']
+        meta = result['_meta']['shellui_approval']
+        self.assertEqual(meta['channel'], 'link')
+        self.assertIn('storage_delete_bucket', result['content'][0]['text'])
+        self.assertNotIn('inputRequests', result)
+        self.assertIn(meta['approval_url'], result['content'][0]['text'])
 
     @patch('apps.connector.mcp_identity._http_post', side_effect=_identity_http)
     @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
