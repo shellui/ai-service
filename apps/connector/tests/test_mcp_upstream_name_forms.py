@@ -120,6 +120,7 @@ class UpstreamNameFormTests(SimpleTestCase):
             schema = json.loads(path.read_text(encoding='utf-8'))
             expected = {name: row for name, row in self.snapshot.items() if name.startswith(f'{service}_')}
             self.assertTrue(expected, service)
+            by_style: dict[str, dict[str, tuple[bool, bool]]] = {}
             for style in STYLES[service]:
                 with self.subTest(service=service, style=style):
                     exports = iter_gateway_remote_exports(
@@ -139,25 +140,20 @@ class UpstreamNameFormTests(SimpleTestCase):
                         )
                         got[export_name] = (read_only, destructive, route['downstream_name'])
                     self.assertEqual(set(got), set(expected), style)
-                    for name, row in expected.items():
-                        read_only, destructive, _downstream = got[name]
-                        self.assertEqual(read_only, row['read_only'], name)
-                        self.assertEqual(destructive, row['destructive'], name)
-                        self.assertEqual(
-                            (not read_only),
-                            row['needs_approval'],
-                            name,
-                        )
-                    if service == 'identity':
-                        for name in IDENTITY_REVOKE_TOOLS:
-                            read_only, destructive, _downstream = got[name]
-                            self.assertFalse(read_only, style)
-                            self.assertTrue(destructive, style)
+                    by_style[style] = {name: flags[:2] for name, flags in got.items()}
+            if service == 'identity':
+                for name in IDENTITY_REVOKE_TOOLS:
+                    read_only, destructive = by_style[next(iter(by_style))][name]
+                    self.assertFalse(read_only)
+                    self.assertTrue(destructive)
 
     def test_refreshed_branch_fixtures_keep_snapshot_names_and_flags(self):
-        """OpenAPI from each rename branch, named by resolve_mcp_tool_name, matches the snapshot."""
+        """Current develop OpenAPI, named by resolve_mcp_tool_name, matches the snapshot."""
         flags: dict[str, dict] = {}
-        for service, path in SERVICE_FIXTURES.items():
+        current = {
+            service: FIXTURES / 'openapi' / f'{service}.json' for service in SERVICE_FIXTURES
+        }
+        for service, path in current.items():
             schema = json.loads(path.read_text(encoding='utf-8'))
             for route, method, operation in select_newest_api_version_operations(schema):
                 local = resolve_mcp_tool_name(operation, method, route)

@@ -188,11 +188,28 @@ def iter_gateway_remote_exports(
         else:
             export_name = gateway_export_name(service_id, canonical, taken=taken)
         route = {'service_id': service_id, 'downstream_name': downstream_name}
-        meta = tool.get('_meta') if isinstance(tool.get('_meta'), dict) else {}
+        from apps.connector.mcp_tool_schema import apply_operation_access
+
+        exported_tool = {**tool, 'name': export_name}
+        meta = apply_operation_access(
+            exported_tool.get('_meta') if isinstance(exported_tool.get('_meta'), dict) else {},
+            tool_name=export_name,
+            service_id=service_id,
+        )
+        exported_tool['_meta'] = meta
+        annotations = dict(exported_tool.get('annotations') or {})
+        if annotations:
+            read_only = bool(meta.get('read_only'))
+            annotations['readOnlyHint'] = read_only
+            annotations['destructiveHint'] = bool(meta.get('destructive')) and not read_only
+            if read_only:
+                annotations['idempotentHint'] = True
+            exported_tool['annotations'] = annotations
+        tool = exported_tool
         tenant = tenant_binding_from_meta(meta)
         if tenant:
             route['tenant'] = tenant
-        rows.append((export_name, {**tool, 'name': export_name}, route))
+        rows.append((export_name, tool, route))
     return rows
 
 
@@ -723,6 +740,16 @@ class PrefixingMcpServer(AggregatingMcpServer):
         token = self._gateway.mint_downstream_token(agent, mcp_url)
         downstream_params = dict(params)
         downstream_params['name'] = route['downstream_name']
+        call_arguments = downstream_params.get('arguments')
+        extra_headers: dict[str, str] = {}
+        if isinstance(call_arguments, dict):
+            from apps.connector.mcp_agent_arguments import http_headers_from_arguments
+
+            extra_headers = http_headers_from_arguments(call_arguments)
+            if 'headers' in call_arguments:
+                call_arguments = dict(call_arguments)
+                call_arguments.pop('headers', None)
+                downstream_params['arguments'] = call_arguments
         rpc = {
             'jsonrpc': '2.0',
             'id': req_id,
@@ -737,6 +764,7 @@ class PrefixingMcpServer(AggregatingMcpServer):
                     'Authorization': f'Bearer {token}',
                     'Content-Type': 'application/json',
                     'Accept': 'application/json',
+                    **extra_headers,
                 },
                 timeout=self._gateway.downstream_timeout_seconds,
             )

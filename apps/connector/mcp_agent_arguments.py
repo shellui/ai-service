@@ -16,8 +16,8 @@ SEARCH_DESCRIPTION_MAX = 180
 DESCRIBE_SCHEMA_BUDGET = 1200
 DESCRIBE_PAYLOAD_BUDGET = 6000
 
-_PROXY_KEYS = ('path', 'method', 'query', 'body', 'path_params')
-_SECTIONS = ('path_params', 'query', 'body')
+_PROXY_KEYS = ('path', 'method', 'query', 'body', 'path_params', 'headers')
+_SECTIONS = ('path_params', 'query', 'body', 'headers')
 
 
 def one_line(text: object, *, limit: int = SEARCH_DESCRIPTION_MAX) -> str:
@@ -54,12 +54,14 @@ def public_input_schema(schema: dict[str, Any] | None) -> dict[str, Any]:
         return {'type': 'object', 'properties': {}, 'additionalProperties': False}
     if not is_proxy_input_schema(schema):
         return copy.deepcopy(schema)
+    from apps.connector.mcp_tenant import is_hidden_agent_field
+
     properties: dict[str, Any] = {}
     required: list[str] = []
     for section in _SECTIONS:
         inner, section_required = _section(schema, section)
         for key, node in inner.items():
-            if key in properties or key in {'path', 'method'}:
+            if key in properties or key in {'path', 'method'} or is_hidden_agent_field(key):
                 continue
             properties[key] = copy.deepcopy(node)
         for key in section_required:
@@ -131,6 +133,8 @@ def coerce_call_arguments(
         for key, value in supplied.items():
             if key in fields['path_params']:
                 buckets['path_params'][key] = value
+            elif key in fields['headers']:
+                buckets['headers'][key] = value
             elif key in fields['query']:
                 buckets['query'][key] = value
             elif key in fields['body']:
@@ -139,6 +143,9 @@ def coerce_call_arguments(
                 buckets['body'][key] = value
             else:
                 buckets['query'][key] = value
+    from apps.connector.mcp_tenant import is_hidden_agent_field, is_tenant_field
+    from shellui_django.mcp.routing import McpToolArgumentError
+
     out: dict[str, Any] = {}
     method = _registry_method(schema, meta)
     path = _registry_path(schema, meta)
@@ -146,13 +153,49 @@ def coerce_call_arguments(
         out['method'] = method
     if path:
         out['path'] = path
+    header_names = meta.get('header_names') if isinstance(meta.get('header_names'), dict) else {}
     for section in _SECTIONS:
-        if buckets[section]:
-            out[section] = buckets[section]
+        if not buckets[section]:
+            continue
+        cleaned: dict[str, Any] = {}
+        for key, value in buckets[section].items():
+            if is_tenant_field(key):
+                # Kept so the token binding can reject a company mismatch.
+                cleaned[key] = value
+                continue
+            if is_hidden_agent_field(key):
+                raise McpToolArgumentError(f'{key} is not an argument for this tool.')
+            cleaned[key] = value
+        if not cleaned:
+            continue
+        if section == 'headers':
+            translated = {str(header_names.get(key) or key): value for key, value in cleaned.items()}
+            out['headers'] = translated
+        else:
+            out[section] = cleaned
     return out
 
 
-def _walk_trim(node: Any, *, description_limit: int, drop_descriptions: bool, enum_limit: int) -> None:
+def http_headers_from_arguments(arguments: dict[str, Any] | None) -> dict[str, str]:
+    """HTTP headers to add on the downstream tools/call. Auth headers are never copied."""
+    if not isinstance(arguments, dict):
+        return {}
+    raw = arguments.get('headers')
+    if not isinstance(raw, dict):
+        return {}
+    headers: dict[str, str] = {}
+    for key, value in raw.items():
+        name = str(key).strip()
+        if not name or name.lower() in {'authorization', 'cookie', 'proxy-authorization'}:
+            continue
+        if value is None:
+            continue
+        headers[name] = str(value)
+    return headers
+
+
+def _walk_trim(node: Any, *, description_limit: int, drop_descriptions: bool) -> None:
+    """Shorten prose. Enum values and required lists stay intact."""
     if isinstance(node, dict):
         node.pop('example', None)
         node.pop('examples', None)
@@ -160,34 +203,29 @@ def _walk_trim(node: Any, *, description_limit: int, drop_descriptions: bool, en
             node.pop('description', None)
         elif description_limit >= 0 and 'description' in node:
             node['description'] = one_line(node.get('description'), limit=description_limit)
-        enum = node.get('enum')
-        if isinstance(enum, list) and len(enum) > enum_limit:
-            node['enum'] = enum[:enum_limit]
-            note = 'Allowed values are truncated.'
-            current = str(node.get('description') or '').strip()
-            node['description'] = f'{current} {note}'.strip() if current else note
-        for value in node.values():
-            _walk_trim(value, description_limit=description_limit, drop_descriptions=drop_descriptions, enum_limit=enum_limit)
+        for key, value in node.items():
+            if key in {'enum', 'required'}:
+                continue
+            _walk_trim(value, description_limit=description_limit, drop_descriptions=drop_descriptions)
     elif isinstance(node, list):
         for item in node:
-            _walk_trim(item, description_limit=description_limit, drop_descriptions=drop_descriptions, enum_limit=enum_limit)
+            _walk_trim(item, description_limit=description_limit, drop_descriptions=drop_descriptions)
 
 
 def trim_input_schema(schema: dict[str, Any] | None, *, budget: int = DESCRIBE_SCHEMA_BUDGET) -> dict[str, Any]:
     """Keep type, enum, and required fields inside a character budget."""
     current = public_input_schema(schema)
-    _walk_trim(current, description_limit=160, drop_descriptions=False, enum_limit=30)
+    _walk_trim(current, description_limit=160, drop_descriptions=False)
     if _encoded_len(current) <= budget:
         return current
-    _walk_trim(current, description_limit=0, drop_descriptions=True, enum_limit=12)
+    _walk_trim(current, description_limit=0, drop_descriptions=True)
     props = current.get('properties')
+    required_names = [str(key) for key in current.get('required') or []]
     while isinstance(props, dict) and props and _encoded_len(current) > budget:
-        props.pop(next(reversed(props)))
-        required = [key for key in current.get('required') or [] if key in props]
-        if required:
-            current['required'] = required
-        else:
-            current.pop('required', None)
+        optional = [key for key in props if key not in required_names]
+        if not optional:
+            break
+        props.pop(optional[-1])
     return current
 
 
@@ -210,5 +248,5 @@ def bound_describe_tools(tools: list[dict[str, Any]], *, budget: int = DESCRIBE_
         row.pop('description', None)
         schema = row.get('inputSchema')
         if isinstance(schema, dict):
-            _walk_trim(schema, description_limit=0, drop_descriptions=True, enum_limit=8)
+            _walk_trim(schema, description_limit=0, drop_descriptions=True)
     return rows

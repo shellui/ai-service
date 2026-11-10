@@ -7,10 +7,10 @@ through the Django MCP endpoint with a company-scoped agent token. Upstream HTTP
 mocked at ``requests.post``.
 
 Pinned revisions:
-- identity-service c38b4141dfa344d74bc7854bf351df83fcbd9088
-- storage-service 3da5cda21a48f9c16ca1af5bc5bd8daf71d2cdc3
-- hosting-service 3e4721a17ec8821c527a61d616b59b99e7805475
-- email-service f5b2cdfd5430d25dfa4140de32356b621adc521a
+- identity-service 6266ded8d82a2c1187494de90ffbc086969c4c09
+- storage-service c6b29257dde221c438c39f9051f87bb4166cdb7b
+- hosting-service 451b09ebbc140eee413d19b9bed14cd17143c4ee
+- email-service 3d9589285e2273fdb784c6240ea820bae5b03ff6
 
 saas-service is not published; the gateway exposes no saas tools.
 
@@ -351,15 +351,16 @@ class McpToolReleaseTests(TestCase):
 
     def test_openapi_exceptions_match_recovered_access_sets(self, *_mocks):
         """A new read-only or destructive POST in the fixtures must be recovered explicitly."""
-        read_only_posts: set[str] = set()
-        destructive_posts: set[str] = set()
+        read_only_posts: set[tuple[str, str]] = set()
+        destructive_posts: set[tuple[str, str]] = set()
         for service in SERVICES:
             for path, method, operation in select_newest_api_version_operations(self.schemas[service]):
                 flags = tool_access_flags(operation)
+                operation_id = str(operation.get('operationId') or '')
                 if flags['read_only'] and method not in {'get', 'head', 'options'}:
-                    read_only_posts.add(str(operation.get('operationId')))
+                    read_only_posts.add((service, operation_id))
                 if flags['destructive'] and method != 'delete':
-                    destructive_posts.add(str(operation.get('operationId')))
+                    destructive_posts.add((service, operation_id))
         self.assertEqual(read_only_posts, set(READ_ONLY_POST_OPERATION_IDS))
         self.assertEqual(destructive_posts, set(DESTRUCTIVE_POST_OPERATION_IDS))
 

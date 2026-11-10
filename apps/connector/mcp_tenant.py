@@ -8,10 +8,17 @@ from typing import Any
 from shellui_django.mcp.routing import McpToolArgumentError
 
 TENANT_FIELD_NAMES = frozenset({'company_id', 'companyId'})
+# Staff filters that OpenAPI still publishes. Agents must not see or send them.
+STAFF_ONLY_FIELD_NAMES = frozenset({'scheduled_job_run_id'})
 
 
 def is_tenant_field(name: str) -> bool:
     return str(name) in TENANT_FIELD_NAMES
+
+
+def is_hidden_agent_field(name: str) -> bool:
+    key = str(name)
+    return key in TENANT_FIELD_NAMES or key in STAFF_ONLY_FIELD_NAMES
 
 
 def partition_field_names(names: list[str]) -> tuple[list[str], list[str]]:
@@ -142,11 +149,11 @@ def _strip_tenant_properties(obj: dict[str, Any]) -> None:
     if not isinstance(props, dict):
         return
     for key in list(props.keys()):
-        if is_tenant_field(str(key)):
+        if is_hidden_agent_field(str(key)):
             del props[key]
     required = obj.get('required')
     if isinstance(required, list):
-        obj['required'] = [str(k) for k in required if not is_tenant_field(str(k)) and str(k) in props]
+        obj['required'] = [str(k) for k in required if not is_hidden_agent_field(str(k)) and str(k) in props]
 
 
 def strip_tenant_fields_from_input_schema(input_schema: dict[str, Any]) -> dict[str, list[str]]:
