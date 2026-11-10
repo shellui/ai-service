@@ -56,7 +56,7 @@ By default **`tools/list`** returns a short set an agent can use to find the rig
 5. **`ai_get_approval`**: `{approval_id}` reads one approval without running the tool. Use it to poll after you show the user the approval link. It does not consume the grant. When the status is `approved`, call the original tool again with the same arguments. That runs it once.
 6. Four common reads, when that service is connected: `identity_list_users`, `storage_list_bucket`, `hosting_list_apps`, `email_list_messages`. They answer "who, what files, what apps, what mail" without a search.
 
-Workflow: list services, search, then call. A direct **`tools/call`** of any of the 224 tools still works when that tool is not in the default list.
+Workflow: list services, search, then call. A direct **`tools/call`** of any of the 224 tools still works when that tool is not in the default list. The route cache and the tools list share one TTL, but a route lookup can refresh only the route key. The next call then still has a route after the list has expired. The gateway treats that as a miss and loads `tools/list` for that service again before it decides the tool is unknown. The error text says the tool was not found, or that the catalog could not be loaded. It does not say `Tool call rejected.`
 
 Opt in to the full catalog with **`POST /c/<company_id>/mcp?tools=all`**, or **`tools/list`** params **`{"tools": "all"}`**. Set **`MCP_TOOLS_LIST_MODE=all`** when a deployment should keep the full list as the default. The full list is still paged (200 tools per page, `nextCursor`). This gateway does not push `notifications/tools/list_changed`, because the HTTP session has no server-to-client stream. Change the URL or the list params and call **`tools/list`** again.
 
@@ -67,10 +67,16 @@ Example:
 ```
 
 ```json
-{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"ai_call_tool","arguments":{"name":"identity_create_invitations","arguments":{"method":"POST","path":"/api/v1/invitations/","body":{"email":"ada@example.com"}}}}}
+{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"ai_call_tool","arguments":{"name":"identity_create_invitations","arguments":{"email":"ada@example.com"}}}}
 ```
 
-**`tools/list`** in full mode exposes the operational export names and registry-derived `_meta` (path, method, `operation_summary`, access flags, etc.), plus the discovery tools (`ai_search_tools`, `ai_describe_tool`, `ai_call_tool`, `ai_get_approval`). **LiteLLM** or other inference stacks are **not** part of this gateway path; this document covers the gateway only.
+**`tools/list`** in full mode exposes the operational export names and the discovery tools (`ai_search_tools`, `ai_describe_tool`, `ai_call_tool`, `ai_get_approval`). Each tool's `inputSchema` is a flat list of named arguments. HTTP `method` and `path` are not arguments. The gateway fills them from the registry when it forwards the call, and it ignores them if an agent sends them. `query`, `body`, and `path_params` objects are still accepted. Nested fields such as `event_type` are also accepted at the top level.
+
+`ai_search_tools` returns compact rows: `name`, a one-line `description`, `read_only`, `destructive`, and `needs_approval`. `ai_describe_tool` returns a trimmed schema for those names. Descriptions are shortened and each schema stays inside a small character budget so a chat client can keep the result in the conversation.
+
+Enum values on a parameter are copied from the service OpenAPI schema onto that named argument. `GET /api/v1/templates` in email-service currently types `event_type` as a plain string, with no `enum` and no list of allowed values. The only sample in that document is the response example `identity.auth.magic_link.requested`, which is not the query contract. Email-service needs to publish the allowed event names on that query parameter (`schema.enum`, or a description that lists them). This gateway will show them as soon as they are on the OpenAPI schema. It does not invent the list.
+
+**LiteLLM** or other inference stacks are **not** part of this gateway path; this document covers the gateway only.
 
 ## Bounded authority: `mcp_access` and tool safety
 
@@ -110,7 +116,7 @@ On **`tools/call`**, when approval is required, the gateway returns a tool resul
   "approval_id": "<id>",
   "expires_at": "<iso-8601 or null>",
   "approval_url": "https://<identity>/oauth/mcp/approval/<id>",
-  "instruction": "Show this link to the user and ask them to approve <tool>. After they approve, call this tool again with the same arguments. You can also call ai_get_approval with the approval_id to check the decision."
+  "instruction": "This link is for the human user. Show it to them verbatim as a clickable link. Do not open, fetch, or sign in to it yourself. After they say they approved <tool>, call this tool again with the same arguments."
 }
 ```
 
@@ -118,38 +124,49 @@ The text content starts with `Approval pending.` and includes the same JSON. `_m
 
 `approval_url` is absolute. Identity `develop` at `d9539a7540f535c30bcbc4f70472e68d0edeb541` (PR **#149**) returns it on create and on state, on the public issuer (`JWT_ISSUER` / `IDENTITY_ISSUER`). The page is `GET /oauth/mcp/approval/<uuid>?token=<signed>`. The gateway uses that `approval_url` as sent. If a response omits it, the gateway joins the public issuer to `fallback_path` (the same path and token, relative). If that path is also absent, it builds `{issuer}/oauth/mcp/approval/{approval_id}`.
 
-**Approval channels.** The channel is chosen per tool. Destructive tools (`destructiveHint`, registry `_meta.destructive`, or `DELETE`) always use the approval link. Read-only tools and other non-destructive writes use in-chat form elicitation when the client declared form mode (`capabilities.elicitation` empty, or `elicitation.form`). Clients that did not declare form mode get the link. A company can force the link for non-destructive tools with `MCP_APPROVAL_CHANNEL_BY_COMPANY` (JSON map of company id to `form` or `link`). That setting cannot turn a destructive tool into an in-chat approval. Identity has no per-company approval-channel field, so this override is gateway configuration.
+**Approval channels.** The channel is chosen per tool, then limited by what the negotiated protocol can actually deliver.
 
-In-chat consent trusts the MCP client. The gateway records Approve or Deny when the client sends `inputResponses.approval` with `action` `accept` and `content.decision` `approve`, or `deny` / `decline` / `cancel`. It does not see a separate human gesture. On Approve the gateway calls Identity `mcp-approval-decide` with `allow`, then consumes the grant and runs the tool once. On Deny it calls `deny`. The MCP `clientInfo.name` from `initialize` is written to the gateway log. Identity's decide route has no field for that client name or for an in-chat consent source, so the audit event is `client_allowed` or `client_denied` with optional `actor_email` only.
+Destructive tools (`destructiveHint`, registry `_meta.destructive`, or `DELETE`) always use the approval link. A company can force the link for every other tool with `MCP_APPROVAL_CHANNEL_BY_COMPANY` (JSON map of company id to `form` or `link`). That setting cannot turn a destructive tool into an in-chat approval. Identity has no per-company approval-channel field, so this override is gateway configuration.
 
-A client that still sends `params._meta.shellui_approval.decision` (`allow`, `deny`, or `session_allow`) is handled as before. **Approval-gated retries** must replay the **full** tool call (same export name and normalized arguments). Changing the action or normalized args requires a **new** approval.
+Form elicitation is used only when the client declared form mode and the negotiated revision can carry it:
 
-Form elicitation (non-destructive, form-capable client):
+- `2025-06-18` (the newest revision this gateway negotiates): the `tools/call` POST is answered as `text/event-stream`. The first SSE event is a server request, `elicitation/create` with `mode: form`. The client posts the JSON-RPC result back on the same session. The gateway then finishes that tool call on the same stream. Hermes uses this path. Its default `protocol: auto` completes the legacy `initialize` handshake, so it lands on `2025-06-18` and never reads `resultType: input_required`.
+- `2026-07-28` only: `resultType: input_required` with `inputResponses` on the retry. This gateway does not negotiate that revision, so it does not send `input_required`.
+- Anything else, or a client that does not accept `text/event-stream`: the link text below.
+
+The stream stays open for `MCP_APPROVAL_FORM_ELICITATION_WAIT_SECONDS` (default 90). That stays under `GUNICORN_TIMEOUT` (default 120) so the worker can still write the link fallback. The wait is shared through the Django cache, so a multi-worker deployment needs `REDIS_URL`. If the client does not answer in time, or the stream cannot be held, the `tools/call` result is the link text. `accept` (including an empty `content` object, which is what Hermes sends for Yes) records `decision: allow` with `consent: in_chat` and runs the tool once. `decline` records `decision: deny` and does not run the tool. `cancel` does not decide; the result is the link text and the approval stays pending.
+
+The elicitation `message` includes the approval URL. The link is never delivered only as URL-mode elicitation. Hermes declines URL mode. The pending tool result always puts that URL in the plain text `content` as well as in `structuredContent.approval_url`.
+
+The link text is in the plain `content` text and in `structuredContent`. It tells the agent the link is for the human, to show it verbatim as a clickable link, not to open, fetch, or sign in, and to call the same tool again with the same arguments after the person says they approved.
+
+A retry with the same agent, tool, and arguments hash reuses the pending approval. The gateway does not create another row while Identity still reports that binding as `pending`.
+
+In-chat consent trusts the MCP client. The gateway does not see a separate human gesture. On Approve it calls `mcp-approval-decide` with `decision: allow`, `consent: in_chat`, and `client_name` (the MCP `clientInfo.name`, collapsed, at most 80 characters). On Deny it sends `decision: deny` with the same consent fields. Identity PR **#150** stores those optional fields. Until it is deployed, a 400 that names `consent` or `client_name` is retried once without them so the decision still completes. `consent: in_chat` on a destructive row is not sent. If Identity returns 409 for that case, the tool does not run.
+
+`params._meta.shellui_approval.decision` of `allow` or `session_allow` is ignored. An agent cannot approve itself, including for destructive tools. `deny` is still honored. An `approval_id` in that block is only a correlation hint. Approval otherwise comes from the identity page, admin, or a real elicitation response for a non-destructive tool. **Approval-gated retries** must replay the **full** tool call (same export name and normalized arguments). Changing the action or normalized args requires a **new** approval.
+
+Form elicitation on `2025-06-18` (non-destructive, client declared form elicitation, `Accept` includes `text/event-stream`):
 
 ```json
 {
-  "resultType": "input_required",
-  "inputRequests": {
-    "approval": {
-      "method": "elicitation/create",
-      "params": {
-        "mode": "form",
-        "message": "Allow storage_create_bucket? Choose Approve or Deny.",
-        "requestedSchema": {
-          "type": "object",
-          "properties": {
-            "decision": {
-              "type": "string",
-              "title": "Decision",
-              "oneOf": [
-                {"const": "approve", "title": "Approve"},
-                {"const": "deny", "title": "Deny"}
-              ]
-            }
-          },
-          "required": ["decision"]
+  "jsonrpc": "2.0",
+  "id": "<rpc id>",
+  "method": "elicitation/create",
+  "params": {
+    "mode": "form",
+    "message": "Allow storage_create_bucket? Choose Approve or Deny. This link is for the human user: https://identity.example/oauth/mcp/approval/<id>. Show it verbatim as a clickable link. Do not open, fetch, or sign in to it yourself.",
+    "requestedSchema": {
+      "type": "object",
+      "properties": {
+        "decision": {
+          "type": "string",
+          "title": "Decision",
+          "enum": ["approve", "deny"],
+          "enumNames": ["Approve", "Deny"]
         }
-      }
+      },
+      "required": ["decision"]
     }
   }
 }
@@ -157,31 +174,7 @@ Form elicitation (non-destructive, form-capable client):
 
 ### URL elicitation
 
-URL mode is `capabilities.elicitation.url` as an object (MCP spec 2025-11-25, and the current 2026-07-28 multi round-trip shape). An empty `elicitation` object is form mode only. The same declaration may arrive on a later request at `_meta["io.modelcontextprotocol/clientCapabilities"]`.
-
-`shellui-django` 0.5.1, the server this gateway runs, returns one JSON-RPC body per POST. It has no server-to-client request channel, so it cannot push `elicitation/create` and then block the same HTTP response until the person finishes. The e2e client `@modelcontextprotocol/sdk` 1.32.2 understands URL params (`mode`, `url`, `message`, `elicitationId`) and the 2025 error `-32042`. It does not treat a tool result as an in-flight elicitation wait. The current spec (2026-07-28) instead puts URL elicitation on the tool result as `resultType: "input_required"`.
-
-When the client declared URL mode, the pending tool result also includes:
-
-```json
-{
-  "resultType": "input_required",
-  "requestState": "<opaque>",
-  "inputRequests": {
-    "approval": {
-      "method": "elicitation/create",
-      "params": {
-        "mode": "url",
-        "elicitationId": "<token>",
-        "url": "<approval_url>",
-        "message": "Approve <tool> in your browser, then return here."
-      }
-    }
-  }
-}
-```
-
-The plain pending text is still present, so an agent that ignores `inputRequests` can show the link. If the client retries with `inputResponses.approval.action` of `accept`, the gateway polls Identity for up to `MCP_APPROVAL_URL_ELICITATION_WAIT_SECONDS` (default 20) and then runs the tool once if the grant is approved. `decline` or `cancel` returns a denial and does not run the tool. If the wait ends while the row is still pending, the gateway returns the pending tool result again and does not keep the HTTP call open. Clients that did not declare URL mode get that pending result immediately. Non-destructive tools whose client declared form mode use the in-chat form channel instead of this URL elicitation.
+URL mode is `capabilities.elicitation.url` as an object (MCP spec 2025-11-25). An empty `elicitation` object is form mode only. Hermes declines URL-mode elicitations. This gateway does not send `mode: url`. The human link is always in the tool result text, including when form elicitation is also offered. A later retry that carries `inputResponses.approval.action` of `decline` or `cancel` does not run the tool. `accept` on that retry still waits for Identity to report the row approved before the tool runs.
 
 ### When an approval cannot be created
 

@@ -48,9 +48,9 @@ def elicitation_declined_text(*, tool_name: str) -> str:
 
 def pending_agent_instruction(*, tool_name: str) -> str:
     return (
-        f'Show this link to the user and ask them to approve {tool_name}. '
-        'After they approve, call this tool again with the same arguments. '
-        'You can also call ai_get_approval with the approval_id to check the decision.'
+        'This link is for the human user. Show it to them verbatim as a clickable link. '
+        'Do not open, fetch, or sign in to it yourself. '
+        f'After they say they approved {tool_name}, call this tool again with the same arguments.'
     )
 
 
@@ -58,8 +58,12 @@ def url_elicitation_message(*, tool_name: str) -> str:
     return f'Approve {tool_name} in your browser, then return here.'
 
 
-def form_approval_message(*, tool_name: str) -> str:
-    return f'Allow {tool_name}? Choose Approve or Deny.'
+def form_approval_message(*, tool_name: str, approval_url: str) -> str:
+    return (
+        f'Allow {tool_name}? Choose Approve or Deny. '
+        f'This link is for the human user: {approval_url}. '
+        'Show it verbatim as a clickable link. Do not open, fetch, or sign in to it yourself.'
+    )
 
 
 def form_approval_instruction(*, tool_name: str) -> str:

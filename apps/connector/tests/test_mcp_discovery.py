@@ -256,6 +256,7 @@ def _identity_http(url, **kwargs):
     AI_PUBLIC_URL='https://ai.test',
     AUTH_RATE_LIMIT_ENABLED=False,
     MCP_TOOLS_LIST_MODE='discovery',
+    MCP_APPROVAL_FORM_ELICITATION_WAIT_SECONDS=0,
     CACHES={'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache', 'LOCATION': 'mcp-discovery'}},
 )
 @patch('apps.connector.mcp_approval_gate.agent_is_revoked', return_value=False)
@@ -361,8 +362,11 @@ class DiscoveryGatewayTests(TestCase):
         body = json.loads(response.json()['result']['content'][0]['text'])
         self.assertFalse(response.json()['result']['isError'])
         self.assertEqual(body['matches'][0]['name'], 'storage_list_buckets')
-        self.assertIn('inputSchema', body['matches'][0])
+        self.assertNotIn('inputSchema', body['matches'][0])
+        self.assertNotIn('method', body['matches'][0])
         self.assertIn('read_only', body['matches'][0])
+        self.assertIn('needs_approval', body['matches'][0])
+        self.assertLessEqual(len(json.dumps(body)), 4000)
         described = self.client.post(
             '/c/10/mcp',
             data=_rpc('tools/call', name='ai_describe_tool', arguments={'name': 'storage_list_buckets'}),
@@ -371,7 +375,11 @@ class DiscoveryGatewayTests(TestCase):
         )
         detail = json.loads(described.json()['result']['content'][0]['text'])
         self.assertEqual(detail['tools'][0]['name'], 'storage_list_buckets')
-        self.assertIn('usage', detail['tools'][0])
+        schema = detail['tools'][0]['inputSchema']
+        self.assertNotIn('path', schema.get('properties') or {})
+        self.assertNotIn('method', schema.get('properties') or {})
+        self.assertNotIn('path', schema.get('required') or [])
+        self.assertNotIn('method', schema.get('required') or [])
 
     @patch('apps.connector.mcp_identity._http_post', side_effect=_identity_http)
     @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
@@ -398,10 +406,12 @@ class DiscoveryGatewayTests(TestCase):
         )
         for response in (direct, via):
             result = response.json()['result']
-            message = result['inputRequests']['approval']['params']['message']
-            self.assertIn('storage_create_bucket', message)
-            self.assertNotIn('ai_call_tool', message)
-            self.assertNotIn('sekret-value', result['content'][0]['text'])
+            text = result['content'][0]['text']
+            self.assertIn('storage_create_bucket', text)
+            self.assertNotIn('ai_call_tool', text)
+            self.assertNotIn('sekret-value', text)
+            self.assertIn(result['structuredContent']['approval_url'], text)
+            self.assertIn('human user', text)
         summary = _create.call_args.args[0]['_arguments_summary']
         self.assertIn('Ada', summary)
         self.assertNotIn('sekret-value', summary)
@@ -438,6 +448,50 @@ class DiscoveryGatewayTests(TestCase):
             if (call.kwargs.get('json') or {}).get('method') == 'tools/call'
         ]
         self.assertEqual(forwarded, ['list_buckets', 'list_buckets'])
+
+    @patch('apps.connector.mcp_identity._http_post', side_effect=_identity_http)
+    @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
+    @patch('apps.connector.mcp_identity.forward_call_log')
+    @patch('shellui_django.mcp.gateway.requests.post')
+    def test_cold_tools_cache_is_refilled_before_reject(self, post, _log, _mint, _http, *_mocks):
+        from apps.connector.mcp_views import _get_server, tools_list_cache_key
+
+        self._storage(post)
+        token = _token(secret=self.secret, issuer=self.issuer, mcp_access='full')
+        warmed = self.client.post(
+            '/c/10/mcp',
+            data=_rpc('tools/call', name='storage_list_buckets', arguments={'method': 'GET', 'path': '/api/v1/buckets/'}),
+            content_type='application/json',
+            **self._auth(token),
+        )
+        self.assertFalse(warmed.json()['result'].get('isError'), warmed.content)
+        server = _get_server()
+        mcp_url = server._gateway.get_service_urls()['storage']
+        cache.delete(tools_list_cache_key(10, mcp_url))
+        again = self.client.post(
+            '/c/10/mcp',
+            data=_rpc('tools/call', name='storage_list_buckets', arguments={'method': 'GET', 'path': '/api/v1/buckets/'}),
+            content_type='application/json',
+            **self._auth(token),
+        )
+        text = again.json()['result']['content'][0]['text']
+        self.assertNotIn('Tool call rejected.', text)
+        self.assertFalse(again.json()['result'].get('isError'), again.content)
+        calls = [
+            call for call in post.call_args_list if (call.kwargs.get('json') or {}).get('method') == 'tools/call'
+        ]
+        self.assertGreaterEqual(len(calls), 2)
+        from apps.connector.mcp_views import route_cache_key
+
+        cache.delete(tools_list_cache_key(10, mcp_url))
+        cache.delete(route_cache_key(10, 'storage_list_buckets'))
+        third = self.client.post(
+            '/c/10/mcp',
+            data=_rpc('tools/call', name='storage_list_buckets', arguments={'event_type': 'ignored-extra'}),
+            content_type='application/json',
+            **self._auth(token),
+        )
+        self.assertFalse(third.json()['result'].get('isError'), third.content)
 
     @patch('apps.connector.mcp_identity._http_post', side_effect=_identity_http)
     @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')

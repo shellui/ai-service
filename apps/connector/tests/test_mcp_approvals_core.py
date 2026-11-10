@@ -505,6 +505,50 @@ class McpApprovalsCoreTests(TestCase):
         self.assertEqual(post.call_args.kwargs.get('json'), {})
 
     @patch('apps.connector.mcp_approvals.requests.post')
+    def test_decide_sends_consent_and_retries_when_identity_rejects_the_fields(self, post):
+        rejected = MagicMock(status_code=400, json=lambda: {'error': 'unexpected field consent'})
+        accepted = MagicMock(status_code=200, json=lambda: {'status': 'approved', 'audit_status': 'client_allowed'})
+        post.side_effect = [rejected, accepted]
+        now = int(time.time())
+        payload = {**_BASE_PAYLOAD, '_agent_claims': {'iat': now, 'exp': now + 3600, 'grant_version': 1}}
+        result = mcp_approvals.decide_approval(
+            approval_id='appr-1',
+            payload=payload,
+            decision='allow',
+            connection_id='sess-1',
+            consent='in_chat',
+            client_name='Hermes\nAgent',
+        )
+        self.assertTrue(result.ok)
+        self.assertEqual(post.call_count, 2)
+        first = post.call_args_list[0].kwargs['json']
+        second = post.call_args_list[1].kwargs['json']
+        self.assertEqual(first['consent'], 'in_chat')
+        self.assertEqual(first['client_name'], 'Hermes Agent')
+        self.assertNotIn('consent', second)
+        self.assertNotIn('client_name', second)
+
+    @patch('apps.connector.mcp_approvals.requests.post')
+    def test_decide_does_not_retry_destructive_in_chat_409(self, post):
+        post.return_value = MagicMock(
+            status_code=409,
+            json=lambda: {'error': 'In-chat consent is not allowed for a destructive tool.'},
+        )
+        now = int(time.time())
+        payload = {**_BASE_PAYLOAD, '_agent_claims': {'iat': now, 'exp': now + 3600, 'grant_version': 1}}
+        result = mcp_approvals.decide_approval(
+            approval_id='appr-1',
+            payload=payload,
+            decision='allow',
+            connection_id='sess-1',
+            consent='in_chat',
+            client_name='Hermes',
+        )
+        self.assertFalse(result.ok)
+        self.assertEqual(result.status_code, 409)
+        self.assertEqual(post.call_count, 1)
+
+    @patch('apps.connector.mcp_approvals.requests.post')
     def test_create_absolutizes_fallback_path_without_approval_url(self, post):
         post.return_value = MagicMock(
             status_code=200,

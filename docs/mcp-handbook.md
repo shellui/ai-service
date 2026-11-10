@@ -85,12 +85,12 @@ Example:
 ```
 
 ```json
-{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"ai_call_tool","arguments":{"name":"identity_create_invitations","arguments":{"method":"POST","path":"/api/v1/invitations/","body":{"email":"ada@example.com"}}}}}
+{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"ai_call_tool","arguments":{"name":"identity_create_invitations","arguments":{"email":"ada@example.com"}}}}
 ```
 
 ### `tools/call` (storage: names are gateway exports)
 
-After `tools/list`, call a tool by its **full export name** (service prefix + OpenAPI-derived slug), for example **`storage_list_bucket`**. Arguments follow the tool `inputSchema` (path, method, query, body) produced from the service OpenAPI registry. They are not arbitrary client paths:
+After `tools/list`, call a tool by its **full export name** (service prefix + OpenAPI-derived slug), for example **`storage_list_bucket`**. Arguments are the named fields from that tool's `inputSchema` (query, body, and path parameters flattened). Do not send HTTP `method` or `path`. The gateway fills those from the registry:
 
 ```json
 {
@@ -99,16 +99,12 @@ After `tools/list`, call a tool by its **full export name** (service prefix + Op
   "method": "tools/call",
   "params": {
     "name": "storage_list_bucket",
-    "arguments": {
-      "path": "/storage/v1/bucket",
-      "method": "GET",
-      "query": {}
-    }
+    "arguments": {}
   }
 }
 ```
 
-The gateway resolves **`name`** against its **cached tools/list catalog** and **route table**. Approval decisions and audits use **registry `_meta.method`** and **`_meta.path`** only; client-supplied `path`/`method` inside `arguments` are **not** trusted for activity metadata.
+The gateway resolves **`name`** against its **cached tools/list catalog** and **route table**. If the tools list has expired while the route key is still present, the gateway loads that service's catalog again and then forwards the call. Approval decisions and audits use **registry `_meta.method`** and **`_meta.path`** only. Client-supplied `path` and `method` are ignored.
 
 Upstream may list the tool as the export name (`storage_list_bucket`, `identity_create_groups`), as `x-mcp.tool_name` without the service prefix (`list_apps`), or as a legacy operationId slug (`storage_v1_bucket_list`, `api_v1_groups_create`). All three produce the same gateway name. The service prefix is added once. The forwarded `tools/call` uses the upstream name.
 

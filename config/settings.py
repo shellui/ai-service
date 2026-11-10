@@ -419,6 +419,11 @@ MCP_APPROVAL_SETUP_SESSION_TTL_MAX_SECONDS = max(
 )
 # JSON object of company id to form or link. Destructive tools always use the link.
 MCP_APPROVAL_CHANNEL_BY_COMPANY = os.getenv('MCP_APPROVAL_CHANNEL_BY_COMPANY', '').strip()
+# How long a tools/call SSE stream waits for elicitation/create. Stay under GUNICORN_TIMEOUT
+# so the worker can still write the link fallback.
+MCP_APPROVAL_FORM_ELICITATION_WAIT_SECONDS = max(
+    0, _env_int('MCP_APPROVAL_FORM_ELICITATION_WAIT_SECONDS', 90)
+)
 # Connected Shellui services (origins only; MCP paths are appended in code).
 STORAGE_SERVICE_URL = os.getenv('STORAGE_SERVICE_URL', '').strip().rstrip('/') or None
 HOSTING_SERVICE_URL = os.getenv('HOSTING_SERVICE_URL', '').strip().rstrip('/') or None

@@ -445,9 +445,11 @@ class McpGatewayTests(TestCase):
         self.assertEqual(list_response.status_code, 200, list_response.content)
         tools = list_response.json()['result']['tools']
         email_tool = next(t for t in tools if t['name'] == 'email_list_messages')
-        query_props = email_tool['inputSchema']['properties']['query']['properties']
-        self.assertNotIn('company_id', query_props)
-        self.assertIn('mailbox', query_props)
+        props = email_tool['inputSchema']['properties']
+        self.assertNotIn('path', props)
+        self.assertNotIn('method', props)
+        self.assertNotIn('company_id', props)
+        self.assertIn('mailbox', props)
         self.assertIn('(Acme)', email_tool['title'])
         self.assertTrue(email_tool['title'].startswith('Email:'))
         self.assertNotIn('API V1', email_tool['title'])
@@ -462,6 +464,24 @@ class McpGatewayTests(TestCase):
         self.assertEqual(call_response.status_code, 200, call_response.content)
         self.assertEqual(forwarded_args.get('query', {}).get('company_id'), '10')
         self.assertEqual(forwarded_args.get('query', {}).get('mailbox'), 'inbox')
+        self.assertEqual(forwarded_args.get('method'), 'GET')
+        self.assertEqual(forwarded_args.get('path'), '/api/v1/messages/')
+
+        flat = self.client.post(
+            '/c/10/mcp',
+            data=_rpc(
+                'tools/call',
+                name='email_list_messages',
+                arguments={'method': 'DELETE', 'path': '/evil', 'mailbox': 'archive'},
+            ),
+            content_type='application/json',
+            **self._auth(token),
+        )
+        self.assertEqual(flat.status_code, 200, flat.content)
+        self.assertFalse(flat.json()['result'].get('isError'), flat.content)
+        self.assertEqual(forwarded_args.get('method'), 'GET')
+        self.assertEqual(forwarded_args.get('path'), '/api/v1/messages/')
+        self.assertEqual(forwarded_args.get('query', {}).get('mailbox'), 'archive')
 
         bad = self.client.post(
             '/c/10/mcp',
