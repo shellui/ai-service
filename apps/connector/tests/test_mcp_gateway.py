@@ -243,7 +243,7 @@ class McpGatewayTests(TestCase):
         post.side_effect = side_effect
         token = _agent_token(secret=self.secret, issuer=self.issuer, scope='ai storage')
         response = self.client.post(
-            '/c/10/mcp',
+            '/c/10/mcp?tools=all',
             data=_rpc('tools/list'),
             content_type='application/json',
             **self._auth(token),
@@ -374,7 +374,7 @@ class McpGatewayTests(TestCase):
         post.side_effect = side_effect
         token = _agent_token(secret=self.secret, issuer=self.issuer, scope='ai email')
         list_response = self.client.post(
-            '/c/10/mcp',
+            '/c/10/mcp?tools=all',
             data=_rpc('tools/list'),
             content_type='application/json',
             **self._auth(token),
@@ -431,7 +431,7 @@ class McpGatewayTests(TestCase):
             company_name='Acme',
         )
         list_response = self.client.post(
-            '/c/10/mcp',
+            '/c/10/mcp?tools=all',
             data=_rpc('tools/list'),
             content_type='application/json',
             **self._auth(token),

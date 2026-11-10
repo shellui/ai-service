@@ -349,14 +349,17 @@ def shellui_gateway_instructions(
     prefixes = ', '.join(f'{sid}_' for sid in sorted(set(connected_services)))
     return sanitize_shellui_copy(
         f'{title}\n'
-        'Shellui exposes company-scoped HTTP APIs as MCP tools. Each tool maps to one OpenAPI operation.\n'
+        'Shellui exposes company-scoped HTTP APIs as MCP tools. The default tools/list is a short discovery set, '
+        'not every operation.\n'
+        'Workflow: call ai_list_services, then ai_search_tools with a short phrase, then tools/call or ai_call_tool. '
+        'Use ai_describe_tool when you need the full input schema.\n'
         f'Connected services for this agent: {services}.\n'
-        f'Every tool name starts with a service id ({prefixes or "service_"}), then verb and resource '
-        '(for example ai_list_services, email_send_message).\n'
-        'Prefer list_* tools before get_* detail calls. Requests are scoped to the company in the MCP URL '
-        '(/c/<company_id>/mcp).\n'
-        'Use annotations.readOnlyHint and annotations.destructiveHint to decide when to confirm with the user. '
-        'Use ai_list_services for per-service MCP URLs and resource-bound tokens.'
+        f'Tool names start with a service id ({prefixes or "service_"}), then verb and resource '
+        '(for example identity_list_users, hosting_list_apps).\n'
+        'Requests are scoped to the company in the MCP URL (/c/<company_id>/mcp). '
+        'A direct tools/call of a tool that is not in the default list still works.\n'
+        'Add ?tools=all on the MCP URL, or pass {"tools": "all"} to tools/list, when you need the full catalog. '
+        'Use annotations.readOnlyHint and annotations.destructiveHint to decide when to confirm with the user.'
     )
 
 

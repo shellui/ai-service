@@ -9,7 +9,22 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from shellui_django.mcp.decorators import mcp_expose_tool
 
+from apps.connector.mcp_discovery import enrich_service_rows
 from apps.connector.services import list_mcp_services
+
+
+def _connected_tool_catalog() -> list[dict] | None:
+    """Operational tools for the current MCP agent, when this request is a gateway call."""
+    from apps.connector.downstream_tokens import DownstreamTokenError
+    from apps.connector.mcp_views import _get_server, _mcp_agent_claims
+
+    claims = _mcp_agent_claims.get()
+    if not isinstance(claims, dict):
+        return None
+    try:
+        return _get_server()._export_catalog(claims)
+    except (DownstreamTokenError, OSError, RuntimeError):
+        return None
 
 
 class HealthView(APIView):
@@ -38,8 +53,9 @@ class McpServicesListView(APIView):
         tags=['mcp-tools'],
         operation_id='api_v1_mcp_services_list',
         summary='List connected MCP services',
-        responses={200: OpenApiResponse(description='Service catalog')},
+        responses={200: OpenApiResponse(description='Service catalog with a one-line summary, tool count, and example tasks')},
     )
     @mcp_expose_tool(name='list_services', description='Return MCP URLs for connected Shellui services.')
     def get(self, request):
-        return Response({'services': list_mcp_services()})
+        catalog = _connected_tool_catalog()
+        return Response({'services': enrich_service_rows(list_mcp_services(), catalog)})

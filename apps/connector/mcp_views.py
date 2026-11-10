@@ -50,6 +50,14 @@ from apps.connector.mcp_urls import (
 from apps.connector.mcp_company_label import resolve_company_label
 from apps.connector.mcp_tenant import apply_tenant_to_arguments, tenant_binding_from_meta
 from apps.connector.mcp_tool_presentation import apply_gateway_tool_presentation
+from apps.connector.mcp_discovery import (
+    DISCOVERY_ONLY_TOOLS,
+    describe_payload,
+    listed_tools,
+    search_payload,
+    suggest_tool_names,
+    tools_list_mode,
+)
 from apps.connector.services import configured_service_urls, downstream_resource_for
 from shellui_django.mcp.openapi_tools import tools_from_schema as shellui_tools_from_schema
 from shellui_django.mcp.routing import McpToolArgumentError
@@ -650,6 +658,9 @@ class PrefixingMcpServer(AggregatingMcpServer):
         return JsonResponse(body)
 
     def _maybe_forward_tool_call(self, request: HttpRequest, req_id, params, agent_claims):
+        export_name = str((params or {}).get('name') or '')
+        if export_name in DISCOVERY_ONLY_TOOLS:
+            return self._call_discovery_tool(request, req_id, params, agent_claims)
         call_params, error = self._prepare_tool_call_params(params, agent_claims, req_id)
         if error is not None:
             return error
@@ -787,10 +798,11 @@ class PrefixingMcpServer(AggregatingMcpServer):
             mcp_server_module.decide_write = orig_decide
             reset_shellui_write_gate(bypass)
 
-    def _aggregated_tools_list(self, req_id, agent_claims, params=None):
+    def _export_catalog(self, agent_claims: dict) -> list[dict] | None:
+        """Full operational catalog. Routes are remembered so unlisted tools can still be called."""
         agent = self._gateway.resolve_agent(agent_claims)
         if agent is None:
-            return JsonResponse(self._error(req_id, -32603, 'Forbidden'))
+            return None
         allowed = scope_service_ids(agent_claims) & set(agent.services_allowed or [])
         local = [normalize_mcp_tool(tool) for tool in tools_from_schema(self.schema_provider())]
         local_id = self._gateway.local_service_id
@@ -818,9 +830,104 @@ class PrefixingMcpServer(AggregatingMcpServer):
             remember_route=remember,
         )
         company_label = resolve_company_label(agent_claims, agent=agent)
-        tools = [apply_gateway_tool_presentation(tool, company_label=company_label) for tool in tools]
+        return [apply_gateway_tool_presentation(tool, company_label=company_label) for tool in tools]
+
+    def _aggregated_tools_list(self, req_id, agent_claims, params=None):
+        catalog = self._export_catalog(agent_claims)
+        if catalog is None:
+            return JsonResponse(self._error(req_id, -32603, 'Forbidden'))
+        company_label = resolve_company_label(agent_claims, agent=self._gateway.resolve_agent(agent_claims))
+        mode = tools_list_mode(_mcp_http_request.get(), params if isinstance(params, dict) else {})
+        tools = listed_tools(catalog, mode=mode, company_label=company_label)
         page = paginate_tools(tools, params or {})
         return JsonResponse(self._result(req_id, page))
+
+    def _discovery_result(self, req_id, payload: dict, *, is_error: bool = False) -> JsonResponse:
+        return JsonResponse(
+            self._result(
+                req_id,
+                {
+                    'content': [
+                        {
+                            'type': 'text',
+                            'text': json.dumps(payload, indent=2, sort_keys=True, default=str),
+                        }
+                    ],
+                    'isError': is_error,
+                },
+            )
+        )
+
+    def _call_discovery_tool(self, request, req_id, params, agent_claims):
+        """Search and describe stay on the gateway. ai_call_tool re-enters the normal call path."""
+        export_name = str((params or {}).get('name') or '')
+        arguments = (params or {}).get('arguments')
+        if not isinstance(arguments, dict):
+            arguments = {}
+        catalog = self._export_catalog(agent_claims) or []
+        access_mode = str(agent_claims.get('mcp_access') or 'ask')
+        if export_name == 'ai_search_tools':
+            payload = search_payload(catalog, arguments, access_mode=access_mode)
+            return self._discovery_result(req_id, payload, is_error='error' in payload and not payload.get('matches'))
+        if export_name == 'ai_describe_tool':
+            payload = describe_payload(catalog, arguments, access_mode=access_mode)
+            return self._discovery_result(req_id, payload, is_error='error' in payload and not payload.get('tools'))
+        if export_name == 'ai_call_tool':
+            inner = str(arguments.get('name') or '').strip()
+            inner_args = arguments.get('arguments') if isinstance(arguments.get('arguments'), dict) else {}
+            if not inner:
+                return self._discovery_result(
+                    req_id,
+                    {
+                        'error': 'Pass name and arguments. Example: {"name": "identity_list_users", "arguments": {}}.',
+                    },
+                    is_error=True,
+                )
+            if inner == 'ai_call_tool':
+                return self._discovery_result(
+                    req_id,
+                    {'error': 'ai_call_tool cannot call itself. Pass the gateway tool name, such as identity_list_users.'},
+                    is_error=True,
+                )
+            known = {str(tool.get('name') or '') for tool in catalog}
+            known |= DISCOVERY_ONLY_TOOLS | {'ai_list_services'}
+            service_id = inner.split('_', 1)[0]
+            allowed = scope_service_ids(agent_claims)
+            agent = self._gateway.resolve_agent(agent_claims)
+            agent_services = set(agent.services_allowed or []) if agent else set()
+            urls = set(self._gateway.get_service_urls())
+            out_of_scope = (
+                service_id != self._gateway.local_service_id
+                and service_id in urls
+                and (service_id not in allowed or service_id not in agent_services)
+            )
+            if inner not in known and not out_of_scope:
+                suggestions = suggest_tool_names(catalog, inner, limit=3)
+                hint = (
+                    f'No tool named {inner}.'
+                    + (f' Close matches: {", ".join(suggestions)}.' if suggestions else '')
+                    + ' Search with ai_search_tools, or call ai_list_services to see connected services.'
+                )
+                return self._discovery_result(req_id, {'error': hint, 'suggestions': suggestions}, is_error=True)
+            if out_of_scope:
+                visible = sorted((allowed & agent_services) | {self._gateway.local_service_id})
+                return self._discovery_result(
+                    req_id,
+                    {
+                        'error': (
+                            f'{inner} is not available to this agent. '
+                            f'Allowed services: {", ".join(visible)}. '
+                            'Call ai_list_services to see this connection.'
+                        ),
+                        'suggestions': suggest_tool_names(catalog, inner, limit=3),
+                    },
+                    is_error=True,
+                )
+            forwarded = dict(params or {})
+            forwarded['name'] = inner
+            forwarded['arguments'] = inner_args
+            return self._maybe_forward_tool_call(request, req_id, forwarded, agent_claims)
+        return JsonResponse(self._error(req_id, -32602, 'Unknown tool'))
 
 
 def _schema() -> dict:

@@ -144,6 +144,16 @@ def _agent_display_name(agent_claims: dict[str, Any]) -> str:
     return f'Agent {agent_id[:8]}'
 
 
+def _pending_text(tool_name: str, arguments: dict[str, Any], settings_url: str) -> str:
+    from apps.connector.mcp_discovery import arguments_preview
+
+    text = f'{copy.fallback_pending_text(settings_url=settings_url)} Tool: {tool_name}.'
+    preview = arguments_preview(arguments)
+    if preview:
+        return f'{text} {preview}'
+    return text
+
+
 def build_elicitation_meta(
     *,
     tool_name: str,
@@ -151,7 +161,10 @@ def build_elicitation_meta(
     agent_claims: dict[str, Any],
     approval_id: str,
     tool_count: int = 1,
+    arguments: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    from apps.connector.mcp_discovery import arguments_preview
+
     agent_name = _agent_display_name(agent_claims)
     company_name = resolve_company_label(agent_claims)
     title = copy.approval_title(tool_name=tool_name, destructive=destructive)
@@ -165,6 +178,9 @@ def build_elicitation_meta(
         if tool_count > 1
         else copy.approval_body(agent_name=agent_name, tool_name=tool_name, company_name=company_name)
     )
+    preview = arguments_preview(arguments)
+    if preview:
+        body = f'{body} {preview}'
     buttons: dict[str, str] = {'allow': 'Allow', 'deny': 'Deny'}
     if not destructive:
         buttons['session_allow'] = 'Allow for this session'
@@ -578,6 +594,7 @@ def enforce_tool_call_approval(
                 destructive=destructive,
                 agent_claims=agent_claims,
                 approval_id=approval_id,
+                arguments=arguments,
             )
             return GateOutcome(
                 proceed=False,
@@ -602,7 +619,7 @@ def enforce_tool_call_approval(
             proceed=False,
             response=_approval_result(
                 req_id,
-                text=copy.fallback_pending_text(settings_url=settings_url),
+                text=_pending_text(export_name, arguments, settings_url),
                 meta={
                     'shellui_approval': {
                         'approval_id': approval_id,
@@ -637,6 +654,7 @@ def enforce_tool_call_approval(
             destructive=destructive,
             agent_claims=agent_claims,
             approval_id=approval_id,
+            arguments=arguments,
         )
         return GateOutcome(
             proceed=False,
@@ -661,7 +679,7 @@ def enforce_tool_call_approval(
         proceed=False,
         response=_approval_result(
             req_id,
-            text=copy.fallback_pending_text(settings_url=settings_url),
+            text=_pending_text(export_name, arguments, settings_url),
             meta={
                 'shellui_approval': {
                     'approval_id': approval_id,

@@ -250,8 +250,10 @@ class McpToolReleaseTests(TestCase):
         self.forwarded: list[dict] = []
 
     def _post(self, method: str, **params):
+        # The 224-tool contract is the full catalog. The default list is discovery.
+        path = '/c/10/mcp?tools=all' if method == 'tools/list' else '/c/10/mcp'
         return self.client.post(
-            '/c/10/mcp',
+            path,
             data=_rpc(method, **params),
             content_type='application/json',
             HTTP_AUTHORIZATION=f'Bearer {self.token}',
@@ -313,7 +315,9 @@ class McpToolReleaseTests(TestCase):
                 break
         else:
             self.fail('tools/list pagination did not finish')
-        return tools
+        # Search, describe, and call sit beside the operational catalog. The pinned
+        # snapshot stays the 224 OpenAPI tools.
+        return [tool for tool in tools if tool['name'] not in {'ai_search_tools', 'ai_describe_tool', 'ai_call_tool'}]
 
     def _traits(self, name: str) -> tuple[bool, bool]:
         row = _get_server()._cached_export_tool(name)
