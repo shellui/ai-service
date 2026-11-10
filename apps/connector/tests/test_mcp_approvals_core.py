@@ -441,6 +441,70 @@ class McpApprovalsCoreTests(TestCase):
         self.assertEqual(post.call_args.kwargs.get('json'), {'is_destructive': False})
 
     @patch('apps.connector.mcp_approvals.requests.post')
+    def test_create_sends_redacted_arguments_summary_only(self, post):
+        post.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {
+                'id': 'appr-sum',
+                'status': 'pending',
+                'expires_at': '2026-11-10T21:10:00+00:00',
+                'is_destructive': False,
+                'fallback_path': '/oauth/mcp/approval/appr-sum?token=signed',
+                'approval_url': 'https://identity.test/oauth/mcp/approval/appr-sum?token=signed',
+            },
+        )
+        now = int(time.time())
+        summary = mcp_approvals.approval_arguments_summary(
+            {'name': 'Ada', 'api_key': 'sekret-value', 'note': 'x' * 600}
+        )
+        self.assertNotIn('sekret-value', summary)
+        self.assertIn('***', summary)
+        self.assertLessEqual(len(summary), 500)
+        payload = {
+            **_BASE_PAYLOAD,
+            '_agent_claims': {'iat': now, 'exp': now + 3600, 'grant_version': 1},
+            '_arguments_summary': summary,
+        }
+        created = mcp_approvals.create_approval_request(payload)
+        assert created is not None
+        body = post.call_args.kwargs.get('json') or {}
+        self.assertEqual(set(body), {'is_destructive', 'arguments_summary'})
+        self.assertNotIn('arguments', body)
+        self.assertNotIn('arguments_redacted', body)
+        self.assertNotIn('target', body)
+        self.assertNotIn('short_action_summary', body)
+        self.assertLessEqual(len(body['arguments_summary']), 500)
+        self.assertEqual(
+            created['approval_url'],
+            'https://identity.test/oauth/mcp/approval/appr-sum?token=signed',
+        )
+        self.assertEqual(created['expires_at'], '2026-11-10T21:10:00+00:00')
+
+    @patch('apps.connector.mcp_approvals.requests.post')
+    def test_state_keeps_id_and_approval_url_for_every_status(self, post):
+        post.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {
+                'id': 'appr-state',
+                'status': 'denied',
+                'expires_at': '2026-11-10T21:10:00+00:00',
+                'is_destructive': False,
+                'approval_url': 'https://identity.test/oauth/mcp/approval/appr-state?token=signed',
+            },
+        )
+        now = int(time.time())
+        payload = {**_BASE_PAYLOAD, '_agent_claims': {'iat': now, 'exp': now + 3600, 'grant_version': 1}}
+        status, approval_id = mcp_approvals.fetch_approval_state(payload)
+        self.assertEqual(status, 'denied')
+        self.assertEqual(approval_id, 'appr-state')
+        self.assertEqual(payload['approval_expires_at'], '2026-11-10T21:10:00+00:00')
+        self.assertEqual(
+            payload['approval_url_field'],
+            'https://identity.test/oauth/mcp/approval/appr-state?token=signed',
+        )
+        self.assertEqual(post.call_args.kwargs.get('json'), {})
+
+    @patch('apps.connector.mcp_approvals.requests.post')
     def test_create_absolutizes_fallback_path_without_approval_url(self, post):
         post.return_value = MagicMock(
             status_code=200,

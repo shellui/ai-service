@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextvars
 import hashlib
+import json
 import logging
 import time
 from datetime import datetime, timedelta, timezone as dt_timezone
@@ -284,11 +285,10 @@ def resolve_approval_url(
 ) -> str:
     """Absolute page for one approval.
 
-    Identity develop (``db5db3f``) returns ``fallback_path`` and no ``approval_url``.
-    Prefer an absolute ``approval_url`` when a newer identity sends one. Otherwise
-    join the public issuer to ``fallback_path`` (it carries the signed token the
-    current page requires). If neither field is present, build
-    ``{issuer}/oauth/mcp/approval/{id}``.
+    Identity ``d9539a7`` returns absolute ``approval_url`` on the public issuer.
+    Use that value when it is an http(s) URL. Otherwise join the public issuer to
+    ``fallback_path`` (same path and signed token, relative). If neither field is
+    present, build ``{issuer}/oauth/mcp/approval/{id}``.
     """
     raw = str(approval_url or '').strip()
     if _is_absolute_http_url(raw):
@@ -351,6 +351,35 @@ def recall_approval(approval_id: str) -> dict[str, Any] | None:
     return row if isinstance(row, dict) else None
 
 
+_ARGUMENTS_SUMMARY_MAX = 500
+_SUMMARY_FORBIDDEN_KEYS = frozenset({'arguments', 'arguments_redacted', 'target', 'short_action_summary'})
+
+
+def approval_arguments_summary(arguments: dict[str, Any] | None) -> str:
+    """Redacted one-line summary safe to show on the identity approval page. Empty when there is nothing to say."""
+    from apps.connector.mcp_discovery import redact_arguments
+
+    if not isinstance(arguments, dict) or not arguments:
+        return ''
+    text = json.dumps(redact_arguments(arguments), sort_keys=True, default=str, ensure_ascii=True)
+    text = ' '.join(text.split())
+    if not text or text == '{}':
+        return ''
+    if len(text) > _ARGUMENTS_SUMMARY_MAX:
+        text = text[: _ARGUMENTS_SUMMARY_MAX - 3].rstrip() + '...'
+    return text
+
+
+def _summary_from_payload(payload: dict[str, Any]) -> str:
+    raw = payload.get('_arguments_summary')
+    if not isinstance(raw, str):
+        return ''
+    text = ' '.join(raw.split())
+    if len(text) > _ARGUMENTS_SUMMARY_MAX:
+        text = text[: _ARGUMENTS_SUMMARY_MAX - 3].rstrip() + '...'
+    return text
+
+
 def create_approval_request(payload: dict[str, Any], *, is_destructive: bool = False) -> dict[str, Any] | None:
     _approval_create_error.set('')
     origin = _identity_origin()
@@ -365,6 +394,14 @@ def create_approval_request(payload: dict[str, Any], *, is_destructive: bool = F
     # Binding (agent, company, service, action, arguments_hash) is only in the signed assertion header.
     # Never forward tool arguments, paths, methods, or client summaries in the JSON body.
     body: dict[str, Any] = {'is_destructive': bool(is_destructive)}
+    summary = _summary_from_payload(payload)
+    if summary:
+        # Identity #149 stores this on short_action_summary and shows it on the approval page.
+        body['arguments_summary'] = summary
+    if _SUMMARY_FORBIDDEN_KEYS & body.keys():
+        logger.warning('MCP approval create skipped: forbidden body key')
+        _set_create_error(CREATE_ERROR_INVALID)
+        return None
     ctx = _assertion_context(payload)
     if ctx.blocked_assertion:
         logger.warning('MCP approval create skipped: blocked assertion (setup or global binding)')
@@ -431,7 +468,11 @@ def create_approval_request(payload: dict[str, Any], *, is_destructive: bool = F
 
 
 def fetch_approval_state(payload: dict[str, Any]) -> tuple[str | None, str | None]:
-    """Return (public status, approval_id when approved)."""
+    """Return (public status, approval id).
+
+    Identity #149 (``d9539a7``) returns ``id`` for every status, plus ``expires_at``,
+    ``is_destructive``, and absolute ``approval_url``. ``404`` means no row.
+    """
     origin = _identity_origin()
     binding = approval_binding_from_payload(payload)
     if not origin or binding is None:
@@ -470,10 +511,11 @@ def fetch_approval_state(payload: dict[str, Any]) -> tuple[str | None, str | Non
     fallback_path = _safe_fallback_path(str(data.get('fallback_path') or ''))
     if fallback_path:
         payload['approval_fallback_path'] = fallback_path
-    # Bind pending and approved rows by id so we never create a duplicate when one already exists.
-    if status not in {'approved', 'pending'}:
-        approval_id = None
-    return status or None, approval_id
+    if isinstance(data.get('is_destructive'), bool):
+        payload['approval_is_destructive'] = data['is_destructive']
+    if status not in {'approved', 'pending', 'denied', 'expired'}:
+        return None, None
+    return status, approval_id
 
 
 def _already_consumed_body(response: requests.Response) -> bool:

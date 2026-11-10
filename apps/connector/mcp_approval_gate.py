@@ -581,6 +581,7 @@ def enforce_tool_call_approval(
         'action': export_name,
         'arguments_hash': args_hash,
         '_agent_claims': agent_claims,
+        '_arguments_summary': approvals.approval_arguments_summary(arguments),
     }
 
     client_decision, client_approval_id = parse_client_decision(params)

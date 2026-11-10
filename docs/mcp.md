@@ -116,7 +116,7 @@ On **`tools/call`**, when approval is required, the gateway returns a tool resul
 
 The text content starts with `Approval pending.` and includes the same JSON. `_meta.shellui_approval` repeats `approval_id`, `status`, `expires_at`, `approval_url`, and the settings list URL. Calling the same tool again with the same arguments after the person approves consumes the grant and runs the tool **once**. A second replay, a denial, or an expiry returns a clear message and does not run the tool.
 
-`approval_url` is absolute. The gateway uses Identity's `approval_url` when the create response includes one. Identity `develop` at `db5db3fd225e6e2148a55df59a6bb1781438164e` does not send that field yet. It sends `fallback_path` (a relative path with the signed token the current page requires) plus `expires_at`. If `approval_url` is absent, the gateway joins the public identity issuer (`IDENTITY_ISSUER`, else the identity origin) to `fallback_path`. If that path is also absent, it builds `{issuer}/oauth/mcp/approval/{approval_id}`.
+`approval_url` is absolute. Identity `develop` at `d9539a7540f535c30bcbc4f70472e68d0edeb541` (PR **#149**) returns it on create and on state, on the public issuer (`JWT_ISSUER` / `IDENTITY_ISSUER`). The page is `GET /oauth/mcp/approval/<uuid>?token=<signed>`. The gateway uses that `approval_url` as sent. If a response omits it, the gateway joins the public issuer to `fallback_path` (the same path and token, relative). If that path is also absent, it builds `{issuer}/oauth/mcp/approval/{approval_id}`.
 
 Clients that declared **form** elicitation (`capabilities.elicitation` empty, or `elicitation.form`) still receive `_meta.shellui_approval.elicitation` with Allow, Deny, and, for non-destructive tools, Allow for this session. They retry **`tools/call`** with **`params._meta.shellui_approval.decision`** in **`allow`** | **`deny`** | **`session_allow`**, and the **`approval_id`**. **Approval-gated retries** must replay the **full** tool call (same export name and normalized arguments). Changing the action or normalized args requires a **new** approval.
 
@@ -206,15 +206,16 @@ Internal rows still use **`OUTCOMES`** in `mcp_call_audit.py`. **`forward_call_l
 - **Wire route:** always **`POST /mcp`** on forward; OpenAPI **method/path** stay in local audit only.
 - **Labels:** **`company_name`** and **`agent_name`** are **not** forwarded (JWT display strings are not server-enforced registry data).
 - **`access_kind`:** **`read`**, **`write`**, **`destructive`**, or **`unknown`** from tool traits and HTTP method (`access_kind_from_tool`).
-- **No** raw tool arguments: sending `arguments` or `arguments_redacted` to Identity returns **400**.
+- **No** raw tool arguments: sending `arguments` or `arguments_redacted` on an approval create returns **400**. A redacted `arguments_summary` string (max 500 characters) is the only argument text Identity accepts, and only on that create.
 
 A downstream HTTP **2xx** alone does **not** imply **`allowed`** if the gateway classified the operation as an error (`is_error`, audit `log_result`, etc.). See **`outcome_from_audit`**.
 
 ### Approvals: state before create, retry, and bodies
 
-On each gated **`tools/call`**, the gateway calls **`mcp-approval-state`** first (empty JSON body; binding is **only** in the signed assertion). If Identity returns **`pending`** or **`approved`**, the **`id`** is stored so the client can **`allow`** / **`deny`** / **`session_allow`** without creating a second row for the same binding.
+On each gated **`tools/call`**, the gateway calls **`mcp-approval-state`** first (empty JSON body; binding is **only** in the signed assertion). Identity **200** is always `id`, `status` (`pending`, `approved`, `denied`, or `expired`), `expires_at`, `is_destructive`, and absolute `approval_url`. `404` means no row. The `id` is kept for every status so a pending or approved row is not created again.
 
-- **Create** (`mcp-approval-requests`): JSON body is **`{ "is_destructive": <bool> }`** only. Never add `arguments`, `arguments_redacted`, `path`, `method`, or **`short_action_summary`**.
+- **Create** (`mcp-approval-requests`): JSON body is `is_destructive` (boolean) and, when there is a safe redacted preview, `arguments_summary` (string, at most 500 characters). Identity stores that summary on `short_action_summary` and shows it on the approval page. Never send `arguments`, `arguments_redacted`, `target`, `short_action_summary`, `path`, or `method`.
+- **State** (`mcp-approval-state`): empty JSON body. Use the returned `approval_url` and `expires_at`.
 - **Decide** (`mcp-approval-decide`): includes `approval_id`, `decision`, sanitized `connection_id`, optional `actor_email`.
 - **Consume** (`mcp-approval-consume`): JSON **`{ "approval_id": "…" }`** only.
 
