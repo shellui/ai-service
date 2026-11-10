@@ -26,7 +26,7 @@ Regional agent JWTs may carry:
 - **`global_company_id`**: canonical UUID string (only with delegation).
 - **`grant_version`**, **`company_binding_version`**: JSON **integers** (≥ 0); **bool and numeric strings are rejected** in gateway parsing.
 
-The gateway treats **partial** triples as **`blocked_assertion`**: no signed internal approval calls. The **full triple** is required for delegated global flows. **`personal_token_id`** alone does not imply delegation.
+A personal regional token may carry **`grant_version`** alone (no **`global_company_id`**, no **`company_binding_version`**, and **`mcp_authority`** not **`delegated`** or **`global_delegated`**). That is not a partial global binding: approval create, state, and consume still sign an assertion that includes **`grant_version`**. Any other partial triple (a global company id without both versions, **`company_binding_version`** without **`global_company_id`**, a malformed global company id, or **`mcp_authority`** **`delegated`** / **`global_delegated`** without the full triple) stays **`blocked_assertion`**: no signed internal approval calls. Invalid setup claims stay blocked. The **full triple** is required for delegated global flows. **`personal_token_id`** alone does not imply delegation.
 
 Internal approval and session assertions are **RS256** JWTs (`AI_SERVICE_SIGNING_KEY`, `AI_SERVICE_ISSUER`); binding fields (`company_id`, `agent_id`, `service`, `action`, `arguments_hash`) live in those signed claims—**not** in untrusted JSON bodies.
 

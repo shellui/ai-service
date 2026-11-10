@@ -202,6 +202,154 @@ class McpApprovalGatewayTests(TestCase):
         ]
         self.assertEqual(forwarded, [])
 
+    @override_settings(
+        EMAIL_SERVICE_URL='https://email.test',
+        EMAIL_SERVICE_API_KEY='esk_test_personal_approval',  # gitleaks:allow
+    )
+    @patch('apps.connector.mcp_identity._http_post', side_effect=_delegated_authority_transport_mock)
+    @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
+    @patch('apps.connector.mcp_identity.forward_call_log')
+    @patch('shellui_django.mcp.gateway.requests.post')
+    @patch('apps.connector.mcp_views.requests.post')
+    @patch('apps.connector.mcp_approvals.requests.post')
+    def test_personal_grant_version_ai_call_tool_returns_pending_approval(
+        self, identity_post, views_post, gateway_post, _log, _mint, *_mocks
+    ):
+        """Device-login personal token (grant_version, no global fields) can ask for a write."""
+
+        email_tools = {
+            'jsonrpc': '2.0',
+            'id': 1,
+            'result': {
+                'tools': [
+                    {
+                        'name': 'create_template_versions',
+                        'description': 'Save a new version of an email template',
+                        'annotations': {
+                            'readOnlyHint': False,
+                            'destructiveHint': False,
+                            'idempotentHint': False,
+                            'openWorldHint': True,
+                        },
+                        '_meta': {
+                            'method': 'post',
+                            'path': '/api/v1/templates/{template_id}/versions',
+                            'read_only': False,
+                            'destructive': False,
+                        },
+                    }
+                ]
+            },
+        }
+
+        def post_side_effect(url, **kwargs):
+            # mcp_views and mcp_approvals both bind the requests module, so one
+            # dispatcher covers catalog fetch and identity approval calls.
+            path = str(url).rstrip('/')
+            resp = Mock()
+            if path.endswith('/mcp-approval-state') or path.endswith('/mcp-approval-session-check'):
+                resp.status_code = 404
+                resp.json.return_value = {}
+                return resp
+            if path.endswith('/mcp-approval-requests'):
+                resp.status_code = 201
+                resp.json.return_value = {'id': 'appr-email-template', 'status': 'pending'}
+                return resp
+            resp.status_code = 200
+            payload = kwargs.get('json') or {}
+            if payload.get('method') == 'tools/call':
+                resp.json.return_value = {'jsonrpc': '2.0', 'id': 1, 'result': {'content': []}}
+            else:
+                resp.json.return_value = email_tools
+            return resp
+
+        identity_post.side_effect = post_side_effect
+        views_post.side_effect = post_side_effect
+        gateway_post.side_effect = post_side_effect
+        now = int(time.time())
+        agent_id = _DEFAULT_TEST_AGENT_ID
+        claims = {
+            'token_type': 'access',
+            'agent_id': agent_id,
+            'sub': f'agent:{agent_id}',
+            'company_id': 1,
+            'company_name': 'Acme',
+            'mcp_access': 'ask',
+            'mcp_read': 'safe',
+            'mcp_destructive': False,
+            'scope': 'ai email',
+            'jti': 'device-jti-personal',
+            'iat': now,
+            'exp': now + 900,
+            'aud': 'https://ai.test/c/1/mcp',
+            'iss': self.issuer,
+            'grant_version': 1,
+        }
+        token = jwt.encode(claims, self.secret, algorithm='HS256')
+        session_id = self.client.post(
+            '/c/1/mcp',
+            data=json.dumps(
+                {
+                    'jsonrpc': '2.0',
+                    'id': 1,
+                    'method': 'initialize',
+                    'params': {'protocolVersion': '2025-06-18', 'capabilities': {'elicitation': {}}},
+                }
+            ),
+            content_type='application/json',
+            **self._auth(token),
+        )
+        self.assertEqual(session_id.status_code, 200, session_id.content)
+        mcp_session = session_id['Mcp-Session-Id']
+        listed = self.client.post(
+            '/c/1/mcp',
+            data=_rpc('tools/list', tools='all'),
+            content_type='application/json',
+            **self._auth(token, session_id=mcp_session),
+        )
+        self.assertEqual(listed.status_code, 200, listed.content)
+        names = {tool['name'] for tool in listed.json()['result']['tools']}
+        self.assertIn('email_create_template_versions', names)
+        response = self.client.post(
+            '/c/1/mcp',
+            data=_rpc(
+                'tools/call',
+                name='ai_call_tool',
+                arguments={
+                    'name': 'email_create_template_versions',
+                    'arguments': {'method': 'POST', 'path': '/api/v1/templates/tpl/versions'},
+                },
+            ),
+            content_type='application/json',
+            **self._auth(token, session_id=mcp_session),
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        body = response.json()
+        text = body['result']['content'][0]['text']
+        self.assertNotIn('Approval unavailable.', text)
+        meta = body['result']['_meta']['shellui_approval']
+        self.assertEqual(meta['approval_id'], 'appr-email-template')
+        self.assertEqual(meta['status'], 'pending')
+        self.assertIn('email_create_template_versions', meta['elicitation']['title'])
+        create_calls = [
+            call
+            for post in (identity_post, views_post, gateway_post)
+            for call in post.call_args_list
+            if call.args and str(call.args[0]).rstrip('/').endswith('/mcp-approval-requests')
+        ]
+        self.assertEqual(len(create_calls), 1)
+        assertion = create_calls[0].kwargs['headers']['Authorization'].split(' ', 1)[1]
+        signed = jwt.decode(assertion, options={'verify_signature': False})
+        self.assertEqual(signed.get('grant_version'), 1)
+        self.assertNotIn('global_company_id', signed)
+        self.assertNotIn('company_binding_version', signed)
+        forwarded = [
+            call
+            for call in list(views_post.call_args_list) + list(gateway_post.call_args_list)
+            if (call.kwargs.get('json') or {}).get('method') == 'tools/call'
+        ]
+        self.assertEqual(forwarded, [])
+
     @patch('apps.connector.mcp_identity._http_post', side_effect=_delegated_authority_transport_mock)
     @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
     @patch('apps.connector.mcp_identity.forward_call_log')

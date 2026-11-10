@@ -128,7 +128,7 @@ Internal approval assertions are built with **`build_mcp_approval_assertion`** (
 Logic lives in `apps/connector/mcp_setup_context.py`:
 
 - **Global delegated** only when **`global_company_id`** is a canonical UUID **and** **`grant_version`** **and** **`company_binding_version`** are each a **non-negative int** (including **`0`**).
-- **Reject** on any **partial** triple or malformed UUID string.
+- **Reject** on any **partial** triple or malformed UUID string. A personal token that carries only **`grant_version`** (no **`global_company_id`**, no **`company_binding_version`**, and **`mcp_authority`** not **`delegated`** or **`global_delegated`**) is not a partial triple. Its approval assertion still includes that **`grant_version`**. Invalid setup claims stay blocked.
 - **`personal_token_id`** may appear on delegated tokens; **do not** infer delegation from it alone.
 
 **commons pin:** `shellui-django[mcp]` is pinned in `pyproject.toml` / `uv.lock` (see the repo for the current revision).
