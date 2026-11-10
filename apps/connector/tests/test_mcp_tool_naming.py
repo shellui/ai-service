@@ -175,3 +175,33 @@ class McpToolNamingTests(SimpleTestCase):
 
     def test_clamp(self):
         self.assertEqual(validate_tool_name(clamp_tool_name('a' * 80)), [])
+
+    def test_published_operation_id_and_tool_name_are_not_prefixed_twice(self):
+        listed = {'operationId': 'identity_list_users'}
+        self.assertEqual(resolve_mcp_tool_name(listed, 'get', '/api/v1/users/'), 'list_users')
+        self.assertEqual(
+            gateway_export_name('identity', resolve_mcp_tool_name(listed, 'get', '/api/v1/users/')),
+            'identity_list_users',
+        )
+        self.assertEqual(
+            resolve_mcp_tool_name({'operationId': 'identity_get_scim_status'}, 'get', '/api/v1/scim/status/'),
+            'get_scim_status',
+        )
+        self.assertEqual(
+            resolve_mcp_tool_name(
+                {'operationId': 'identity_rotate_rule_secret'},
+                'post',
+                '/api/v1/actions/rules/rotate-secret/',
+            ),
+            'rotate_rule_secret',
+        )
+        email = {
+            'operationId': 'api_v1_newsletters_create',
+            'x-mcp': {'tool_name': 'email_create_newsletters'},
+        }
+        self.assertEqual(resolve_mcp_tool_name(email, 'post', '/api/v1/newsletters/'), 'create_newsletters')
+        hosting = {
+            'operationId': 'hosting_v1_apps_list',
+            'x-mcp': {'tool_name': 'list_apps'},
+        }
+        self.assertEqual(resolve_mcp_tool_name(hosting, 'get', '/api/v1/apps/'), 'list_apps')

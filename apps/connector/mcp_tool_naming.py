@@ -164,13 +164,22 @@ def resolve_mcp_tool_name(operation: dict[str, Any], method: str, path: str) -> 
     x_mcp = operation.get('x-mcp') if isinstance(operation.get('x-mcp'), dict) else {}
     explicit = str(x_mcp.get('tool_name') or x_mcp.get('name') or '').strip()
     if explicit:
-        return clamp_tool_name(_sanitize_token(explicit))
+        # ``email_create_newsletters`` is already the gateway export. Callers add
+        # ``<service>_`` once, so return the local verb_noun. ``list_apps`` is local.
+        local = published_local_tool_name(explicit)
+        return clamp_tool_name(local or _sanitize_token(explicit))
 
     op_id = str(operation.get('operationId') or '').strip()
     if op_id and op_id in _OPERATION_ID_TOOL_NAMES:
         return clamp_tool_name(_OPERATION_ID_TOOL_NAMES[op_id])
 
     if op_id:
+        # Identity #147 renamed operationId to ``identity_list_users``. Stripping only
+        # ``api_v1_`` would leave the service token and the gateway would emit
+        # ``identity_identity_list_users``.
+        local = published_local_tool_name(op_id)
+        if local:
+            return clamp_tool_name(local)
         tokens = _strip_version_and_service_prefix(_sanitize_token(op_id).split('_'))
         stripped = '_'.join(tokens)
         name = _base_name_from_stripped(stripped, method=method)
@@ -263,6 +272,22 @@ _LOCAL_TOOL_NAME_OPERATION_IDS: dict[str, str] = {
 }
 
 _SERVICE_PREFIXES = ('ai', 'identity', 'storage', 'hosting', 'email', 'saas')
+
+
+def published_local_tool_name(name: str) -> str | None:
+    """Return the verb_noun when ``name`` is already ``<service>_<local>``.
+
+    Legacy slugs (``api_v1_*``, ``storage_v1_*``, ``hosting_v1_*``) are not published
+    names, even though ``storage`` and ``hosting`` are service ids.
+    """
+    slug = _sanitize_token(name)
+    if not slug or legacy_operation_id_from_tool_name(slug) is not None:
+        return None
+    for sid in _SERVICE_PREFIXES:
+        prefix = f'{sid}_'
+        if slug.startswith(prefix) and len(slug) > len(prefix):
+            return slug[len(prefix) :]
+    return None
 
 
 def legacy_operation_id_from_tool_name(name: str) -> str | None:
