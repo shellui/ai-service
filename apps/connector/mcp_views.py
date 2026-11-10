@@ -910,13 +910,13 @@ class PrefixingMcpServer(AggregatingMcpServer):
                 )
                 return self._discovery_result(req_id, {'error': hint, 'suggestions': suggestions}, is_error=True)
             if out_of_scope:
-                visible = sorted((allowed & agent_services) | {self._gateway.local_service_id})
+                allowed_ids = sorted((allowed & agent_services) | {self._gateway.local_service_id})
                 return self._discovery_result(
                     req_id,
                     {
                         'error': (
                             f'{inner} is not available to this agent. '
-                            f'Allowed services: {", ".join(visible)}. '
+                            f'Allowed services: {", ".join(allowed_ids)}. '
                             'Call ai_list_services to see this connection.'
                         ),
                         'suggestions': suggest_tool_names(catalog, inner, limit=3),
