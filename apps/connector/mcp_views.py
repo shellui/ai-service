@@ -832,6 +832,20 @@ class PrefixingMcpServer(AggregatingMcpServer):
         company_label = resolve_company_label(agent_claims, agent=agent)
         return [apply_gateway_tool_presentation(tool, company_label=company_label) for tool in tools]
 
+    def _remote_catalog_cached(self, agent_claims: dict) -> bool:
+        """True when tools/list has already stored every allowed downstream catalog."""
+        agent = self._gateway.resolve_agent(agent_claims)
+        if agent is None:
+            return False
+        allowed = scope_service_ids(agent_claims) & set(agent.services_allowed or [])
+        local_id = self._gateway.local_service_id
+        for service_id, mcp_url in self._gateway.get_service_urls().items():
+            if service_id == local_id or service_id not in allowed:
+                continue
+            if not isinstance(self._cache().get(f'{_TOOLS_LIST_CACHE_PREFIX}{mcp_url}'), list):
+                return False
+        return True
+
     def _cached_export_tools(self, agent_claims: dict) -> list[dict]:
         """Operational tools already cached by tools/list. Does not call downstream."""
         agent = self._gateway.resolve_agent(agent_claims)
@@ -883,7 +897,9 @@ class PrefixingMcpServer(AggregatingMcpServer):
         arguments = (params or {}).get('arguments')
         if not isinstance(arguments, dict):
             arguments = {}
-        catalog = self._export_catalog(agent_claims) or []
+        # Search, describe, and list services read the catalog tools/list already
+        # cached. They must not call a downstream service themselves.
+        catalog = self._cached_export_tools(agent_claims)
         access_mode = str(agent_claims.get('mcp_access') or 'ask')
         if export_name == 'ai_search_tools':
             payload = search_payload(catalog, arguments, access_mode=access_mode)
@@ -920,7 +936,8 @@ class PrefixingMcpServer(AggregatingMcpServer):
                 and service_id in urls
                 and (service_id not in allowed or service_id not in agent_services)
             )
-            if inner not in known and not out_of_scope:
+            cache_ready = self._remote_catalog_cached(agent_claims)
+            if cache_ready and inner not in known and not out_of_scope:
                 suggestions = suggest_tool_names(catalog, inner, limit=3)
                 hint = (
                     f'No tool named {inner}.'

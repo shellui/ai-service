@@ -344,6 +344,7 @@ class DiscoveryGatewayTests(TestCase):
     def test_search_and_describe_return_schemas(self, post, _mint, _http, *_mocks):
         self._storage(post)
         token = _token(secret=self.secret, issuer=self.issuer)
+        self._names(token)
         response = self.client.post(
             '/c/10/mcp',
             data=_rpc('tools/call', name='ai_search_tools', arguments={'query': 'list buckets', 'limit': 3}),
