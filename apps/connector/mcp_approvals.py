@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import contextvars
 import hashlib
+import json
 import logging
 import time
 from datetime import datetime, timedelta, timezone as dt_timezone
@@ -49,6 +51,23 @@ SESSION_REVOKE_PATH = '/api/v1/mcp/internal/mcp-approval-session-revoke'
 SESSION_GRANT_SECONDS = 60
 
 PUBLIC_APPROVALS_PATH = '/api/v1/mcp/approvals'
+# Browser page on identity-service. Current develop serves it at this path and
+# requires the signed ``fallback_path`` query. A future ``approval_url`` wins.
+APPROVAL_PAGE_PATH = '/oauth/mcp/approval/{approval_id}'
+_APPROVAL_CACHE_PREFIX = 'mcp_gateway:approval:'
+_APPROVAL_CACHE_SECONDS = 900
+
+CREATE_ERROR_UNREACHABLE = 'identity_unreachable'
+CREATE_ERROR_SIGNING = 'signing_not_configured'
+CREATE_ERROR_BLOCKED = 'blocked_assertion'
+CREATE_ERROR_NOT_CONFIGURED = 'identity_not_configured'
+CREATE_ERROR_REJECTED = 'identity_rejected'
+CREATE_ERROR_INVALID = 'invalid_response'
+
+_approval_create_error: contextvars.ContextVar[str] = contextvars.ContextVar(
+    'mcp_approval_create_error',
+    default='',
+)
 
 
 def identity_connection_id(raw: str) -> str:
@@ -225,23 +244,174 @@ def approval_binding_from_payload(payload: dict[str, Any]) -> dict[str, Any] | N
     }
 
 
+def take_approval_create_error() -> str:
+    """Return and clear the reason from the latest ``create_approval_request`` on this context."""
+    code = _approval_create_error.get()
+    _approval_create_error.set('')
+    return code
+
+
+def _set_create_error(code: str) -> None:
+    _approval_create_error.set(code)
+
+
+def _public_identity_origin() -> str:
+    """Public origin for links a person opens. Prefer the issuer over an internal service URL."""
+    return (getattr(settings, 'IDENTITY_ISSUER', None) or _identity_origin() or '').rstrip('/')
+
+
+def _is_absolute_http_url(value: str) -> bool:
+    text = str(value or '').strip()
+    if not text or len(text) > 2048 or any(ch.isspace() for ch in text):
+        return False
+    lowered = text.lower()
+    return lowered.startswith('https://') or lowered.startswith('http://')
+
+
+def _safe_fallback_path(value: str) -> str:
+    text = str(value or '').strip()
+    if not text or len(text) > 2048 or any(ch.isspace() for ch in text):
+        return ''
+    if not text.startswith('/') or text.startswith('//') or '\\' in text:
+        return ''
+    return text
+
+
+def resolve_approval_url(
+    approval_id: str,
+    *,
+    approval_url: str = '',
+    fallback_path: str = '',
+) -> str:
+    """Absolute page for one approval.
+
+    Identity ``d9539a7`` returns absolute ``approval_url`` on the public issuer.
+    Use that value when it is an http(s) URL. Otherwise join the public issuer to
+    ``fallback_path`` (same path and signed token, relative). If neither field is
+    present, build ``{issuer}/oauth/mcp/approval/{id}``.
+    """
+    raw = str(approval_url or '').strip()
+    if _is_absolute_http_url(raw):
+        return raw
+    origin = _public_identity_origin()
+    path = _safe_fallback_path(fallback_path)
+    if origin and path:
+        return f'{origin}{path}'
+    approval_id = str(approval_id or '').strip()
+    if origin and approval_id:
+        return f'{origin}{APPROVAL_PAGE_PATH.format(approval_id=approval_id)}'
+    return approval_settings_url(approval_id or None)
+
+
+def _expires_text(raw: object) -> str:
+    if raw is None or isinstance(raw, bool):
+        return ''
+    text = str(raw).strip()
+    if not text or any(ch in text for ch in '\r\n'):
+        return ''
+    return text[:80]
+
+
+def remember_approval(
+    approval_id: str,
+    payload: dict[str, Any],
+    *,
+    expires_at: str = '',
+    approval_url: str = '',
+) -> None:
+    """Cache the binding so ``ai_get_approval`` can read status without re-running the tool."""
+    from django.core.cache import cache
+
+    approval_id = str(approval_id or '').strip()
+    binding = approval_binding_from_payload(payload)
+    if not approval_id or binding is None:
+        return
+    cache.set(
+        f'{_APPROVAL_CACHE_PREFIX}{approval_id}',
+        {
+            'agent_id': binding['agent_id'],
+            'company_id': binding['company_id'],
+            'binding': binding,
+            'service': binding['service'],
+            'action': binding['action'],
+            'expires_at': _expires_text(expires_at),
+            'approval_url': str(approval_url or '').strip(),
+        },
+        _APPROVAL_CACHE_SECONDS,
+    )
+
+
+def recall_approval(approval_id: str) -> dict[str, Any] | None:
+    from django.core.cache import cache
+
+    approval_id = str(approval_id or '').strip()
+    if not approval_id:
+        return None
+    row = cache.get(f'{_APPROVAL_CACHE_PREFIX}{approval_id}')
+    return row if isinstance(row, dict) else None
+
+
+_ARGUMENTS_SUMMARY_MAX = 500
+_SUMMARY_FORBIDDEN_KEYS = frozenset({'arguments', 'arguments_redacted', 'target', 'short_action_summary'})
+
+
+def approval_arguments_summary(arguments: dict[str, Any] | None) -> str:
+    """Redacted one-line summary safe to show on the identity approval page. Empty when there is nothing to say."""
+    from apps.connector.mcp_discovery import redact_arguments
+
+    if not isinstance(arguments, dict) or not arguments:
+        return ''
+    text = json.dumps(redact_arguments(arguments), sort_keys=True, default=str, ensure_ascii=True)
+    text = ' '.join(text.split())
+    if not text or text == '{}':
+        return ''
+    if len(text) > _ARGUMENTS_SUMMARY_MAX:
+        text = text[: _ARGUMENTS_SUMMARY_MAX - 3].rstrip() + '...'
+    return text
+
+
+def _summary_from_payload(payload: dict[str, Any]) -> str:
+    raw = payload.get('_arguments_summary')
+    if not isinstance(raw, str):
+        return ''
+    text = ' '.join(raw.split())
+    if len(text) > _ARGUMENTS_SUMMARY_MAX:
+        text = text[: _ARGUMENTS_SUMMARY_MAX - 3].rstrip() + '...'
+    return text
+
+
 def create_approval_request(payload: dict[str, Any], *, is_destructive: bool = False) -> dict[str, Any] | None:
+    _approval_create_error.set('')
     origin = _identity_origin()
     binding = approval_binding_from_payload(payload)
-    if not origin or binding is None:
+    if not origin:
+        _set_create_error(CREATE_ERROR_NOT_CONFIGURED)
+        return None
+    if binding is None:
+        _set_create_error(CREATE_ERROR_INVALID)
         return None
     url = f'{origin.rstrip("/")}{APPROVAL_REQUESTS_PATH}'
     # Binding (agent, company, service, action, arguments_hash) is only in the signed assertion header.
     # Never forward tool arguments, paths, methods, or client summaries in the JSON body.
     body: dict[str, Any] = {'is_destructive': bool(is_destructive)}
+    summary = _summary_from_payload(payload)
+    if summary:
+        # Identity #149 stores this on short_action_summary and shows it on the approval page.
+        body['arguments_summary'] = summary
+    if _SUMMARY_FORBIDDEN_KEYS & body.keys():
+        logger.warning('MCP approval create skipped: forbidden body key')
+        _set_create_error(CREATE_ERROR_INVALID)
+        return None
     ctx = _assertion_context(payload)
     if ctx.blocked_assertion:
         logger.warning('MCP approval create skipped: blocked assertion (setup or global binding)')
+        _set_create_error(CREATE_ERROR_BLOCKED)
         return None
     try:
         headers = _approval_headers(binding, ctx=ctx)
     except InternalAssertionError:
         logger.warning('MCP approval create skipped: signing not configured')
+        _set_create_error(CREATE_ERROR_SIGNING)
         return None
     logger.info(
         'MCP approval create company_id=%s agent_id=%s service=%s action=%s destructive=%s setup_flow=%s',
@@ -256,21 +426,53 @@ def create_approval_request(payload: dict[str, Any], *, is_destructive: bool = F
         response = requests.post(url, json=body, headers=headers, timeout=5)
     except requests.RequestException as exc:
         logger.warning('MCP approval create failed: %s', type(exc).__name__)
+        _set_create_error(CREATE_ERROR_UNREACHABLE)
+        return None
+    if response.status_code >= 500:
+        logger.warning('MCP approval create rejected: %s', response.status_code)
+        _set_create_error(CREATE_ERROR_UNREACHABLE)
         return None
     if response.status_code >= 400:
         logger.warning('MCP approval create rejected: %s', response.status_code)
+        _set_create_error(CREATE_ERROR_REJECTED)
         return None
     try:
         data = response.json()
     except ValueError:
+        _set_create_error(CREATE_ERROR_INVALID)
         return None
     if not isinstance(data, dict) or not data.get('id'):
+        _set_create_error(CREATE_ERROR_INVALID)
         return None
-    return {'id': str(data['id']), 'status': str(data.get('status') or 'pending')}
+    approval_id = str(data['id'])
+    expires_at = _expires_text(data.get('expires_at'))
+    fallback_path = _safe_fallback_path(str(data.get('fallback_path') or ''))
+    page_url = resolve_approval_url(
+        approval_id,
+        approval_url=str(data.get('approval_url') or ''),
+        fallback_path=fallback_path,
+    )
+    if expires_at:
+        payload['approval_expires_at'] = expires_at
+    if page_url:
+        payload['approval_url_field'] = page_url
+    if fallback_path:
+        payload['approval_fallback_path'] = fallback_path
+    return {
+        'id': approval_id,
+        'status': str(data.get('status') or 'pending'),
+        'expires_at': expires_at,
+        'approval_url': page_url,
+        'fallback_path': fallback_path,
+    }
 
 
 def fetch_approval_state(payload: dict[str, Any]) -> tuple[str | None, str | None]:
-    """Return (public status, approval_id when approved)."""
+    """Return (public status, approval id).
+
+    Identity #149 (``d9539a7``) returns ``id`` for every status, plus ``expires_at``,
+    ``is_destructive``, and absolute ``approval_url``. ``404`` means no row.
+    """
     origin = _identity_origin()
     binding = approval_binding_from_payload(payload)
     if not origin or binding is None:
@@ -300,10 +502,20 @@ def fetch_approval_state(payload: dict[str, Any]) -> tuple[str | None, str | Non
     status = str(data.get('status') or '')
     raw_id = str(data.get('id') or '').strip()
     approval_id = raw_id or None
-    # Bind pending and approved rows by id so we never create a duplicate when one already exists.
-    if status not in {'approved', 'pending'}:
-        approval_id = None
-    return status or None, approval_id
+    expires_at = _expires_text(data.get('expires_at'))
+    if expires_at:
+        payload['approval_expires_at'] = expires_at
+    raw_url = str(data.get('approval_url') or '').strip()
+    if raw_url:
+        payload['approval_url_field'] = raw_url
+    fallback_path = _safe_fallback_path(str(data.get('fallback_path') or ''))
+    if fallback_path:
+        payload['approval_fallback_path'] = fallback_path
+    if isinstance(data.get('is_destructive'), bool):
+        payload['approval_is_destructive'] = data['is_destructive']
+    if status not in {'approved', 'pending', 'denied', 'expired'}:
+        return None, None
+    return status, approval_id
 
 
 def _already_consumed_body(response: requests.Response) -> bool:
@@ -674,6 +886,102 @@ def approval_state(payload: dict[str, Any]) -> str | None:
     if status == 'expired':
         return 'expired'
     return None
+
+
+def elicitation_wait_seconds() -> float:
+    raw = getattr(settings, 'MCP_APPROVAL_URL_ELICITATION_WAIT_SECONDS', 20)
+    try:
+        return max(0.0, float(raw))
+    except (TypeError, ValueError):
+        return 20.0
+
+
+def poll_approval_state(
+    payload: dict[str, Any],
+    *,
+    timeout_seconds: float,
+    interval_seconds: float = 1.0,
+    sleep: Any = time.sleep,
+) -> str | None:
+    """Poll Identity until the row is approved, denied, or expired, or the timeout elapses."""
+    timeout = max(0.0, float(timeout_seconds))
+    interval = max(0.05, float(interval_seconds))
+    deadline = time.monotonic() + timeout
+    while True:
+        state = approval_state(payload)
+        if state in {'approved', 'denied', 'expired'}:
+            return state
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return state
+        sleep(min(interval, remaining))
+
+
+def approval_status_for_agent(approval_id: str, agent_claims: dict[str, Any]) -> dict[str, Any]:
+    """Read one cached approval for this agent. Does not consume the grant."""
+    from apps.connector import mcp_approval_copy as copy
+
+    approval_id = str(approval_id or '').strip()
+    if not approval_id or len(approval_id) > 80 or any(ch.isspace() for ch in approval_id):
+        return {
+            'status': 'unknown',
+            'message': 'Pass the approval_id from the pending tool result.',
+        }
+    row = recall_approval(approval_id)
+    agent_id = str(agent_claims.get('agent_id') or '').strip()
+    company_id = strict_numeric_company_id(agent_claims.get('company_id'))
+    if (
+        row is None
+        or str(row.get('agent_id') or '') != agent_id
+        or company_id is None
+        or row.get('company_id') != company_id
+    ):
+        return {
+            'status': 'unknown',
+            'approval_id': approval_id,
+            'message': (
+                'No approval with that id is waiting on this connection. '
+                'Call the tool again to refresh the request.'
+            ),
+        }
+    binding = row.get('binding') if isinstance(row.get('binding'), dict) else {}
+    payload: dict[str, Any] = {**binding, '_agent_claims': agent_claims}
+    status, found_id = fetch_approval_state(payload)
+    tool_name = str(row.get('action') or '').strip() or 'the tool'
+    page_url = resolve_approval_url(
+        approval_id,
+        approval_url=str(payload.get('approval_url_field') or row.get('approval_url') or ''),
+        fallback_path=str(payload.get('approval_fallback_path') or ''),
+    )
+    expires_at = _expires_text(payload.get('approval_expires_at') or row.get('expires_at')) or None
+    resolved_id = found_id or approval_id
+    if status in {'pending', 'approved', 'denied', 'expired'}:
+        body: dict[str, Any] = {
+            'status': status,
+            'approval_id': resolved_id,
+            'expires_at': expires_at,
+            'approval_url': page_url,
+            'tool': tool_name,
+        }
+        if status == 'pending':
+            body['instruction'] = copy.pending_agent_instruction(tool_name=tool_name)
+        elif status == 'approved':
+            body['instruction'] = copy.approved_retry_instruction(tool_name=tool_name)
+        elif status == 'denied':
+            body['message'] = copy.after_deny_text(tool_name=tool_name)
+        else:
+            body['message'] = copy.expired_text()
+        return body
+    return {
+        'status': 'unknown',
+        'approval_id': approval_id,
+        'approval_url': page_url,
+        'expires_at': expires_at,
+        'message': (
+            'Approval status could not be read. Call the original tool again, '
+            'or try ai_get_approval shortly.'
+        ),
+    }
 
 
 def approval_consume(approval_id: str, payload: dict[str, Any] | None = None) -> bool:

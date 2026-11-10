@@ -53,7 +53,8 @@ By default **`tools/list`** returns a short set an agent can use to find the rig
 2. **`ai_search_tools`**: natural-language `query`, optional `service`, optional `access` (`read` or `write`), and `limit` (default 8, maximum 20). Matches include the name, description, read/write/destructive/approval flags, and the full input schema.
 3. **`ai_describe_tool`**: full schema and a usage note for one or more tool names. Search and describe load the full catalog when it is missing or expired, through the same fetch, company scope, and cache lifetime as `tools/list?tools=all`. Each company has its own cache entry.
 4. **`ai_call_tool`**: `{name, arguments}` runs that tool through the same tenant, scope, approval, masking, and audit path as a direct **`tools/call`**. In ask mode the person sees the real tool and its arguments.
-5. Four common reads, when that service is connected: `identity_list_users`, `storage_list_bucket`, `hosting_list_apps`, `email_list_messages`. They answer "who, what files, what apps, what mail" without a search.
+5. **`ai_get_approval`**: `{approval_id}` reads one approval without running the tool. Use it to poll after you show the user the approval link. It does not consume the grant. When the status is `approved`, call the original tool again with the same arguments. That runs it once.
+6. Four common reads, when that service is connected: `identity_list_users`, `storage_list_bucket`, `hosting_list_apps`, `email_list_messages`. They answer "who, what files, what apps, what mail" without a search.
 
 Workflow: list services, search, then call. A direct **`tools/call`** of any of the 224 tools still works when that tool is not in the default list.
 
@@ -69,7 +70,7 @@ Example:
 {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"ai_call_tool","arguments":{"name":"identity_create_invitations","arguments":{"method":"POST","path":"/api/v1/invitations/","body":{"email":"ada@example.com"}}}}}
 ```
 
-**`tools/list`** in full mode exposes the operational export names and registry-derived `_meta` (path, method, `operation_summary`, access flags, etc.), plus the three discovery tools. **LiteLLM** or other inference stacks are **not** part of this gateway path; this document covers the gateway only.
+**`tools/list`** in full mode exposes the operational export names and registry-derived `_meta` (path, method, `operation_summary`, access flags, etc.), plus the discovery tools (`ai_search_tools`, `ai_describe_tool`, `ai_call_tool`, `ai_get_approval`). **LiteLLM** or other inference stacks are **not** part of this gateway path; this document covers the gateway only.
 
 ## Bounded authority: `mcp_access` and tool safety
 
@@ -101,7 +102,64 @@ The **same** signing material is used for other internal Identity calls (**revoc
 
 ### Client elicitation and retries
 
-On **`tools/call`**, when approval is required, the gateway returns MCP content with **`_meta.shellui_approval`**. The client retries **`tools/call`** with **`params._meta.shellui_approval.decision`** in **`allow`** | **`deny`** | **`session_allow`**, and the relevant **`approval_id`** when applicable. **Approval-gated retries** must replay the **full** tool call (same export name and normalized arguments); changing the action or normalized args requires a **new** approval.
+On **`tools/call`**, when approval is required, the gateway returns a tool result the agent can show in chat. `isError` is false. `structuredContent` and the text body use this shape:
+
+```json
+{
+  "status": "pending",
+  "approval_id": "<id>",
+  "expires_at": "<iso-8601 or null>",
+  "approval_url": "https://<identity>/oauth/mcp/approval/<id>",
+  "instruction": "Show this link to the user and ask them to approve <tool>. After they approve, call this tool again with the same arguments. You can also call ai_get_approval with the approval_id to check the decision."
+}
+```
+
+The text content starts with `Approval pending.` and includes the same JSON. `_meta.shellui_approval` repeats `approval_id`, `status`, `expires_at`, `approval_url`, and the settings list URL. Calling the same tool again with the same arguments after the person approves consumes the grant and runs the tool **once**. A second replay, a denial, or an expiry returns a clear message and does not run the tool.
+
+`approval_url` is absolute. Identity `develop` at `d9539a7540f535c30bcbc4f70472e68d0edeb541` (PR **#149**) returns it on create and on state, on the public issuer (`JWT_ISSUER` / `IDENTITY_ISSUER`). The page is `GET /oauth/mcp/approval/<uuid>?token=<signed>`. The gateway uses that `approval_url` as sent. If a response omits it, the gateway joins the public issuer to `fallback_path` (the same path and token, relative). If that path is also absent, it builds `{issuer}/oauth/mcp/approval/{approval_id}`.
+
+Clients that declared **form** elicitation (`capabilities.elicitation` empty, or `elicitation.form`) still receive `_meta.shellui_approval.elicitation` with Allow, Deny, and, for non-destructive tools, Allow for this session. They retry **`tools/call`** with **`params._meta.shellui_approval.decision`** in **`allow`** | **`deny`** | **`session_allow`**, and the **`approval_id`**. **Approval-gated retries** must replay the **full** tool call (same export name and normalized arguments). Changing the action or normalized args requires a **new** approval.
+
+### URL elicitation
+
+URL mode is `capabilities.elicitation.url` as an object (MCP spec 2025-11-25, and the current 2026-07-28 multi round-trip shape). An empty `elicitation` object is form mode only. The same declaration may arrive on a later request at `_meta["io.modelcontextprotocol/clientCapabilities"]`.
+
+`shellui-django` 0.5.1, the server this gateway runs, returns one JSON-RPC body per POST. It has no server-to-client request channel, so it cannot push `elicitation/create` and then block the same HTTP response until the person finishes. The e2e client `@modelcontextprotocol/sdk` 1.32.2 understands URL params (`mode`, `url`, `message`, `elicitationId`) and the 2025 error `-32042`. It does not treat a tool result as an in-flight elicitation wait. The current spec (2026-07-28) instead puts URL elicitation on the tool result as `resultType: "input_required"`.
+
+When the client declared URL mode, the pending tool result also includes:
+
+```json
+{
+  "resultType": "input_required",
+  "requestState": "<opaque>",
+  "inputRequests": {
+    "approval": {
+      "method": "elicitation/create",
+      "params": {
+        "mode": "url",
+        "elicitationId": "<token>",
+        "url": "<approval_url>",
+        "message": "Approve <tool> in your browser, then return here."
+      }
+    }
+  }
+}
+```
+
+The plain pending text is still present, so an agent that ignores `inputRequests` can show the link. If the client retries with `inputResponses.approval.action` of `accept`, the gateway polls Identity for up to `MCP_APPROVAL_URL_ELICITATION_WAIT_SECONDS` (default 20) and then runs the tool once if the grant is approved. `decline` or `cancel` returns a denial and does not run the tool. If the wait ends while the row is still pending, the gateway returns the pending tool result again and does not keep the HTTP call open. Clients that did not declare URL mode get that pending result immediately.
+
+### When an approval cannot be created
+
+The gateway does not return the bare text `Approval unavailable.` Failure text names the cause and does not include tokens, keys, or Identity response bodies:
+
+| Cause | Text |
+| --- | --- |
+| Identity unreachable, or HTTP 5xx | Approval could not be requested because Shellui identity is unreachable. Try again shortly. |
+| Signing key or issuer missing | Approval could not be requested because signing is not configured. |
+| Blocked assertion (invalid setup claims or a global binding conflict) | Approval could not be requested because this agent cannot request approvals. |
+| Identity origin unset | Approval could not be requested because Shellui identity is not configured. |
+| Identity HTTP 4xx | Approval could not be requested. Shellui identity rejected the request. |
+| Unexpected JSON | Approval could not be requested because Shellui identity returned an unexpected response. |
 
 ### Session grant rules (gateway behavior)
 
@@ -148,15 +206,16 @@ Internal rows still use **`OUTCOMES`** in `mcp_call_audit.py`. **`forward_call_l
 - **Wire route:** always **`POST /mcp`** on forward; OpenAPI **method/path** stay in local audit only.
 - **Labels:** **`company_name`** and **`agent_name`** are **not** forwarded (JWT display strings are not server-enforced registry data).
 - **`access_kind`:** **`read`**, **`write`**, **`destructive`**, or **`unknown`** from tool traits and HTTP method (`access_kind_from_tool`).
-- **No** raw tool arguments: sending `arguments` or `arguments_redacted` to Identity returns **400**.
+- **No** raw tool arguments: sending `arguments` or `arguments_redacted` on an approval create returns **400**. A redacted `arguments_summary` string (max 500 characters) is the only argument text Identity accepts, and only on that create.
 
 A downstream HTTP **2xx** alone does **not** imply **`allowed`** if the gateway classified the operation as an error (`is_error`, audit `log_result`, etc.). See **`outcome_from_audit`**.
 
 ### Approvals: state before create, retry, and bodies
 
-On each gated **`tools/call`**, the gateway calls **`mcp-approval-state`** first (empty JSON body; binding is **only** in the signed assertion). If Identity returns **`pending`** or **`approved`**, the **`id`** is stored so the client can **`allow`** / **`deny`** / **`session_allow`** without creating a second row for the same binding.
+On each gated **`tools/call`**, the gateway calls **`mcp-approval-state`** first (empty JSON body; binding is **only** in the signed assertion). Identity **200** is always `id`, `status` (`pending`, `approved`, `denied`, or `expired`), `expires_at`, `is_destructive`, and absolute `approval_url`. `404` means no row. The `id` is kept for every status so a pending or approved row is not created again.
 
-- **Create** (`mcp-approval-requests`): JSON body is **`{ "is_destructive": <bool> }`** only. Never add `arguments`, `arguments_redacted`, `path`, `method`, or **`short_action_summary`**.
+- **Create** (`mcp-approval-requests`): JSON body is `is_destructive` (boolean) and, when there is a safe redacted preview, `arguments_summary` (string, at most 500 characters). Identity stores that summary on `short_action_summary` and shows it on the approval page. Never send `arguments`, `arguments_redacted`, `target`, `short_action_summary`, `path`, or `method`.
+- **State** (`mcp-approval-state`): empty JSON body. Use the returned `approval_url` and `expires_at`.
 - **Decide** (`mcp-approval-decide`): includes `approval_id`, `decision`, sanitized `connection_id`, optional `actor_email`.
 - **Consume** (`mcp-approval-consume`): JSON **`{ "approval_id": "…" }`** only.
 

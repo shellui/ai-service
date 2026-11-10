@@ -99,5 +99,29 @@
     },
     "name": "ai_call_tool",
     "title": "AI: Call tool"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Read one Shellui approval without running the tool. Pass the approval_id from a pending tool result. Returns status pending, approved, denied, or expired, plus the approval link and expiry when known. When status is approved, call the original tool again with the same arguments. That runs it once.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "approval_id": {
+          "description": "Approval id from a pending tool result.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "approval_id"
+      ],
+      "type": "object"
+    },
+    "name": "ai_get_approval",
+    "title": "AI: Approval status"
   }
 ]

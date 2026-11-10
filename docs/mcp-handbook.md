@@ -66,7 +66,7 @@ To count as **allow** here, Identity must return **`authorized`: true**, **`acti
 
 ### `tools/list`
 
-The default list is a discovery set: `ai_list_services`, `ai_search_tools`, `ai_describe_tool`, `ai_call_tool`, and four common reads when that service is connected (`identity_list_users`, `storage_list_bucket`, `hosting_list_apps`, `email_list_messages`). They answer "who, what files, what apps, what mail" without a search.
+The default list is a discovery set: `ai_list_services`, `ai_search_tools`, `ai_describe_tool`, `ai_call_tool`, `ai_get_approval`, and four common reads when that service is connected (`identity_list_users`, `storage_list_bucket`, `hosting_list_apps`, `email_list_messages`). They answer "who, what files, what apps, what mail" without a search. `ai_get_approval` reads one pending approval by id and does not run the tool.
 
 Ask for the full operational catalog with `POST /c/<company_id>/mcp?tools=all`, or `tools/list` params `{"tools": "all"}`. Set `MCP_TOOLS_LIST_MODE=all` when a deployment should keep the full list as the default. The full list is still paged (200 tools per page, `nextCursor`).
 

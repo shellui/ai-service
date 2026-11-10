@@ -931,6 +931,11 @@ class PrefixingMcpServer(AggregatingMcpServer):
         if export_name == 'ai_describe_tool':
             payload = describe_payload(catalog, arguments, access_mode=access_mode)
             return self._discovery_result(req_id, payload, is_error='error' in payload and not payload.get('tools'))
+        if export_name == 'ai_get_approval':
+            from apps.connector.mcp_approvals import approval_status_for_agent
+
+            payload = approval_status_for_agent(str(arguments.get('approval_id') or ''), agent_claims)
+            return self._discovery_result(req_id, payload, is_error=payload.get('status') == 'unknown')
         if export_name == 'ai_call_tool':
             inner = str(arguments.get('name') or '').strip()
             inner_args = arguments.get('arguments') if isinstance(arguments.get('arguments'), dict) else {}
