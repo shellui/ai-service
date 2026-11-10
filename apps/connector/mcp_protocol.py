@@ -150,6 +150,18 @@ def elicitation_modes_from_capabilities(capabilities: Any) -> tuple[bool, bool]:
     return form, url
 
 
+def client_name_from_initialize(params: dict[str, Any] | None) -> str:
+    """MCP ``clientInfo.name``. Printable, capped, no newlines."""
+    if not isinstance(params, dict):
+        return ''
+    info = params.get('clientInfo')
+    if not isinstance(info, dict):
+        return ''
+    raw = str(info.get('name') or '')
+    cleaned = ''.join(ch for ch in raw if ch == '\t' or ord(ch) >= 32)
+    return ' '.join(cleaned.split())[:120]
+
+
 def _store_session(
     session_id: str,
     *,
@@ -158,6 +170,7 @@ def _store_session(
     protocol_version: str,
     client_elicitation: bool = False,
     client_elicitation_url: bool = False,
+    client_name: str = '',
 ) -> None:
     cache.set(
         f'{MCP_SESSION_CACHE_PREFIX}{session_id}',
@@ -167,6 +180,7 @@ def _store_session(
             'protocol_version': protocol_version,
             'client_elicitation': bool(client_elicitation),
             'client_elicitation_url': bool(client_elicitation_url),
+            'client_name': str(client_name or '')[:120],
         },
         MCP_SESSION_TTL_SECONDS,
     )
@@ -184,6 +198,13 @@ def session_url_elicitation_supported(session_id: str) -> bool:
     if record is None:
         return False
     return bool(record.get('client_elicitation_url'))
+
+
+def session_client_name(session_id: str) -> str:
+    record = _session_record(session_id)
+    if record is None:
+        return ''
+    return str(record.get('client_name') or '')[:120]
 
 
 def _session_record(session_id: str) -> dict[str, Any] | None:
@@ -405,6 +426,7 @@ def handle_mcp_gateway_request(
             protocol_version=str(result['protocolVersion']),
             client_elicitation=client_form,
             client_elicitation_url=client_url,
+            client_name=client_name_from_initialize(params),
         )
         response = JsonResponse(McpServer._result(req_id, result))
         response['Mcp-Session-Id'] = session_id

@@ -40,6 +40,7 @@ Identity verifies delegation requests with `AI_SERVICE_JWKS` / `AI_SERVICE_JWKS_
 | `MCP_APPROVAL_ASSERTION_MAX_LIFETIME_SECONDS` | `900` | Maximum `exp - iat` for RS256 approval assertions to identity (setup flows need 600–900s; align with identity `MCP_APPROVAL_ASSERTION_MAX_LIFETIME_SECONDS`). |
 | `MCP_APPROVAL_SETUP_SESSION_TTL_MIN_SECONDS` | `600` | Lower bound for signed `mcp_session_ttl_seconds` during setup (must match identity). |
 | `MCP_APPROVAL_SETUP_SESSION_TTL_MAX_SECONDS` | `900` | Upper bound for the same. |
+| `MCP_APPROVAL_CHANNEL_BY_COMPANY` | empty | JSON map of company id to `form` or `link` for non-destructive tools. Destructive tools always use the approval link. Example: `{"10": "link"}`. |
 
 `setup_flow` assertions and session grants always require absolute `setup_expires_at` (token + session-check response when setup) and absolute `expires_at` on the session-check response; there are no toggles.
 

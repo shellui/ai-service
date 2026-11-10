@@ -193,20 +193,18 @@ class McpApprovalGatewayTests(TestCase):
         meta = body['result']['_meta']['shellui_approval']
         self.assertEqual(meta['approval_id'], 'appr-1')
         self.assertEqual(meta['status'], 'pending')
-        self.assertEqual(
-            meta['approval_url'],
-            'https://identity.test/oauth/mcp/approval/appr-1',
-        )
+        self.assertEqual(meta['channel'], 'form')
         structured = body['result']['structuredContent']
         self.assertEqual(structured['status'], 'pending')
-        self.assertEqual(structured['approval_id'], 'appr-1')
-        self.assertEqual(structured['approval_url'], meta['approval_url'])
-        self.assertIn('Show this link to the user', structured['instruction'])
-        self.assertIn(meta['approval_url'], body['result']['content'][0]['text'])
+        self.assertEqual(structured['channel'], 'form')
+        self.assertIn('Approve or Deny', body['result']['content'][0]['text'])
         self.assertNotIn('\u2014', body['result']['content'][0]['text'])
         self.assertNotIn('\u2013', body['result']['content'][0]['text'])
-        self.assertEqual(meta['elicitation']['title'], copy.approval_title(tool_name='storage_create_bucket', destructive=False))
-        self.assertIn('session_allow', meta['elicitation']['buttons'])
+        params = body['result']['inputRequests']['approval']['params']
+        self.assertEqual(params['mode'], 'form')
+        titles = [item['title'] for item in params['requestedSchema']['properties']['decision']['oneOf']]
+        self.assertEqual(titles, ['Approve', 'Deny'])
+        self.assertNotIn('session_allow', json.dumps(body['result']))
         create_approval.assert_called_once()
         forwarded = [
             call
@@ -343,7 +341,8 @@ class McpApprovalGatewayTests(TestCase):
         meta = body['result']['_meta']['shellui_approval']
         self.assertEqual(meta['approval_id'], 'appr-email-template')
         self.assertEqual(meta['status'], 'pending')
-        self.assertIn('email_create_template_versions', meta['elicitation']['title'])
+        self.assertEqual(meta['channel'], 'form')
+        self.assertIn('email_create_template_versions', body['result']['inputRequests']['approval']['params']['message'])
         create_calls = [
             call
             for post in (identity_post, views_post, gateway_post)
@@ -415,9 +414,12 @@ class McpApprovalGatewayTests(TestCase):
             content_type='application/json',
             **self._auth(token, session_id=session_id),
         )
-        meta = response.json()['result']['_meta']['shellui_approval']
-        self.assertNotIn('session_allow', meta['elicitation']['buttons'])
-        self.assertIn('This can change data.', meta['elicitation']['title'])
+        result = response.json()['result']
+        meta = result['_meta']['shellui_approval']
+        self.assertEqual(meta['channel'], 'link')
+        self.assertIn('approval_url', meta)
+        self.assertNotIn('inputRequests', result)
+        self.assertNotIn('elicitation', meta)
 
     @patch('apps.connector.mcp_identity._http_post', side_effect=_delegated_authority_transport_mock)
     @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
@@ -1084,9 +1086,152 @@ class ApprovalLinkGateTests(TestCase):
             },
         )
         result = json.loads(outcome.response.content)['result']
-        self.assertNotIn('resultType', result)
-        self.assertIn('session_allow', result['_meta']['shellui_approval']['elicitation']['buttons'])
+        self.assertEqual(result['resultType'], 'input_required')
+        params = result['inputRequests']['approval']['params']
+        self.assertEqual(params['mode'], 'form')
+        self.assertEqual(
+            [item['const'] for item in params['requestedSchema']['properties']['decision']['oneOf']],
+            ['approve', 'deny'],
+        )
+        self.assertEqual(result['structuredContent']['channel'], 'form')
+        self.assertNotIn('approval_url', result['structuredContent'])
+
+    def test_form_approve_records_allow_and_runs_once(self):
+        def state(payload):
+            payload['approval_id'] = 'appr-1'
+            return 'pending'
+
+        with patch('apps.connector.mcp_approval_gate.approvals.decide_approval') as decide:
+            decide.return_value = DecideResult(
+                ok=True, status_code=200, audit_status='client_allowed', approval_status='approved'
+            )
+            with self.assertLogs('apps.connector.mcp_approval_gate', level='INFO') as logs:
+                outcome = self._run(
+                    state=state,
+                    consume=lambda *_a, **_k: ConsumeResult(consumed=True, status_code=200),
+                    params={
+                        'inputResponses': {
+                            'approval': {'action': 'accept', 'content': {'decision': 'approve'}},
+                        },
+                        '_meta': {
+                            'io.modelcontextprotocol/clientCapabilities': {'elicitation': {'form': {}}},
+                        },
+                    },
+                )
+        self.assertTrue(outcome.proceed)
+        self.assertEqual(outcome.log.get('outcome'), 'allowed')
+        decide.assert_called_once()
+        self.assertEqual(decide.call_args.kwargs['decision'], 'allow')
+        self.assertIn('client_name=unknown', '\n'.join(logs.output))
+
+    def test_form_deny_does_not_run_the_tool(self):
+        def state(payload):
+            payload['approval_id'] = 'appr-1'
+            return 'pending'
+
+        with patch('apps.connector.mcp_approval_gate.approvals.decide_approval') as decide:
+            decide.return_value = DecideResult(
+                ok=True, status_code=200, audit_status='client_denied', approval_status='denied'
+            )
+            outcome = self._run(
+                state=state,
+                params={
+                    'inputResponses': {'approval': {'action': 'accept', 'content': {'decision': 'deny'}}},
+                    '_meta': {
+                        'io.modelcontextprotocol/clientCapabilities': {'elicitation': {'form': {}}},
+                    },
+                },
+            )
+        self.assertFalse(outcome.proceed)
+        decide.assert_called_once()
+        self.assertEqual(decide.call_args.kwargs['decision'], 'deny')
+        text = json.loads(outcome.response.content)['result']['content'][0]['text']
+        self.assertIn('denied', text.lower())
+
+    def test_destructive_form_accept_does_not_record_in_chat_consent(self):
+        def state(payload):
+            payload['approval_id'] = 'appr-1'
+            return 'pending'
+
+        request = self._request()
+        tool = {
+            'annotations': {'readOnlyHint': False, 'destructiveHint': True},
+            '_meta': {'method': 'DELETE', 'path': '/api/v1/buckets/{id}/', 'destructive': True},
+        }
+        with (
+            patch('apps.connector.mcp_approval_gate.decide_write') as decide_gate,
+            patch('apps.connector.mcp_approval_gate.approvals.session_grant_covers_write', return_value=False),
+            patch('apps.connector.mcp_approval_gate.approvals.approval_state', side_effect=state),
+            patch('apps.connector.mcp_approval_gate.approvals.decide_approval') as decide,
+            patch(
+                'apps.connector.mcp_approval_gate.approvals.create_approval_request',
+                return_value={'id': 'appr-1', 'status': 'pending'},
+            ),
+        ):
+            decide_gate.return_value = WriteGateDecision(
+                allowed=False, needs_approval=True, reason='Write requires approval.'
+            )
+            outcome = enforce_tool_call_approval(
+                request,
+                9,
+                params={
+                    'inputResponses': {
+                        'approval': {'action': 'accept', 'content': {'decision': 'approve'}},
+                    },
+                    '_meta': {
+                        'io.modelcontextprotocol/clientCapabilities': {'elicitation': {'form': {}}},
+                    },
+                },
+                agent_claims=_gate_claims(),
+                export_name='storage_delete_bucket',
+                service_id='storage',
+                tool=tool,
+                method='DELETE',
+                path='/api/v1/buckets/{id}/',
+                arguments={},
+            )
+        decide.assert_not_called()
+        self.assertFalse(outcome.proceed)
+        result = json.loads(outcome.response.content)['result']
+        self.assertEqual(result['structuredContent']['status'], 'pending')
         self.assertIn('approval_url', result['structuredContent'])
+        self.assertNotIn('inputRequests', result)
+
+    @override_settings(MCP_APPROVAL_CHANNEL_BY_COMPANY='{"10": "link"}')
+    def test_company_override_forces_link_for_low_risk_writes(self):
+        def state(payload):
+            payload['approval_id'] = 'appr-1'
+            return 'pending'
+
+        outcome = self._run(
+            state=state,
+            params={
+                '_meta': {
+                    'io.modelcontextprotocol/clientCapabilities': {'elicitation': {'form': {}}},
+                }
+            },
+        )
+        result = json.loads(outcome.response.content)['result']
+        self.assertEqual(result['_meta']['shellui_approval']['channel'], 'link')
+        self.assertIn('approval_url', result['structuredContent'])
+        self.assertNotIn('inputRequests', result)
+
+    @override_settings(MCP_APPROVAL_CHANNEL_BY_COMPANY='{"10": "form"}')
+    def test_company_form_override_does_not_unlock_destructive_tools(self):
+        from apps.connector.mcp_approval_channel import CHANNEL_FORM, CHANNEL_LINK, approval_channel
+
+        self.assertEqual(
+            approval_channel(destructive=True, company_id=10, form_supported=True),
+            CHANNEL_LINK,
+        )
+        self.assertEqual(
+            approval_channel(destructive=False, company_id=10, form_supported=True),
+            CHANNEL_FORM,
+        )
+        self.assertEqual(
+            approval_channel(destructive=False, company_id=11, form_supported=False),
+            CHANNEL_LINK,
+        )
 
     def test_ai_get_approval_reads_status_for_the_same_agent(self):
         def state(payload):

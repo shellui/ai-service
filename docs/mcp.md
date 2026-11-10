@@ -118,7 +118,42 @@ The text content starts with `Approval pending.` and includes the same JSON. `_m
 
 `approval_url` is absolute. Identity `develop` at `d9539a7540f535c30bcbc4f70472e68d0edeb541` (PR **#149**) returns it on create and on state, on the public issuer (`JWT_ISSUER` / `IDENTITY_ISSUER`). The page is `GET /oauth/mcp/approval/<uuid>?token=<signed>`. The gateway uses that `approval_url` as sent. If a response omits it, the gateway joins the public issuer to `fallback_path` (the same path and token, relative). If that path is also absent, it builds `{issuer}/oauth/mcp/approval/{approval_id}`.
 
-Clients that declared **form** elicitation (`capabilities.elicitation` empty, or `elicitation.form`) still receive `_meta.shellui_approval.elicitation` with Allow, Deny, and, for non-destructive tools, Allow for this session. They retry **`tools/call`** with **`params._meta.shellui_approval.decision`** in **`allow`** | **`deny`** | **`session_allow`**, and the **`approval_id`**. **Approval-gated retries** must replay the **full** tool call (same export name and normalized arguments). Changing the action or normalized args requires a **new** approval.
+**Approval channels.** The channel is chosen per tool. Destructive tools (`destructiveHint`, registry `_meta.destructive`, or `DELETE`) always use the approval link. Read-only tools and other non-destructive writes use in-chat form elicitation when the client declared form mode (`capabilities.elicitation` empty, or `elicitation.form`). Clients that did not declare form mode get the link. A company can force the link for non-destructive tools with `MCP_APPROVAL_CHANNEL_BY_COMPANY` (JSON map of company id to `form` or `link`). That setting cannot turn a destructive tool into an in-chat approval. Identity has no per-company approval-channel field, so this override is gateway configuration.
+
+In-chat consent trusts the MCP client. The gateway records Approve or Deny when the client sends `inputResponses.approval` with `action` `accept` and `content.decision` `approve`, or `deny` / `decline` / `cancel`. It does not see a separate human gesture. On Approve the gateway calls Identity `mcp-approval-decide` with `allow`, then consumes the grant and runs the tool once. On Deny it calls `deny`. The MCP `clientInfo.name` from `initialize` is written to the gateway log. Identity's decide route has no field for that client name or for an in-chat consent source, so the audit event is `client_allowed` or `client_denied` with optional `actor_email` only.
+
+A client that still sends `params._meta.shellui_approval.decision` (`allow`, `deny`, or `session_allow`) is handled as before. **Approval-gated retries** must replay the **full** tool call (same export name and normalized arguments). Changing the action or normalized args requires a **new** approval.
+
+Form elicitation (non-destructive, form-capable client):
+
+```json
+{
+  "resultType": "input_required",
+  "inputRequests": {
+    "approval": {
+      "method": "elicitation/create",
+      "params": {
+        "mode": "form",
+        "message": "Allow storage_create_bucket? Choose Approve or Deny.",
+        "requestedSchema": {
+          "type": "object",
+          "properties": {
+            "decision": {
+              "type": "string",
+              "title": "Decision",
+              "oneOf": [
+                {"const": "approve", "title": "Approve"},
+                {"const": "deny", "title": "Deny"}
+              ]
+            }
+          },
+          "required": ["decision"]
+        }
+      }
+    }
+  }
+}
+```
 
 ### URL elicitation
 
@@ -146,7 +181,7 @@ When the client declared URL mode, the pending tool result also includes:
 }
 ```
 
-The plain pending text is still present, so an agent that ignores `inputRequests` can show the link. If the client retries with `inputResponses.approval.action` of `accept`, the gateway polls Identity for up to `MCP_APPROVAL_URL_ELICITATION_WAIT_SECONDS` (default 20) and then runs the tool once if the grant is approved. `decline` or `cancel` returns a denial and does not run the tool. If the wait ends while the row is still pending, the gateway returns the pending tool result again and does not keep the HTTP call open. Clients that did not declare URL mode get that pending result immediately.
+The plain pending text is still present, so an agent that ignores `inputRequests` can show the link. If the client retries with `inputResponses.approval.action` of `accept`, the gateway polls Identity for up to `MCP_APPROVAL_URL_ELICITATION_WAIT_SECONDS` (default 20) and then runs the tool once if the grant is approved. `decline` or `cancel` returns a denial and does not run the tool. If the wait ends while the row is still pending, the gateway returns the pending tool result again and does not keep the HTTP call open. Clients that did not declare URL mode get that pending result immediately. Non-destructive tools whose client declared form mode use the in-chat form channel instead of this URL elicitation.
 
 ### When an approval cannot be created
 

@@ -100,6 +100,26 @@ def _client_elicitation_modes(request: HttpRequest, params: dict[str, Any] | Non
     return session_elicitation_supported(connection_id), session_url_elicitation_supported(connection_id)
 
 
+def _form_consent(params: dict[str, Any] | None) -> str | None:
+    """In-chat form result: ``approve`` or ``deny``. None when the client has not answered."""
+    if not isinstance(params, dict):
+        return None
+    responses = params.get('inputResponses')
+    if not isinstance(responses, dict):
+        return None
+    block = responses.get('approval')
+    if not isinstance(block, dict):
+        return None
+    action = str(block.get('action') or '').strip().lower()
+    content = block.get('content') if isinstance(block.get('content'), dict) else {}
+    decision = str(content.get('decision') or '').strip().lower()
+    if action in {'decline', 'cancel'} or decision in {'deny', 'decline'}:
+        return 'deny'
+    if action == 'accept' and decision in {'', 'approve', 'allow'}:
+        return 'approve'
+    return None
+
+
 def _url_elicitation_action(params: dict[str, Any] | None) -> str | None:
     """``inputResponses.approval.action`` from a 2026-07-28 URL elicitation retry."""
     if not isinstance(params, dict):
@@ -416,6 +436,7 @@ def _pending_approval_outcome(
     destructive: bool,
     form_mode: bool,
     url_mode: bool,
+    channel: str,
 ) -> GateOutcome:
     created_url = str(created.get('approval_url') or '') if isinstance(created, dict) else ''
     created_path = str(created.get('fallback_path') or '') if isinstance(created, dict) else ''
@@ -445,18 +466,67 @@ def _pending_approval_outcome(
         'approval_url': page_url,
         'settings_url': approvals.approval_settings_url(approval_id),
         'approvals_list_url': approvals.approval_settings_url(),
+        'channel': channel,
     }
-    if form_mode:
-        elicitation = build_elicitation_meta(
-            tool_name=export_name,
-            destructive=destructive,
-            agent_claims=agent_claims,
-            approval_id=approval_id,
-            arguments=arguments,
+    if channel == 'form':
+        message = copy.form_approval_message(tool_name=export_name)
+        structured = {
+            'status': 'pending',
+            'approval_id': approval_id,
+            'expires_at': expires_at,
+            'channel': 'form',
+            'instruction': copy.form_approval_instruction(tool_name=export_name),
+        }
+        extra = {
+            'resultType': 'input_required',
+            'requestState': secrets.token_urlsafe(24),
+            'inputRequests': {
+                'approval': {
+                    'method': 'elicitation/create',
+                    'params': {
+                        'mode': 'form',
+                        'message': message,
+                        'requestedSchema': {
+                            'type': 'object',
+                            'properties': {
+                                'decision': {
+                                    'type': 'string',
+                                    'title': 'Decision',
+                                    'oneOf': [
+                                        {'const': 'approve', 'title': 'Approve'},
+                                        {'const': 'deny', 'title': 'Deny'},
+                                    ],
+                                }
+                            },
+                            'required': ['decision'],
+                        },
+                    },
+                }
+            },
+        }
+        return GateOutcome(
+            proceed=False,
+            response=_approval_result(
+                req_id,
+                text=f'{message} {structured["instruction"]}',
+                meta={'shellui_approval': {**shellui, 'channel': 'form'}},
+                is_error=False,
+                structured=structured,
+                extra=extra,
+            ),
+            log=_log_entry(
+                agent_claims=agent_claims,
+                service=service_id,
+                export_name=export_name,
+                tool=tool,
+                method=method,
+                path=path,
+                log_result='pending_approval',
+                approval_id=approval_id,
+            ),
         )
-        shellui['elicitation'] = elicitation['elicitation']
     extra: dict[str, Any] | None = None
-    if url_mode:
+    if url_mode and channel != 'form':
         # Current spec (2026-07-28) delivers URL elicitation as an InputRequiredResult
         # on tools/call. elicitationId is required by @modelcontextprotocol/sdk 1.32.2
         # URL params and is ignored by clients that only read mode, url, and message.
@@ -763,9 +833,18 @@ def enforce_tool_call_approval(
                 ),
             )
 
+    from apps.connector.mcp_approval_channel import CHANNEL_FORM, approval_channel
+    from apps.connector.mcp_protocol import session_client_name
+
     form_mode, url_mode = _client_elicitation_modes(request, params)
+    channel = approval_channel(
+        destructive=destructive,
+        company_id=company_id,
+        form_supported=form_mode,
+    )
     url_action = _url_elicitation_action(params)
-    if url_action in {'decline', 'cancel'}:
+    form_decision = _form_consent(params) if channel == CHANNEL_FORM else None
+    if channel != CHANNEL_FORM and url_action in {'decline', 'cancel'}:
         return GateOutcome(
             proceed=False,
             response=_approval_result(
@@ -798,7 +877,71 @@ def enforce_tool_call_approval(
         if not approval_id:
             return _create_failed_outcome(req_id)
 
-    if url_action == 'accept' and url_mode:
+    if channel == CHANNEL_FORM and form_decision in {'approve', 'deny'}:
+        client_name = session_client_name(_connection_id(request))
+        identity_decision = 'allow' if form_decision == 'approve' else 'deny'
+        decided = _decide(approval_id, identity_decision)
+        logger.info(
+            'MCP in-chat approval company_id=%s agent_id=%s tool=%s client_name=%s decision=%s identity_ok=%s',
+            company_id,
+            agent_id,
+            export_name,
+            client_name or 'unknown',
+            identity_decision,
+            decided.ok,
+        )
+        if form_decision == 'deny':
+            if not decided.ok:
+                return GateOutcome(
+                    proceed=False,
+                    response=_approval_result(
+                        req_id,
+                        text=copy.form_consent_failed_text(),
+                        meta={'status': 'error', 'channel': 'form', 'approval_id': approval_id},
+                    ),
+                )
+            return GateOutcome(
+                proceed=False,
+                response=_approval_result(
+                    req_id,
+                    text=copy.after_deny_text(tool_name=export_name),
+                    meta={'shellui_approval': {'status': 'denied', 'channel': 'form', 'approval_id': approval_id}},
+                ),
+                log=_log_entry(
+                    agent_claims=agent_claims,
+                    service=service_id,
+                    export_name=export_name,
+                    tool=tool,
+                    method=method,
+                    path=path,
+                    log_result='client_denied',
+                    approval_id=approval_id,
+                ),
+            )
+        if decided.ok and approvals.approval_consume_detail(approval_id, approval_payload).consumed:
+            return GateOutcome(
+                proceed=True,
+                log=_log_entry(
+                    agent_claims=agent_claims,
+                    service=service_id,
+                    export_name=export_name,
+                    tool=tool,
+                    method=method,
+                    path=path,
+                    log_result=_log_result_from_decide(decided, fallback='client_allowed'),
+                    approval_id=approval_id,
+                ),
+            )
+        return GateOutcome(
+            proceed=False,
+            response=_approval_result(
+                req_id,
+                text=copy.form_consent_failed_text(),
+                meta={'status': 'error', 'channel': 'form'},
+            ),
+        )
+
+    if channel != CHANNEL_FORM and url_action == 'accept' and url_mode:
         polled = approvals.poll_approval_state(
             approval_payload,
             timeout_seconds=approvals.elicitation_wait_seconds(),
@@ -869,4 +1012,5 @@ def enforce_tool_call_approval(
         destructive=destructive,
         form_mode=form_mode,
         url_mode=url_mode,
+        channel=channel,
     )
