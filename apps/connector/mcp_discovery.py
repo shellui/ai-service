@@ -17,7 +17,9 @@ SEARCH_DEFAULT_LIMIT = 8
 SEARCH_MAX_LIMIT = 20
 
 # Always offered, and also appended to the full catalog so opt-in clients can see them.
-DISCOVERY_ONLY_TOOLS = frozenset({'ai_search_tools', 'ai_describe_tool', 'ai_call_tool'})
+DISCOVERY_ONLY_TOOLS = frozenset(
+    {'ai_search_tools', 'ai_describe_tool', 'ai_call_tool', 'ai_get_approval'}
+)
 
 # Inventory reads an agent can use before it knows tool names. Omitted when that
 # service is not connected. These are already in the 224-tool catalog.
@@ -335,6 +337,28 @@ def discovery_tool_definitions() -> list[dict[str, Any]]:
                 'required': ['name'],
             },
             'annotations': dict(_ANNOTATIONS_CALL),
+        },
+        {
+            'name': 'ai_get_approval',
+            'title': 'AI: Approval status',
+            'description': (
+                'Read one Shellui approval without running the tool. Pass the approval_id from a pending '
+                'tool result. Returns status pending, approved, denied, or expired, plus the approval link '
+                'and expiry when known. When status is approved, call the original tool again with the same '
+                'arguments. That runs it once.'
+            ),
+            'inputSchema': {
+                'type': 'object',
+                'additionalProperties': False,
+                'properties': {
+                    'approval_id': {
+                        'type': 'string',
+                        'description': 'Approval id from a pending tool result.',
+                    },
+                },
+                'required': ['approval_id'],
+            },
+            'annotations': dict(_ANNOTATIONS_READ),
         },
     ]
 

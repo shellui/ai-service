@@ -146,9 +146,11 @@ class McpIdentityConformanceTests(TestCase):
                         )
                         self.assertEqual(r1.status_code, 200)
                         body1 = json.loads(r1.content)
-                        self.assertTrue(body1.get('result', {}).get('isError'))
+                        self.assertFalse(body1.get('result', {}).get('isError'))
                         appr = (body1.get('result') or {}).get('_meta', {}).get('shellui_approval', {})
                         self.assertEqual(appr.get('approval_id'), 'appr-e2e')
+                        self.assertEqual(appr.get('status'), 'pending')
+                        self.assertTrue(str(appr.get('approval_url') or '').startswith('https://identity.test/'))
 
                         r2 = client.post(
                             '/c/10/mcp',

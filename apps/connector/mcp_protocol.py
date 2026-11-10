@@ -128,6 +128,28 @@ def _new_session_id() -> str:
     return secrets.token_urlsafe(32)
 
 
+def elicitation_modes_from_capabilities(capabilities: Any) -> tuple[bool, bool]:
+    """Return ``(form, url)`` from an MCP ``capabilities`` object.
+
+    Spec 2025-11-25 and 2026-07-28: an empty ``elicitation`` object is form mode
+    only. URL mode is ``elicitation.url`` as an object. Servers must not send
+    URL elicitation unless that object is present.
+    """
+    if not isinstance(capabilities, dict):
+        return False, False
+    elicitation = capabilities.get('elicitation')
+    if not isinstance(elicitation, dict):
+        return False, False
+    url = isinstance(elicitation.get('url'), dict)
+    if 'form' in elicitation:
+        form = isinstance(elicitation.get('form'), dict)
+    elif url:
+        form = False
+    else:
+        form = True
+    return form, url
+
+
 def _store_session(
     session_id: str,
     *,
@@ -135,6 +157,7 @@ def _store_session(
     agent_id: str,
     protocol_version: str,
     client_elicitation: bool = False,
+    client_elicitation_url: bool = False,
 ) -> None:
     cache.set(
         f'{MCP_SESSION_CACHE_PREFIX}{session_id}',
@@ -143,6 +166,7 @@ def _store_session(
             'agent_id': agent_id,
             'protocol_version': protocol_version,
             'client_elicitation': bool(client_elicitation),
+            'client_elicitation_url': bool(client_elicitation_url),
         },
         MCP_SESSION_TTL_SECONDS,
     )
@@ -153,6 +177,13 @@ def session_elicitation_supported(session_id: str) -> bool:
     if record is None:
         return False
     return bool(record.get('client_elicitation'))
+
+
+def session_url_elicitation_supported(session_id: str) -> bool:
+    record = _session_record(session_id)
+    if record is None:
+        return False
+    return bool(record.get('client_elicitation_url'))
 
 
 def _session_record(session_id: str) -> dict[str, Any] | None:
@@ -366,13 +397,14 @@ def handle_mcp_gateway_request(
         )
         session_id = _new_session_id()
         client_caps = params.get('capabilities') if isinstance(params.get('capabilities'), dict) else {}
-        client_elicitation = isinstance(client_caps.get('elicitation'), dict)
+        client_form, client_url = elicitation_modes_from_capabilities(client_caps)
         _store_session(
             session_id,
             company_id=company_id,
             agent_id=agent_id,
             protocol_version=str(result['protocolVersion']),
-            client_elicitation=client_elicitation,
+            client_elicitation=client_form,
+            client_elicitation_url=client_url,
         )
         response = JsonResponse(McpServer._result(req_id, result))
         response['Mcp-Session-Id'] = session_id

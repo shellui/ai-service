@@ -142,7 +142,12 @@ class GlobalBindingConflictTests(TestCase):
     @patch('apps.connector.mcp_approvals.requests.post', side_effect=_approval_http)
     def test_personal_create_sends_assertion_with_grant_version(self, post):
         created = mcp_approvals.create_approval_request(_personal_approval_payload())
-        self.assertEqual(created, {'id': 'appr-personal', 'status': 'pending'})
+        self.assertEqual(created['id'], 'appr-personal')
+        self.assertEqual(created['status'], 'pending')
+        self.assertEqual(
+            created['approval_url'],
+            'https://identity.test/oauth/mcp/approval/appr-personal',
+        )
         self.assertTrue(str(post.call_args.args[0]).endswith('/mcp-approval-requests'))
         self._assert_personal_assertion(post)
 

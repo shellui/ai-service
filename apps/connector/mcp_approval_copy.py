@@ -42,5 +42,43 @@ def expired_text() -> str:
     return 'This approval expired. Ask the agent to try again.'
 
 
+def elicitation_declined_text(*, tool_name: str) -> str:
+    return f'You declined the approval link for {tool_name}. Nothing was changed.'
+
+
+def pending_agent_instruction(*, tool_name: str) -> str:
+    return (
+        f'Show this link to the user and ask them to approve {tool_name}. '
+        'After they approve, call this tool again with the same arguments. '
+        'You can also call ai_get_approval with the approval_id to check the decision.'
+    )
+
+
+def url_elicitation_message(*, tool_name: str) -> str:
+    return f'Approve {tool_name} in your browser, then return here.'
+
+
+def approved_retry_instruction(*, tool_name: str) -> str:
+    return f'Approved. Call {tool_name} again with the same arguments. It will run once.'
+
+
+def approval_create_failed_text(reason: str) -> str:
+    """User-facing text when Identity cannot create an approval. No secrets, tokens, or response bodies."""
+    code = str(reason or '').strip()
+    if code == 'identity_unreachable':
+        return 'Approval could not be requested because Shellui identity is unreachable. Try again shortly.'
+    if code == 'signing_not_configured':
+        return 'Approval could not be requested because signing is not configured.'
+    if code == 'blocked_assertion':
+        return 'Approval could not be requested because this agent cannot request approvals.'
+    if code == 'identity_not_configured':
+        return 'Approval could not be requested because Shellui identity is not configured.'
+    if code == 'identity_rejected':
+        return 'Approval could not be requested. Shellui identity rejected the request.'
+    if code == 'invalid_response':
+        return 'Approval could not be requested because Shellui identity returned an unexpected response.'
+    return 'Approval could not be requested. Try again shortly.'
+
+
 def fallback_pending_text(*, settings_url: str) -> str:
     return f'Approval required. Open Shellui Settings (MCP approvals) to allow or deny: {settings_url}'

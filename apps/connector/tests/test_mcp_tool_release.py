@@ -317,7 +317,9 @@ class McpToolReleaseTests(TestCase):
             self.fail('tools/list pagination did not finish')
         # Search, describe, and call sit beside the operational catalog. The pinned
         # snapshot stays the 224 OpenAPI tools.
-        return [tool for tool in tools if tool['name'] not in {'ai_search_tools', 'ai_describe_tool', 'ai_call_tool'}]
+        from apps.connector.mcp_discovery import DISCOVERY_ONLY_TOOLS
+
+        return [tool for tool in tools if tool['name'] not in DISCOVERY_ONLY_TOOLS]
 
     def _traits(self, name: str) -> tuple[bool, bool]:
         # The catalog cache is per company. This lookup runs after the HTTP request,

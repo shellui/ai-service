@@ -415,7 +415,97 @@ class McpApprovalsCoreTests(TestCase):
             },
         }
         self.assertIsNone(mcp_approvals.create_approval_request(payload))
+        self.assertEqual(mcp_approvals.take_approval_create_error(), mcp_approvals.CREATE_ERROR_BLOCKED)
         post.assert_not_called()
+
+    @patch('apps.connector.mcp_approvals.requests.post')
+    def test_create_prefers_absolute_approval_url(self, post):
+        post.return_value = MagicMock(
+            status_code=201,
+            json=lambda: {
+                'id': 'appr-9',
+                'status': 'pending',
+                'expires_at': '2026-11-10T21:00:00+00:00',
+                'approval_url': 'https://identity.test/approve/appr-9',
+                'fallback_path': '/oauth/mcp/approval/appr-9?token=signed',
+            },
+        )
+        now = int(time.time())
+        payload = {**_BASE_PAYLOAD, '_agent_claims': {'iat': now, 'exp': now + 3600, 'grant_version': 1}}
+        created = mcp_approvals.create_approval_request(payload)
+        self.assertIsNotNone(created)
+        assert created is not None
+        self.assertEqual(created['approval_url'], 'https://identity.test/approve/appr-9')
+        self.assertEqual(created['expires_at'], '2026-11-10T21:00:00+00:00')
+        self.assertEqual(mcp_approvals.take_approval_create_error(), '')
+        self.assertEqual(post.call_args.kwargs.get('json'), {'is_destructive': False})
+
+    @patch('apps.connector.mcp_approvals.requests.post')
+    def test_create_absolutizes_fallback_path_without_approval_url(self, post):
+        post.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {
+                'id': 'appr-8',
+                'status': 'pending',
+                'fallback_path': '/oauth/mcp/approval/appr-8?token=abc',
+            },
+        )
+        now = int(time.time())
+        payload = {**_BASE_PAYLOAD, '_agent_claims': {'iat': now, 'exp': now + 3600, 'grant_version': 1}}
+        created = mcp_approvals.create_approval_request(payload)
+        assert created is not None
+        self.assertEqual(
+            created['approval_url'],
+            'https://identity.test/oauth/mcp/approval/appr-8?token=abc',
+        )
+        self.assertEqual(created['expires_at'], '')
+
+    def test_resolve_builds_page_from_public_issuer_and_id(self):
+        self.assertEqual(
+            mcp_approvals.resolve_approval_url('appr-7'),
+            'https://identity.test/oauth/mcp/approval/appr-7',
+        )
+        self.assertEqual(
+            mcp_approvals.resolve_approval_url('appr-7', approval_url='javascript:alert(1)'),
+            'https://identity.test/oauth/mcp/approval/appr-7',
+        )
+
+    @patch('apps.connector.mcp_approvals.requests.post', side_effect=mcp_approvals.requests.ConnectionError('down'))
+    def test_create_unreachable_does_not_leak_exception_text(self, _post):
+        now = int(time.time())
+        payload = {**_BASE_PAYLOAD, '_agent_claims': {'iat': now, 'exp': now + 3600, 'grant_version': 1}}
+        from apps.connector.mcp_approval_copy import approval_create_failed_text
+
+        self.assertIsNone(mcp_approvals.create_approval_request(payload))
+        reason = mcp_approvals.take_approval_create_error()
+        self.assertEqual(reason, mcp_approvals.CREATE_ERROR_UNREACHABLE)
+        text = approval_create_failed_text(reason)
+        self.assertIn('unreachable', text)
+        self.assertNotIn('down', text)
+        self.assertNotIn('ConnectionError', text)
+
+    @patch('apps.connector.mcp_approvals.requests.post')
+    def test_create_rejected_does_not_include_response_body(self, post):
+        post.return_value = MagicMock(status_code=403, json=lambda: {'error': 'secret-token-value'})
+        now = int(time.time())
+        payload = {**_BASE_PAYLOAD, '_agent_claims': {'iat': now, 'exp': now + 3600, 'grant_version': 1}}
+        self.assertIsNone(mcp_approvals.create_approval_request(payload))
+        from apps.connector.mcp_approval_copy import approval_create_failed_text
+
+        text = approval_create_failed_text(mcp_approvals.take_approval_create_error())
+        self.assertIn('rejected', text)
+        self.assertNotIn('secret-token-value', text)
+        self.assertNotIn('403', text)
+
+    @override_settings(AI_SERVICE_SIGNING_KEY=None, AI_SERVICE_ISSUER='')
+    def test_create_signing_not_configured(self):
+        now = int(time.time())
+        payload = {**_BASE_PAYLOAD, '_agent_claims': {'iat': now, 'exp': now + 3600, 'grant_version': 1}}
+        self.assertIsNone(mcp_approvals.create_approval_request(payload))
+        self.assertEqual(
+            mcp_approvals.take_approval_create_error(),
+            mcp_approvals.CREATE_ERROR_SIGNING,
+        )
 
     @patch('apps.connector.mcp_approvals.requests.post')
     def test_delegated_missing_global_company_id_rejected(self, post):

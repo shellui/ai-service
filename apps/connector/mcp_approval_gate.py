@@ -6,6 +6,7 @@ import contextvars
 import hashlib
 import json
 import logging
+import secrets
 from dataclasses import dataclass
 from typing import Any
 
@@ -81,13 +82,38 @@ def _connection_id(request: HttpRequest) -> str:
     ).strip()
 
 
-def _client_elicitation_supported(request: HttpRequest) -> bool:
-    from apps.connector.mcp_protocol import session_elicitation_supported
+def _client_elicitation_modes(request: HttpRequest, params: dict[str, Any] | None) -> tuple[bool, bool]:
+    """Form elicitation (Shellui buttons) and URL elicitation (spec ``elicitation.url``)."""
+    from apps.connector.mcp_protocol import (
+        elicitation_modes_from_capabilities,
+        session_elicitation_supported,
+        session_url_elicitation_supported,
+    )
 
+    if isinstance(params, dict):
+        meta = params.get('_meta')
+        if isinstance(meta, dict) and 'io.modelcontextprotocol/clientCapabilities' in meta:
+            return elicitation_modes_from_capabilities(meta.get('io.modelcontextprotocol/clientCapabilities'))
     connection_id = _connection_id(request)
     if not connection_id:
-        return False
-    return session_elicitation_supported(connection_id)
+        return False, False
+    return session_elicitation_supported(connection_id), session_url_elicitation_supported(connection_id)
+
+
+def _url_elicitation_action(params: dict[str, Any] | None) -> str | None:
+    """``inputResponses.approval.action`` from a 2026-07-28 URL elicitation retry."""
+    if not isinstance(params, dict):
+        return None
+    responses = params.get('inputResponses')
+    if not isinstance(responses, dict):
+        return None
+    block = responses.get('approval')
+    if not isinstance(block, dict):
+        return None
+    action = str(block.get('action') or '').strip().lower()
+    if action in {'accept', 'decline', 'cancel'}:
+        return action
+    return None
 
 
 def _shellui_meta(params: dict[str, Any] | None) -> dict[str, Any]:
@@ -144,14 +170,37 @@ def _agent_display_name(agent_claims: dict[str, Any]) -> str:
     return f'Agent {agent_id[:8]}'
 
 
-def _pending_text(tool_name: str, arguments: dict[str, Any], settings_url: str) -> str:
-    from apps.connector.mcp_discovery import arguments_preview
+def _expires_or_none(*candidates: object) -> str | None:
+    for raw in candidates:
+        if raw is None or isinstance(raw, bool):
+            continue
+        text = str(raw).strip()
+        if text and not any(ch in text for ch in '\r\n'):
+            return text[:80]
+    return None
 
-    text = f'{copy.fallback_pending_text(settings_url=settings_url)} Tool: {tool_name}.'
-    preview = arguments_preview(arguments)
-    if preview:
-        return f'{text} {preview}'
-    return text
+
+def pending_approval_payload(
+    *,
+    tool_name: str,
+    approval_id: str,
+    approval_url: str,
+    expires_at: str | None,
+) -> dict[str, Any]:
+    return {
+        'status': 'pending',
+        'approval_id': approval_id,
+        'expires_at': expires_at,
+        'approval_url': approval_url,
+        'instruction': copy.pending_agent_instruction(tool_name=tool_name),
+    }
+
+
+def pending_approval_text(payload: dict[str, Any]) -> str:
+    instruction = str(payload.get('instruction') or '').strip()
+    url = str(payload.get('approval_url') or '').strip()
+    body = json.dumps(payload, sort_keys=True, default=str)
+    return f'Approval pending. {instruction} Link: {url}\n{body}'
 
 
 def build_elicitation_meta(
@@ -211,17 +260,19 @@ def _approval_result(
     text: str,
     meta: dict[str, Any],
     is_error: bool = True,
+    structured: dict[str, Any] | None = None,
+    extra: dict[str, Any] | None = None,
 ) -> JsonResponse:
-    return JsonResponse(
-        McpServer._result(
-            req_id,
-            {
-                'content': [{'type': 'text', 'text': text}],
-                'isError': is_error,
-                '_meta': meta,
-            },
-        )
-    )
+    result: dict[str, Any] = {
+        'content': [{'type': 'text', 'text': text}],
+        'isError': is_error,
+        '_meta': meta,
+    }
+    if structured is not None:
+        result['structuredContent'] = structured
+    if extra:
+        result.update(extra)
+    return JsonResponse(McpServer._result(req_id, result))
 
 
 def _audit_status_from_log_result(log_result: str) -> tuple[int, bool | None]:
@@ -266,6 +317,185 @@ def _log_entry(
     row['_mcp_audit_ready'] = True
     row['duration_ms'] = 0
     return row
+
+
+def _create_failed_outcome(req_id: Any) -> GateOutcome:
+    reason = approvals.take_approval_create_error()
+    text = copy.approval_create_failed_text(reason)
+    code = reason or 'unavailable'
+    return GateOutcome(
+        proceed=False,
+        response=_approval_result(
+            req_id,
+            text=text,
+            meta={'status': 'error', 'error': code},
+            structured={'status': 'error', 'error': code, 'message': text},
+        ),
+    )
+
+
+def _consume_approved_outcome(
+    req_id: Any,
+    *,
+    approval_id: str,
+    approval_payload: dict[str, Any],
+    agent_claims: dict[str, Any],
+    service_id: str,
+    export_name: str,
+    tool: dict[str, Any] | None,
+    method: str,
+    path: str,
+) -> GateOutcome:
+    if approval_id:
+        consumed = approvals.approval_consume_detail(approval_id, approval_payload)
+        if consumed.consumed:
+            return GateOutcome(
+                proceed=True,
+                log=_log_entry(
+                    agent_claims=agent_claims,
+                    service=service_id,
+                    export_name=export_name,
+                    tool=tool,
+                    method=method,
+                    path=path,
+                    log_result='identity_approved',
+                    approval_id=approval_id,
+                ),
+            )
+        if consumed.already_consumed:
+            return GateOutcome(
+                proceed=False,
+                response=_approval_result(
+                    req_id,
+                    text=copy.expired_text(),
+                    meta={'shellui_approval': {'status': 'expired', 'consumed': False}},
+                ),
+                log=_log_entry(
+                    agent_claims=agent_claims,
+                    service=service_id,
+                    export_name=export_name,
+                    tool=tool,
+                    method=method,
+                    path=path,
+                    log_result='error',
+                    approval_id=approval_id,
+                ),
+            )
+    return GateOutcome(
+        proceed=False,
+        response=_approval_result(
+            req_id,
+            text=copy.expired_text(),
+            meta={'shellui_approval': {'status': 'expired'}},
+        ),
+        log=_log_entry(
+            agent_claims=agent_claims,
+            service=service_id,
+            export_name=export_name,
+            tool=tool,
+            method=method,
+            path=path,
+            log_result='expired',
+        ),
+    )
+
+
+def _pending_approval_outcome(
+    req_id: Any,
+    *,
+    agent_claims: dict[str, Any],
+    export_name: str,
+    service_id: str,
+    tool: dict[str, Any] | None,
+    method: str,
+    path: str,
+    arguments: dict[str, Any],
+    approval_payload: dict[str, Any],
+    approval_id: str,
+    created: dict[str, Any] | None,
+    destructive: bool,
+    form_mode: bool,
+    url_mode: bool,
+) -> GateOutcome:
+    created_url = str(created.get('approval_url') or '') if isinstance(created, dict) else ''
+    created_path = str(created.get('fallback_path') or '') if isinstance(created, dict) else ''
+    created_expires = created.get('expires_at') if isinstance(created, dict) else None
+    expires_at = _expires_or_none(created_expires, approval_payload.get('approval_expires_at'))
+    page_url = approvals.resolve_approval_url(
+        approval_id,
+        approval_url=created_url or str(approval_payload.get('approval_url_field') or ''),
+        fallback_path=created_path or str(approval_payload.get('approval_fallback_path') or ''),
+    )
+    approvals.remember_approval(
+        approval_id,
+        approval_payload,
+        expires_at=expires_at or '',
+        approval_url=page_url,
+    )
+    structured = pending_approval_payload(
+        tool_name=export_name,
+        approval_id=approval_id,
+        approval_url=page_url,
+        expires_at=expires_at,
+    )
+    shellui: dict[str, Any] = {
+        'approval_id': approval_id,
+        'status': 'pending',
+        'expires_at': expires_at,
+        'approval_url': page_url,
+        'settings_url': approvals.approval_settings_url(approval_id),
+        'approvals_list_url': approvals.approval_settings_url(),
+    }
+    if form_mode:
+        elicitation = build_elicitation_meta(
+            tool_name=export_name,
+            destructive=destructive,
+            agent_claims=agent_claims,
+            approval_id=approval_id,
+            arguments=arguments,
+        )
+        shellui['elicitation'] = elicitation['elicitation']
+    extra: dict[str, Any] | None = None
+    if url_mode:
+        # Current spec (2026-07-28) delivers URL elicitation as an InputRequiredResult
+        # on tools/call. elicitationId is required by @modelcontextprotocol/sdk 1.32.2
+        # URL params and is ignored by clients that only read mode, url, and message.
+        extra = {
+            'resultType': 'input_required',
+            'requestState': secrets.token_urlsafe(24),
+            'inputRequests': {
+                'approval': {
+                    'method': 'elicitation/create',
+                    'params': {
+                        'mode': 'url',
+                        'elicitationId': secrets.token_urlsafe(16),
+                        'url': page_url,
+                        'message': copy.url_elicitation_message(tool_name=export_name),
+                    },
+                }
+            },
+        }
+    return GateOutcome(
+        proceed=False,
+        response=_approval_result(
+            req_id,
+            text=pending_approval_text(structured),
+            meta={'shellui_approval': shellui},
+            is_error=False,
+            structured=structured,
+            extra=extra,
+        ),
+        log=_log_entry(
+            agent_claims=agent_claims,
+            service=service_id,
+            export_name=export_name,
+            tool=tool,
+            method=method,
+            path=path,
+            log_result='pending_approval',
+            approval_id=approval_id,
+        ),
+    )
 
 
 def enforce_tool_call_approval(
@@ -503,58 +733,16 @@ def enforce_tool_call_approval(
         )
     if state == 'approved':
         approval_id = str(approval_payload.get('approval_id') or client_approval_id or '')
-        if approval_id:
-            consumed = approvals.approval_consume_detail(approval_id, approval_payload)
-            if consumed.consumed:
-                log_result = 'identity_approved'
-                return GateOutcome(
-                    proceed=True,
-                    log=_log_entry(
-                        agent_claims=agent_claims,
-                        service=service_id,
-                        export_name=export_name,
-                        tool=tool,
-                        method=method,
-                        path=path,
-                        log_result=log_result,
-                        approval_id=approval_id,
-                    ),
-                )
-            if consumed.already_consumed:
-                return GateOutcome(
-                    proceed=False,
-                    response=_approval_result(
-                        req_id,
-                        text=copy.expired_text(),
-                        meta={'shellui_approval': {'status': 'expired', 'consumed': False}},
-                    ),
-                    log=_log_entry(
-                        agent_claims=agent_claims,
-                        service=service_id,
-                        export_name=export_name,
-                        tool=tool,
-                        method=method,
-                        path=path,
-                        log_result='error',
-                        approval_id=approval_id,
-                    ),
-                )
-        return GateOutcome(
-            proceed=False,
-            response=_approval_result(
-                req_id,
-                text=copy.expired_text(),
-                meta={'shellui_approval': {'status': 'expired'}},
-            ),
-            log=_log_entry(
-                agent_claims=agent_claims,
-                service=service_id,
-                export_name=export_name,
-                tool=tool,
-                method=method,
-                path=path,
-                log_result='expired',
-            ),
+        return _consume_approved_outcome(
+            req_id,
+            approval_id=approval_id,
+            approval_payload=approval_payload,
+            agent_claims=agent_claims,
+            service_id=service_id,
+            export_name=export_name,
+            tool=tool,
+            method=method,
+            path=path,
         )
 
     if client_decision == 'allow' and client_approval_id:
@@ -574,59 +762,18 @@ def enforce_tool_call_approval(
                 ),
             )
 
-    if state == 'pending':
-        approval_id = client_approval_id or str(approval_payload.get('approval_id') or '')
-        if not approval_id:
-            created = approvals.create_approval_request(approval_payload, is_destructive=destructive)
-            approval_id = str(created.get('id') or '') if created else ''
-        if not approval_id:
-            return GateOutcome(
-                proceed=False,
-                response=_approval_result(
-                    req_id,
-                    text='Approval unavailable.',
-                    meta={'status': 'error'},
-                ),
-            )
-        if _client_elicitation_supported(request):
-            meta = build_elicitation_meta(
-                tool_name=export_name,
-                destructive=destructive,
-                agent_claims=agent_claims,
-                approval_id=approval_id,
-                arguments=arguments,
-            )
-            return GateOutcome(
-                proceed=False,
-                response=_approval_result(
-                    req_id,
-                    text=meta['elicitation']['title'],
-                    meta={'shellui_approval': meta},
-                ),
-                log=_log_entry(
-                    agent_claims=agent_claims,
-                    service=service_id,
-                    export_name=export_name,
-                    tool=tool,
-                    method=method,
-                    path=path,
-                    log_result='pending_approval',
-                    approval_id=approval_id,
-                ),
-            )
-        settings_url = approvals.approval_settings_url(approval_id)
+    form_mode, url_mode = _client_elicitation_modes(request, params)
+    url_action = _url_elicitation_action(params)
+    if url_action in {'decline', 'cancel'}:
         return GateOutcome(
             proceed=False,
             response=_approval_result(
                 req_id,
-                text=_pending_text(export_name, arguments, settings_url),
-                meta={
-                    'shellui_approval': {
-                        'approval_id': approval_id,
-                        'status': 'pending',
-                        'settings_url': settings_url,
-                        'approvals_list_url': approvals.approval_settings_url(),
-                    }
+                text=copy.elicitation_declined_text(tool_name=export_name),
+                meta={'shellui_approval': {'status': 'denied', 'decision': url_action}},
+                structured={
+                    'status': 'denied',
+                    'message': copy.elicitation_declined_text(tool_name=export_name),
                 },
             ),
             log=_log_entry(
@@ -636,66 +783,89 @@ def enforce_tool_call_approval(
                 tool=tool,
                 method=method,
                 path=path,
-                log_result='pending_approval',
-                approval_id=approval_id,
+                log_result='client_denied',
+                approval_id=client_approval_id,
             ),
         )
 
-    created = approvals.create_approval_request(approval_payload, is_destructive=destructive)
-    if not created:
-        return GateOutcome(
-            proceed=False,
-            response=_approval_result(req_id, text='Approval unavailable.', meta={'status': 'error'}),
+    created: dict[str, Any] | None = None
+    approval_id = client_approval_id or str(approval_payload.get('approval_id') or '')
+    if state != 'pending' or not approval_id:
+        approvals.take_approval_create_error()
+        created = approvals.create_approval_request(approval_payload, is_destructive=destructive)
+        approval_id = str(created.get('id') or '') if created else ''
+        if not approval_id:
+            return _create_failed_outcome(req_id)
+
+    if url_action == 'accept' and url_mode:
+        polled = approvals.poll_approval_state(
+            approval_payload,
+            timeout_seconds=approvals.elicitation_wait_seconds(),
         )
-    approval_id = str(created['id'])
-    if _client_elicitation_supported(request):
-        meta = build_elicitation_meta(
-            tool_name=export_name,
-            destructive=destructive,
-            agent_claims=agent_claims,
-            approval_id=approval_id,
-            arguments=arguments,
-        )
-        return GateOutcome(
-            proceed=False,
-            response=_approval_result(
+        if polled == 'approved':
+            return _consume_approved_outcome(
                 req_id,
-                text=meta['elicitation']['title'],
-                meta={'shellui_approval': meta},
-            ),
-            log=_log_entry(
+                approval_id=str(approval_payload.get('approval_id') or approval_id),
+                approval_payload=approval_payload,
                 agent_claims=agent_claims,
-                service=service_id,
+                service_id=service_id,
                 export_name=export_name,
                 tool=tool,
                 method=method,
                 path=path,
-                log_result='pending_approval',
-                approval_id=approval_id,
-            ),
-        )
-    settings_url = approvals.approval_settings_url(approval_id)
-    return GateOutcome(
-        proceed=False,
-        response=_approval_result(
-            req_id,
-            text=_pending_text(export_name, arguments, settings_url),
-            meta={
-                'shellui_approval': {
-                    'approval_id': approval_id,
-                    'status': 'pending',
-                    'settings_url': settings_url,
-                }
-            },
-        ),
-        log=_log_entry(
-            agent_claims=agent_claims,
-            service=service_id,
-            export_name=export_name,
-            tool=tool,
-            method=method,
-            path=path,
-            log_result='pending_approval',
-            approval_id=approval_id,
-        ),
+            )
+        if polled == 'denied':
+            return GateOutcome(
+                proceed=False,
+                response=_approval_result(
+                    req_id,
+                    text=copy.after_deny_text(tool_name=export_name),
+                    meta={'shellui_approval': {'status': 'denied', 'approval_id': approval_id}},
+                ),
+                log=_log_entry(
+                    agent_claims=agent_claims,
+                    service=service_id,
+                    export_name=export_name,
+                    tool=tool,
+                    method=method,
+                    path=path,
+                    log_result='denied',
+                    approval_id=approval_id,
+                ),
+            )
+        if polled == 'expired':
+            return GateOutcome(
+                proceed=False,
+                response=_approval_result(
+                    req_id,
+                    text=copy.expired_text(),
+                    meta={'shellui_approval': {'status': 'expired', 'approval_id': approval_id}},
+                ),
+                log=_log_entry(
+                    agent_claims=agent_claims,
+                    service=service_id,
+                    export_name=export_name,
+                    tool=tool,
+                    method=method,
+                    path=path,
+                    log_result='expired',
+                    approval_id=approval_id,
+                ),
+            )
+
+    return _pending_approval_outcome(
+        req_id,
+        agent_claims=agent_claims,
+        export_name=export_name,
+        service_id=service_id,
+        tool=tool,
+        method=method,
+        path=path,
+        arguments=arguments,
+        approval_payload=approval_payload,
+        approval_id=approval_id,
+        created=created,
+        destructive=destructive,
+        form_mode=form_mode,
+        url_mode=url_mode,
     )

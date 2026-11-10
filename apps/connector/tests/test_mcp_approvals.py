@@ -189,9 +189,22 @@ class McpApprovalGatewayTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertTrue(body['result']['isError'])
+        self.assertFalse(body['result']['isError'])
         meta = body['result']['_meta']['shellui_approval']
         self.assertEqual(meta['approval_id'], 'appr-1')
+        self.assertEqual(meta['status'], 'pending')
+        self.assertEqual(
+            meta['approval_url'],
+            'https://identity.test/oauth/mcp/approval/appr-1',
+        )
+        structured = body['result']['structuredContent']
+        self.assertEqual(structured['status'], 'pending')
+        self.assertEqual(structured['approval_id'], 'appr-1')
+        self.assertEqual(structured['approval_url'], meta['approval_url'])
+        self.assertIn('Show this link to the user', structured['instruction'])
+        self.assertIn(meta['approval_url'], body['result']['content'][0]['text'])
+        self.assertNotIn('\u2014', body['result']['content'][0]['text'])
+        self.assertNotIn('\u2013', body['result']['content'][0]['text'])
         self.assertEqual(meta['elicitation']['title'], copy.approval_title(tool_name='storage_create_bucket', destructive=False))
         self.assertIn('session_allow', meta['elicitation']['buttons'])
         create_approval.assert_called_once()
@@ -885,3 +898,243 @@ class McpDestructiveOverrideTests(TestCase):
             **self._auth(token, session_id=session_id),
         )
         create_approval.assert_called_once()
+
+
+def _gate_tool() -> dict:
+    return {
+        'annotations': {'readOnlyHint': False, 'destructiveHint': False},
+        '_meta': {'method': 'POST', 'path': '/api/v1/buckets/', 'read_only': False, 'destructive': False},
+    }
+
+
+def _gate_claims() -> dict:
+    return {
+        'agent_id': 'a1',
+        'company_id': 10,
+        'mcp_access': 'ask',
+        'agent_name': 'Ada',
+        'company_name': 'Acme',
+    }
+
+
+@override_settings(
+    IDENTITY_ISSUER='https://identity.test',
+    IDENTITY_SERVICE_URL='https://identity.test',
+    MCP_APPROVAL_URL_ELICITATION_WAIT_SECONDS=0,
+    CACHES={
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'ai-mcp-approval-link-tests',
+        }
+    },
+)
+class ApprovalLinkGateTests(TestCase):
+    def setUp(self):
+        cache.clear()
+
+    def _request(self) -> Mock:
+        request = Mock()
+        request.headers = {'Mcp-Session-Id': 'sess-link'}
+        return request
+
+    def _run(self, *, params: dict | None = None, state, consume=None, created=None):
+        request = self._request()
+        with (
+            patch('apps.connector.mcp_approval_gate.decide_write') as decide,
+            patch('apps.connector.mcp_approval_gate.approvals.session_grant_covers_write', return_value=False),
+            patch('apps.connector.mcp_approval_gate.approvals.approval_state', side_effect=state),
+            patch('apps.connector.mcp_approval_gate.approvals.approval_consume_detail', side_effect=consume),
+            patch(
+                'apps.connector.mcp_approval_gate.approvals.create_approval_request',
+                return_value=created if created is not None else {'id': 'appr-1', 'status': 'pending'},
+            ),
+        ):
+            decide.return_value = WriteGateDecision(allowed=False, needs_approval=True, reason='Write requires approval.')
+            return enforce_tool_call_approval(
+                request,
+                7,
+                params=params or {},
+                agent_claims=_gate_claims(),
+                export_name='storage_create_bucket',
+                service_id='storage',
+                tool=_gate_tool(),
+                method='POST',
+                path='/api/v1/buckets/',
+                arguments={'method': 'POST', 'path': '/api/v1/buckets/'},
+            )
+
+    def test_approved_grant_executes_once(self):
+        def state(payload):
+            payload['approval_id'] = 'appr-1'
+            return 'approved'
+
+        consumes = iter(
+            [
+                ConsumeResult(consumed=True, status_code=200),
+                ConsumeResult(consumed=False, status_code=409, already_consumed=True),
+            ]
+        )
+        first = self._run(state=state, consume=lambda *_args, **_kwargs: next(consumes))
+        self.assertTrue(first.proceed)
+        second = self._run(state=state, consume=lambda *_args, **_kwargs: next(consumes))
+        self.assertFalse(second.proceed)
+        body = json.loads(second.response.content)
+        self.assertIn('expired', body['result']['content'][0]['text'].lower())
+        self.assertTrue(body['result']['isError'])
+
+    def test_url_mode_result_includes_elicitation_and_pending_shape(self):
+        def state(payload):
+            payload['approval_id'] = 'appr-1'
+            return 'pending'
+
+        outcome = self._run(
+            state=state,
+            params={
+                '_meta': {
+                    'io.modelcontextprotocol/clientCapabilities': {'elicitation': {'url': {}}},
+                }
+            },
+        )
+        self.assertFalse(outcome.proceed)
+        body = json.loads(outcome.response.content)
+        result = body['result']
+        self.assertFalse(result['isError'])
+        self.assertEqual(result['resultType'], 'input_required')
+        params = result['inputRequests']['approval']['params']
+        self.assertEqual(params['mode'], 'url')
+        self.assertEqual(params['url'], 'https://identity.test/oauth/mcp/approval/appr-1')
+        self.assertTrue(params['elicitationId'])
+        self.assertEqual(params['message'], 'Approve storage_create_bucket in your browser, then return here.')
+        self.assertEqual(result['structuredContent']['status'], 'pending')
+        self.assertIn('Show this link to the user', result['content'][0]['text'])
+        self.assertNotIn('resultType', result['structuredContent'])
+        self.assertNotIn('\u2014', result['content'][0]['text'])
+
+    def test_url_accept_runs_once_after_approval(self):
+        calls = {'n': 0}
+
+        def state(payload):
+            calls['n'] += 1
+            payload['approval_id'] = 'appr-1'
+            return 'pending' if calls['n'] == 1 else 'approved'
+
+        outcome = self._run(
+            state=state,
+            consume=lambda *_a, **_k: ConsumeResult(consumed=True, status_code=200),
+            params={
+                'inputResponses': {'approval': {'action': 'accept'}},
+                '_meta': {
+                    'io.modelcontextprotocol/clientCapabilities': {'elicitation': {'url': {}}},
+                },
+            },
+        )
+        self.assertTrue(outcome.proceed)
+        self.assertEqual(outcome.log.get('outcome'), 'allowed')
+        self.assertEqual(outcome.log.get('log_result'), 'success')
+
+    def test_url_accept_timeout_falls_back_to_pending_result(self):
+        def state(payload):
+            payload['approval_id'] = 'appr-1'
+            return 'pending'
+
+        outcome = self._run(
+            state=state,
+            params={
+                'inputResponses': {'approval': {'action': 'accept'}},
+                '_meta': {
+                    'io.modelcontextprotocol/clientCapabilities': {'elicitation': {'url': {}}},
+                },
+            },
+        )
+        self.assertFalse(outcome.proceed)
+        result = json.loads(outcome.response.content)['result']
+        self.assertEqual(result['structuredContent']['status'], 'pending')
+        self.assertFalse(result['isError'])
+
+    def test_url_decline_does_not_run_the_tool(self):
+        def state(payload):
+            payload['approval_id'] = 'appr-1'
+            return 'pending'
+
+        outcome = self._run(
+            state=state,
+            params={
+                'inputResponses': {'approval': {'action': 'decline'}},
+                '_meta': {
+                    'io.modelcontextprotocol/clientCapabilities': {'elicitation': {'url': {}}},
+                },
+            },
+        )
+        self.assertFalse(outcome.proceed)
+        text = json.loads(outcome.response.content)['result']['content'][0]['text']
+        self.assertIn('declined', text.lower())
+        self.assertIn('storage_create_bucket', text)
+
+    def test_form_elicitation_keeps_buttons_without_url_mode(self):
+        def state(payload):
+            payload['approval_id'] = 'appr-1'
+            return 'pending'
+
+        outcome = self._run(
+            state=state,
+            params={
+                '_meta': {
+                    'io.modelcontextprotocol/clientCapabilities': {'elicitation': {}},
+                }
+            },
+        )
+        result = json.loads(outcome.response.content)['result']
+        self.assertNotIn('resultType', result)
+        self.assertIn('session_allow', result['_meta']['shellui_approval']['elicitation']['buttons'])
+        self.assertIn('approval_url', result['structuredContent'])
+
+    def test_ai_get_approval_reads_status_for_the_same_agent(self):
+        def state(payload):
+            payload['approval_id'] = 'appr-1'
+            return 'pending'
+
+        self._run(state=state)
+        with patch('apps.connector.mcp_approvals.fetch_approval_state', return_value=('approved', 'appr-1')):
+            own = mcp_approvals.approval_status_for_agent('appr-1', _gate_claims())
+        self.assertEqual(own['status'], 'approved')
+        self.assertIn('same arguments', own['instruction'])
+        other = mcp_approvals.approval_status_for_agent(
+            'appr-1',
+            {'agent_id': 'other', 'company_id': 10},
+        )
+        self.assertEqual(other['status'], 'unknown')
+        self.assertNotIn('https://', json.dumps(other))
+
+    def test_create_failure_message_replaces_approval_unavailable(self):
+        request = self._request()
+
+        def state(_payload):
+            return None
+
+        with (
+            patch('apps.connector.mcp_approval_gate.decide_write') as decide,
+            patch('apps.connector.mcp_approval_gate.approvals.session_grant_covers_write', return_value=False),
+            patch('apps.connector.mcp_approval_gate.approvals.approval_state', side_effect=state),
+            patch('apps.connector.mcp_approval_gate.approvals.create_approval_request', return_value=None),
+            patch(
+                'apps.connector.mcp_approval_gate.approvals.take_approval_create_error',
+                return_value='identity_unreachable',
+            ),
+        ):
+            decide.return_value = WriteGateDecision(allowed=False, needs_approval=True, reason='Write requires approval.')
+            outcome = enforce_tool_call_approval(
+                request,
+                8,
+                params={},
+                agent_claims=_gate_claims(),
+                export_name='storage_create_bucket',
+                service_id='storage',
+                tool=_gate_tool(),
+                method='POST',
+                path='/api/v1/buckets/',
+                arguments={},
+            )
+        text = json.loads(outcome.response.content)['result']['content'][0]['text']
+        self.assertNotIn('Approval unavailable.', text)
+        self.assertIn('unreachable', text)
+        self.assertIn('Shellui', text)
