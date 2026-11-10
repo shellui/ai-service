@@ -229,6 +229,16 @@ class McpToolSchemaAuditTests(TestCase):
         self.assertFalse(read_only)
         self.assertTrue(destructive)
         self.assertTrue(fixed['annotations']['destructiveHint'])
+        renamed = normalize_mcp_tool(
+            {
+                **listed,
+                'name': 'storage_empty_bucket',
+            }
+        )
+        read_only, destructive = tool_traits_from_export(renamed, method='POST')
+        self.assertFalse(read_only)
+        self.assertTrue(destructive)
+        self.assertEqual(renamed['_meta']['operationId'], 'storage_v1_bucket_empty_create')
 
         preview = normalize_mcp_tool(
             {

@@ -86,6 +86,8 @@ After `tools/list`, call a tool by its **full export name** (service prefix + Op
 
 The gateway resolves **`name`** against its **cached tools/list catalog** and **route table**. Approval decisions and audits use **registry `_meta.method`** and **`_meta.path`** only; client-supplied `path`/`method` inside `arguments` are **not** trusted for activity metadata.
 
+Upstream may list the tool as the export name (`storage_list_bucket`) or as a legacy operationId slug (`storage_v1_bucket_list`, `api_v1_groups_create`). Both produce the same gateway name. The forwarded `tools/call` uses the upstream name.
+
 ## Internal Identity: `mcp-approval-requests` body
 
 `create_approval_request` sends **only**:

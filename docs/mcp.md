@@ -29,7 +29,14 @@ Downstream OpenAPI operations become MCP tools with stable names:
 1. **Service-local name** comes from OpenAPI (`operationId` after normalization, optional `x-mcp.tool_name`, path/method fallback). See `resolve_mcp_tool_name` in `apps/connector/mcp_tool_naming.py`.
 2. **Gateway export name** prefixes the service id: **`{service_id}_{local_name}`** (for example `storage_list_buckets` when `service_id` is `storage` and the local tool is `list_buckets`).
 
-So the string the client passes to **`tools/call`** is always the **prefixed** export name. Internal routing strips the prefix to recover the downstream tool and HTTP route.
+So the string the client passes to **`tools/call`** is always the **prefixed** export name.
+
+Upstream `tools/list` may use either of two names for the same operation:
+
+- the export name itself (`identity_create_groups`) — kept as-is when it equals the name derived from the operation
+- a legacy operationId slug (`api_v1_groups_create`, `storage_v1_bucket_list`) — mapped to that same export name
+
+`tools/call` is forwarded with the name that upstream listed. Clients never see the legacy slug.
 
 **`tools/list`** exposes only those export names and registry-derived `_meta` (path, method, `operation_summary`, access flags, etc.). **LiteLLM** or other inference stacks are **not** part of this gateway path; this branch documents the gateway only.
 

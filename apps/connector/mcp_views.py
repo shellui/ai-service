@@ -18,7 +18,11 @@ from shellui_django.mcp.gateway import (
     scope_service_ids,
     service_allowed,
 )
-from apps.connector.mcp_tool_naming import gateway_export_name, service_local_tool_name
+from apps.connector.mcp_tool_naming import (
+    gateway_export_name,
+    published_upstream_tool_name,
+    service_local_tool_name,
+)
 from apps.connector.mcp_openapi_tools import tools_from_schema
 from apps.connector.mcp_tool_schema import normalize_mcp_tool
 
@@ -150,7 +154,22 @@ def iter_gateway_remote_exports(
         if not downstream_name:
             continue
         canonical = service_local_tool_name(tool, service_id=service_id)
-        export_name = gateway_export_name(service_id, canonical, taken=taken)
+        derived = gateway_export_name(service_id, canonical)
+        if published_upstream_tool_name(downstream_name, service_id):
+            # Upstream already published ``identity_create_groups``. Keep that
+            # string only when it is the name this gateway derives for the operation.
+            if downstream_name != derived or downstream_name in taken:
+                logger.warning(
+                    'MCP gateway dropping upstream tool %s for service %s (derived %s)',
+                    downstream_name,
+                    service_id,
+                    derived,
+                )
+                continue
+            export_name = downstream_name
+            taken.add(export_name)
+        else:
+            export_name = gateway_export_name(service_id, canonical, taken=taken)
         route = {'service_id': service_id, 'downstream_name': downstream_name}
         meta = tool.get('_meta') if isinstance(tool.get('_meta'), dict) else {}
         tenant = tenant_binding_from_meta(meta)

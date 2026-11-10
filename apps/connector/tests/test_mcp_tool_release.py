@@ -478,6 +478,64 @@ class McpToolReleaseTests(TestCase):
                 ):
                     self.assertEqual(str(forwarded['arguments']['query']['company_id']), '10', name)
 
+    @patch('apps.connector.mcp_approvals.approval_consume_detail', return_value=ConsumeResult(consumed=True, status_code=200))
+    @patch('apps.connector.mcp_approvals.approval_state')
+    @patch('apps.connector.mcp_views.forward_call_log')
+    @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
+    @patch('apps.connector.mcp_views.requests.post')
+    def test_each_service_accepts_published_upstream_names(self, post, _mint, _log, approval_state, _consume, *_mocks):
+        """Upstream tools already named ``identity_create_groups`` publish the same catalog."""
+        from apps.connector.mcp_tool_schema import normalize_mcp_tool
+        from apps.connector.mcp_views import iter_gateway_remote_exports
+
+        def _approved(payload):
+            payload['approval_id'] = 'appr-release'
+            return 'approved'
+
+        approval_state.side_effect = _approved
+        renamed: dict[str, list[dict]] = {}
+        for service, tools in self.wire.items():
+            exports = iter_gateway_remote_exports(
+                [normalize_mcp_tool(dict(tool)) for tool in tools],
+                service_id=service,
+            )
+            by_downstream = {route['downstream_name']: export_name for export_name, _tool, route in exports}
+            self.assertEqual(len(by_downstream), len(tools), service)
+            service_tools = []
+            for tool in tools:
+                copy = json.loads(json.dumps(tool))
+                copy['name'] = by_downstream[tool['name']]
+                service_tools.append(copy)
+            renamed[service] = service_tools
+        self.wire = renamed
+        post.side_effect = self._install_upstream()
+        listed = self._list_tools()
+        contracts = []
+        for tool in listed:
+            if tool['name'] == 'ai_list_services':
+                read_only, destructive = self._traits(tool['name'])
+                contracts.append(_client_contract(tool, traits=(read_only, destructive)))
+                continue
+            read_only, destructive = self._traits(tool['name'])
+            contracts.append(_client_contract(tool, traits=(read_only, destructive)))
+        contracts.sort(key=lambda row: row['name'])
+        pinned = json.loads(SNAPSHOT_PATH.read_text(encoding='utf-8'))
+        self.assertEqual(contracts, pinned)
+
+        for tool in listed:
+            name = tool['name']
+            with self.subTest(tool=name):
+                self.forwarded.clear()
+                response = self._post('tools/call', name=name, arguments=_call_arguments(tool))
+                self.assertEqual(response.status_code, 200, response.content[:800])
+                body = response.json()
+                self.assertNotIn('error', body, body)
+                self.assertFalse((body.get('result') or {}).get('isError'), body.get('result'))
+                if name == 'ai_list_services':
+                    continue
+                self.assertEqual(len(self.forwarded), 1)
+                self.assertEqual(self.forwarded[0]['name'], name)
+
 
 def _service_title(service: str) -> str:
     return {

@@ -243,10 +243,27 @@ def _infer_http_method(operation_id: str | None, declared: str | None) -> str:
 _LEGACY_OPERATION_ID = re.compile(r'(?:^|_)v\d+_')
 
 
+# Published export name → operationId for POST tools whose x-mcp flags differ from
+# the HTTP method. When upstream renames the tool to the gateway name, ``_meta`` is
+# still omitted, so the operation id has to be recovered from that name.
+_PUBLISHED_EXPORT_OPERATION_IDS: dict[str, str] = {
+    'email_broadcasts_preview': 'api_v1_broadcasts_preview',
+    'email_render_preview_templates': 'api_v1_templates_render_preview',
+    'hosting_create_apps_deployments_rollback': 'hosting_v1_apps_deployments_rollback_create',
+    'hosting_revoke_deploy_token': 'hosting_v1_deploy_tokens_revoke_create',
+    'identity_revoke_personal_access_tokens': 'api_v1_personal_access_tokens_revoke',
+    'identity_revoke_scim_tokens': 'api_v1_scim_tokens_revoke',
+    'storage_create_object_list': 'storage_v1_object_list_create',
+    'storage_empty_bucket': 'storage_v1_bucket_empty_create',
+}
+
+_SERVICE_PREFIXES = ('ai', 'identity', 'storage', 'hosting', 'email', 'saas')
+
+
 def legacy_operation_id_from_tool_name(name: str) -> str | None:
     """Return a shellui operation-id slug (``api_v1_*``, ``storage_v1_*``) when ``name`` is one.
 
-    Downstream ``tools/list`` drops ``_meta``, and the tool name is that slug.
+    Downstream ``tools/list`` drops ``_meta``, and the legacy tool name is that slug.
     """
     slug = _sanitize_token(name)
     if not slug:
@@ -254,6 +271,32 @@ def legacy_operation_id_from_tool_name(name: str) -> str | None:
     if slug.startswith('api_') or _LEGACY_OPERATION_ID.search(slug):
         return slug
     return None
+
+
+def operation_id_for_upstream_tool_name(name: str) -> str | None:
+    """Operation id for a legacy slug or for a gateway export name of a flagged POST."""
+    legacy = legacy_operation_id_from_tool_name(name)
+    if legacy:
+        return legacy
+    return _PUBLISHED_EXPORT_OPERATION_IDS.get(_sanitize_token(name))
+
+
+def tool_name_has_service_prefix(name: str) -> bool:
+    slug = _sanitize_token(name)
+    return any(slug.startswith(f'{sid}_') for sid in _SERVICE_PREFIXES)
+
+
+def published_upstream_tool_name(name: str, service_id: str) -> bool:
+    """True when upstream already listed the gateway export name (``identity_create_groups``).
+
+    ``storage_v1_*`` and ``api_v1_*`` stay on the legacy mapping. They start with a
+    service or ``api`` token but are operation-id slugs, not published names.
+    """
+    slug = _sanitize_token(name)
+    sid = _sanitize_token(service_id)
+    if not slug.startswith(f'{sid}_'):
+        return False
+    return legacy_operation_id_from_tool_name(slug) is None
 
 
 def service_local_tool_name(tool: dict[str, Any], *, service_id: str | None = None) -> str:
