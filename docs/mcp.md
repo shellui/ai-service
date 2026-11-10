@@ -4,6 +4,12 @@ title: MCP gateway handbook
 
 # MCP gateway handbook
 
+:::note
+
+MCP is in Beta. Tool names and behavior may still change.
+
+:::
+
 This document describes how the **ai-service MCP gateway** behaves in this repository: URLs, tokens, approvals, session grants, tool naming, and what gets sent to Identity for activity. It is the operational reference for gateway code in `apps/connector/mcp_*.py`, not a status log for other projects.
 
 Longer backend-oriented examples and request field lists: [mcp-handbook.md](./mcp-handbook.md).
@@ -27,7 +33,7 @@ Longer backend-oriented examples and request field lists: [mcp-handbook.md](./mc
 Downstream OpenAPI operations become MCP tools with stable names:
 
 1. **Service-local name** comes from OpenAPI (`operationId` after normalization, optional `x-mcp.tool_name`, path/method fallback). See `resolve_mcp_tool_name` in `apps/connector/mcp_tool_naming.py`.
-2. **Gateway export name** prefixes the service id: **`{service_id}_{local_name}`** (for example `storage_list_buckets` when `service_id` is `storage` and the local tool is `list_buckets`).
+2. **Gateway export name** prefixes the service id: **`{service_id}_{local_name}`** (for example `storage_list_bucket` when `service_id` is `storage` and the local tool is `list_bucket`).
 
 So the string the client passes to **`tools/call`** is always the **prefixed** export name.
 

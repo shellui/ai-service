@@ -4,6 +4,12 @@ title: MCP gateway backend handbook
 
 # MCP gateway backend handbook
 
+:::note
+
+MCP is in Beta. Tool names and behavior may still change.
+
+:::
+
 Backend reference for **`POST /c/<company_id>/mcp`** in ai-service. For the shorter overview see [mcp.md](./mcp.md); for conformance runs see [mcp-e2e-conformance.md](./mcp-e2e-conformance.md).
 
 ## Endpoint and OAuth
@@ -60,7 +66,9 @@ To count as **allow** here, Identity must return **`authorized`: true**, **`acti
 
 ### `tools/list`
 
-The default list is a discovery set (`ai_list_services`, `ai_search_tools`, `ai_describe_tool`, `ai_call_tool`, plus a few common reads). Ask for the full operational catalog with `?tools=all` or `"tools": "all"`.
+The default list is a discovery set: `ai_list_services`, `ai_search_tools`, `ai_describe_tool`, `ai_call_tool`, and four common reads when that service is connected (`identity_list_users`, `storage_list_bucket`, `hosting_list_apps`, `email_list_messages`). They answer "who, what files, what apps, what mail" without a search.
+
+Ask for the full operational catalog with `POST /c/<company_id>/mcp?tools=all`, or `tools/list` params `{"tools": "all"}`. Set `MCP_TOOLS_LIST_MODE=all` when a deployment should keep the full list as the default. The full list is still paged (200 tools per page, `nextCursor`).
 
 ```json
 { "jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {} }
@@ -70,9 +78,19 @@ The default list is a discovery set (`ai_list_services`, `ai_search_tools`, `ai_
 { "jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": { "tools": "all" } }
 ```
 
-### `tools/call` (storage — names are gateway exports)
+Example:
 
-After `tools/list`, call a tool by its **full export name** (service prefix + OpenAPI-derived slug), e.g. **`storage_list_buckets`**. Arguments follow the tool `inputSchema` (path, method, query, body) produced from the service OpenAPI registry—not arbitrary client paths:
+```json
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ai_search_tools","arguments":{"query":"invite a user","limit":3}}}
+```
+
+```json
+{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"ai_call_tool","arguments":{"name":"identity_create_invitations","arguments":{"method":"POST","path":"/api/v1/invitations/","body":{"email":"ada@example.com"}}}}}
+```
+
+### `tools/call` (storage: names are gateway exports)
+
+After `tools/list`, call a tool by its **full export name** (service prefix + OpenAPI-derived slug), for example **`storage_list_bucket`**. Arguments follow the tool `inputSchema` (path, method, query, body) produced from the service OpenAPI registry. They are not arbitrary client paths:
 
 ```json
 {
@@ -80,9 +98,9 @@ After `tools/list`, call a tool by its **full export name** (service prefix + Op
   "id": 3,
   "method": "tools/call",
   "params": {
-    "name": "storage_list_buckets",
+    "name": "storage_list_bucket",
     "arguments": {
-      "path": "/api/v1/buckets/",
+      "path": "/storage/v1/bucket",
       "method": "GET",
       "query": {}
     }

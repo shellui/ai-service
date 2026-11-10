@@ -4,6 +4,12 @@ title: Connect an agent with device login
 
 # Connect an agent with device login
 
+:::note
+
+MCP is in Beta. Tool names and behavior may still change.
+
+:::
+
 Headless MCP clients (a CLI, or an agent such as Hermes) connect to a company with the [OAuth 2.0 device authorization grant](https://www.rfc-editor.org/rfc/rfc8628). The person sees a link and a code, approves on Identity, and the client polls until it receives tokens. Do not paste an access token, refresh token, device code, or user code into an agent chat.
 
 This walkthrough uses the local stack: Identity at `http://localhost:8001`, ai-service at `http://localhost:8006`. Company `1` is the seeded dev company. See [Local dev stack](./devstack.md).
