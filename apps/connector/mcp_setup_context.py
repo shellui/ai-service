@@ -133,8 +133,11 @@ def global_binding_conflict_claims(
     """
     True if some but not all of the global triple are present or parseable (reject; no legacy guess).
 
-    When ``allow_isolated_grant_version`` is True (gateway precheck), ``grant_version`` alone is allowed
-    on personal tokens so JWTs can carry grant policy for call logs without implying delegated mode.
+    When ``allow_isolated_grant_version`` is True (gateway precheck and the approval
+    assertion path), ``grant_version`` alone is a personal token: no ``global_company_id``
+    and no ``company_binding_version``. ``mcp_authority`` of ``delegated`` or
+    ``global_delegated`` without the full triple is still a conflict. The JWT can carry
+    that grant version for call logs and approval assertions without implying delegated mode.
     """
     if not isinstance(agent_claims, dict):
         return False
@@ -217,7 +220,13 @@ def _fallback_context(
     if isinstance(agent_claims, dict):
         gv, cbv, gcid = global_binding_triplet_from_claims(agent_claims)
     is_gd = is_global_delegated_claims(agent_claims)
-    conflict = global_binding_conflict_claims(agent_claims)
+    # Personal regional tokens always carry grant_version (identity build_agent_access_token)
+    # and omit the global pair. That is not a partial triple. Delegated authority and every
+    # other partial (gcid, cbv, or a malformed global company id) stay conflicts.
+    conflict = global_binding_conflict_claims(
+        agent_claims,
+        allow_isolated_grant_version=True,
+    )
     blocked = bool(setup_claim_rejected or conflict or force_blocked)
     return ApprovalAssertionContext(
         lifetime_seconds=_DEFAULT_APPROVAL_ASSERTION_LIFETIME,
@@ -248,7 +257,7 @@ def approval_assertion_context_from_agent_claims(agent_claims: dict | None) -> A
     if mcp_auth in {'delegated', 'global_delegated'} and global_binding_conflict_claims(agent_claims):
         return _fallback_context(agent_claims, force_blocked=True)
 
-    if global_binding_conflict_claims(agent_claims):
+    if global_binding_conflict_claims(agent_claims, allow_isolated_grant_version=True):
         return _fallback_context(agent_claims)
 
     if agent_claims.get('setup_flow') is not True:

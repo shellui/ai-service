@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### 🐛 Bug Fixes
 
+- Personal regional MCP agents whose access token carries only ``grant_version`` (no ``global_company_id``, no ``company_binding_version``, and ``mcp_authority`` not ``delegated`` or ``global_delegated``) can open, look up, and consume approval requests. The signed approval assertion still includes that ``grant_version``. Partial global triples, delegated authority without the full triple, and invalid setup claims stay blocked.
 - MCP gateway call logs forwarded to identity include measured ``duration_ms`` for each ``tools/call`` (local and downstream).
 
 ### 🛠 Improvements
