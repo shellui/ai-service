@@ -1,7 +1,8 @@
-"""Company admin list of MCP tool-call logs stored by this gateway."""
+"""Lists of MCP tool-call logs stored by this gateway."""
 
 from __future__ import annotations
 
+from django.db.models import Q, QuerySet
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from drf_spectacular.types import OpenApiTypes
@@ -10,13 +11,38 @@ from rest_framework import serializers
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.authapi.permissions import IsMcpCallLogReader
+from apps.authapi.permissions import IsMcpCallLogReader, IsPersonalAgentCallLogReader
 from apps.connector.mcp_call_store import SERVICES
 from apps.connector.models import McpCallLog
 
 _STATUSES = frozenset(dict(McpCallLog.STATUSES))
 _DEFAULT_LIMIT = 50
 _MAX_LIMIT = 200
+
+
+def _positive_id(raw: object) -> int | None:
+    if isinstance(raw, bool) or not isinstance(raw, (int, str)):
+        return None
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return None
+    if value < 1:
+        return None
+    return value
+
+
+def owned_agent_call_logs(*, company_id: int, agent_id: str, user_id: int) -> QuerySet[McpCallLog]:
+    """Rows for one agent in one company that belong to this user.
+
+    ``owner_user_id`` is the regional user the agent acts for. Rows written
+    before that column, or written from a token that omitted the claim, fall
+    back to ``user_id`` when ``owner_user_id`` is empty. A set ``owner_user_id``
+    is the only match for that row.
+    """
+    return McpCallLog.objects.filter(company_id=company_id, agent_id=agent_id).filter(
+        Q(owner_user_id=user_id) | Q(owner_user_id__isnull=True, user_id=user_id)
+    )
 
 
 def _parse_bound(raw: str, *, name: str) -> tuple[object | None, Response | None]:
@@ -108,6 +134,102 @@ class McpCallLogListSerializer(serializers.Serializer):
     call_logs = McpCallLogRowSerializer(many=True)
 
 
+def _parse_page_filters(params, *, include_agent: bool) -> tuple[dict | None, Response | None]:
+    agent = ''
+    if include_agent:
+        agent = str(params.get('agent') or '').strip()
+        if agent and len(agent) > 128:
+            return None, Response({'error': 'Invalid agent.'}, status=400)
+    service = str(params.get('service') or '').strip().lower()
+    tool = str(params.get('tool') or '').strip()
+    status = str(params.get('status') or '').strip().lower()
+    if service and service not in SERVICES:
+        return None, Response({'error': 'Invalid service.'}, status=400)
+    if tool and len(tool) > 255:
+        return None, Response({'error': 'Invalid tool.'}, status=400)
+    if status and status not in _STATUSES:
+        return None, Response({'error': 'Invalid status.'}, status=400)
+    created_after, err = _parse_bound(params.get('created_after'), name='created_after')
+    if err is not None:
+        return None, err
+    created_before, err = _parse_bound(params.get('created_before'), name='created_before')
+    if err is not None:
+        return None, err
+    try:
+        limit = int(params.get('limit') or _DEFAULT_LIMIT)
+        offset = int(params.get('offset') or 0)
+    except (TypeError, ValueError):
+        return None, Response({'error': 'Invalid limit or offset.'}, status=400)
+    if limit < 1 or limit > _MAX_LIMIT or offset < 0:
+        return None, Response({'error': 'Invalid limit or offset.'}, status=400)
+    return {
+        'agent': agent,
+        'service': service,
+        'tool': tool,
+        'status': status,
+        'created_after': created_after,
+        'created_before': created_before,
+        'limit': limit,
+        'offset': offset,
+    }, None
+
+
+def _page(qs: QuerySet[McpCallLog], filters: dict) -> Response:
+    if filters['agent']:
+        qs = qs.filter(agent_id=filters['agent'])
+    if filters['service']:
+        qs = qs.filter(service=filters['service'])
+    if filters['tool']:
+        qs = qs.filter(tool_name=filters['tool'])
+    if filters['status']:
+        qs = qs.filter(status=filters['status'])
+    if filters['created_after'] is not None:
+        qs = qs.filter(created_at__gte=filters['created_after'])
+    if filters['created_before'] is not None:
+        qs = qs.filter(created_at__lt=filters['created_before'])
+    limit = filters['limit']
+    offset = filters['offset']
+    count = qs.count()
+    rows = qs.order_by('-created_at', '-id')[offset : offset + limit]
+    return Response(
+        {
+            'count': count,
+            'limit': limit,
+            'offset': offset,
+            'call_logs': [_row(row) for row in rows],
+        }
+    )
+
+
+_LIST_FILTERS = [
+    OpenApiParameter(
+        'service',
+        OpenApiTypes.STR,
+        enum=sorted(SERVICES),
+        description='identity, storage, hosting, email, saas, or ai.',
+    ),
+    OpenApiParameter('tool', OpenApiTypes.STR, description='Exact tool name.'),
+    OpenApiParameter(
+        'status',
+        OpenApiTypes.STR,
+        enum=sorted(_STATUSES),
+        description='allowed, denied, waiting_approval, failed, or error.',
+    ),
+    OpenApiParameter(
+        'created_after',
+        OpenApiTypes.DATETIME,
+        description='Inclusive ISO-8601 lower bound on created_at.',
+    ),
+    OpenApiParameter(
+        'created_before',
+        OpenApiTypes.DATETIME,
+        description='Exclusive ISO-8601 upper bound on created_at.',
+    ),
+    OpenApiParameter('limit', OpenApiTypes.INT, description='Page size, 1 to 200. Default 50.'),
+    OpenApiParameter('offset', OpenApiTypes.INT, description='Rows to skip. Default 0.'),
+]
+
+
 class McpCallLogListView(APIView):
     """Company-scoped call log for staff, company owners, and company admins.
 
@@ -139,31 +261,7 @@ class McpCallLogListView(APIView):
         ),
         parameters=[
             OpenApiParameter('agent', OpenApiTypes.STR, description='Exact agent id.'),
-            OpenApiParameter(
-                'service',
-                OpenApiTypes.STR,
-                enum=sorted(SERVICES),
-                description='identity, storage, hosting, email, saas, or ai.',
-            ),
-            OpenApiParameter('tool', OpenApiTypes.STR, description='Exact tool name.'),
-            OpenApiParameter(
-                'status',
-                OpenApiTypes.STR,
-                enum=sorted(_STATUSES),
-                description='allowed, denied, waiting_approval, failed, or error.',
-            ),
-            OpenApiParameter(
-                'created_after',
-                OpenApiTypes.DATETIME,
-                description='Inclusive ISO-8601 lower bound on created_at.',
-            ),
-            OpenApiParameter(
-                'created_before',
-                OpenApiTypes.DATETIME,
-                description='Exclusive ISO-8601 upper bound on created_at.',
-            ),
-            OpenApiParameter('limit', OpenApiTypes.INT, description='Page size, 1 to 200. Default 50.'),
-            OpenApiParameter('offset', OpenApiTypes.INT, description='Rows to skip. Default 0.'),
+            *_LIST_FILTERS,
         ],
         responses={
             200: McpCallLogListSerializer,
@@ -184,54 +282,69 @@ class McpCallLogListView(APIView):
         if company_id is None or company_id < 1:
             return Response({'error': 'Forbidden'}, status=403)
 
-        params = request.query_params
-        agent = str(params.get('agent') or '').strip()
-        service = str(params.get('service') or '').strip().lower()
-        tool = str(params.get('tool') or '').strip()
-        status = str(params.get('status') or '').strip().lower()
-        if agent and len(agent) > 128:
-            return Response({'error': 'Invalid agent.'}, status=400)
-        if service and service not in SERVICES:
-            return Response({'error': 'Invalid service.'}, status=400)
-        if tool and len(tool) > 255:
-            return Response({'error': 'Invalid tool.'}, status=400)
-        if status and status not in _STATUSES:
-            return Response({'error': 'Invalid status.'}, status=400)
-        created_after, err = _parse_bound(params.get('created_after'), name='created_after')
+        filters, err = _parse_page_filters(request.query_params, include_agent=True)
         if err is not None:
             return err
-        created_before, err = _parse_bound(params.get('created_before'), name='created_before')
+        return _page(McpCallLog.objects.filter(company_id=company_id), filters)
+
+
+class PersonalAgentCallLogListView(APIView):
+    """Call log for one agent the authenticated user owns.
+
+    The user id and company id come from the app JWT. Staff, company owner,
+    and company admin flags do not widen access. Agent access tokens are refused.
+    An agent with no row attributed to the caller returns 404.
+    """
+
+    permission_classes = [IsPersonalAgentCallLogReader]
+
+    @extend_schema(
+        tags=['mcp-personal'],
+        operation_id='ai_v1_mcp_personal_agent_call_logs_list',
+        summary='List MCP tool-call logs for your agent',
+        description=(
+            'Returns tool calls recorded by the Shellui AI MCP gateway for one agent '
+            'the caller owns. Authentication is a bearer app JWT, the same verifier as '
+            'GET /ai/v1/mcp/call-logs. Any authenticated member may call this route. '
+            'Staff, company owner, and company admin flags grant access only when that '
+            'same user owns the agent. Agent access tokens are refused. '
+            'The user id and company id come from the JWT. The agent id is the path. '
+            'A row is attributed when owner_user_id equals that user. Rows with an empty '
+            'owner_user_id are attributed when user_id equals that user. '
+            'When the caller has no attributed row for this agent in their company, '
+            'the response is 404. '
+            'Filters: service, tool (tool name), status, created_after (inclusive), '
+            'created_before (exclusive). limit defaults to 50 and cannot exceed 200. '
+            'offset defaults to 0. Arguments are the redacted copy stored at insert. '
+            'MCP is in Beta.'
+        ),
+        parameters=[
+            OpenApiParameter(
+                'agent_id',
+                OpenApiTypes.STR,
+                OpenApiParameter.PATH,
+                description='Agent id. The caller must own this agent.',
+            ),
+            *_LIST_FILTERS,
+        ],
+        responses={
+            200: McpCallLogListSerializer,
+            400: OpenApiResponse(description='Invalid filter.'),
+            401: OpenApiResponse(description='Missing or invalid bearer token, including agent tokens.'),
+            403: OpenApiResponse(description='Agent access token.'),
+            404: OpenApiResponse(description='No call log row for this agent is attributed to the caller.'),
+        },
+    )
+    def get(self, request, agent_id: str):
+        filters, err = _parse_page_filters(request.query_params, include_agent=False)
         if err is not None:
             return err
-
-        try:
-            limit = int(params.get('limit') or _DEFAULT_LIMIT)
-            offset = int(params.get('offset') or 0)
-        except (TypeError, ValueError):
-            return Response({'error': 'Invalid limit or offset.'}, status=400)
-        if limit < 1 or limit > _MAX_LIMIT or offset < 0:
-            return Response({'error': 'Invalid limit or offset.'}, status=400)
-
-        qs = McpCallLog.objects.filter(company_id=company_id)
-        if agent:
-            qs = qs.filter(agent_id=agent)
-        if service:
-            qs = qs.filter(service=service)
-        if tool:
-            qs = qs.filter(tool_name=tool)
-        if status:
-            qs = qs.filter(status=status)
-        if created_after is not None:
-            qs = qs.filter(created_at__gte=created_after)
-        if created_before is not None:
-            qs = qs.filter(created_at__lt=created_before)
-        count = qs.count()
-        rows = qs.order_by('-created_at', '-id')[offset : offset + limit]
-        return Response(
-            {
-                'count': count,
-                'limit': limit,
-                'offset': offset,
-                'call_logs': [_row(row) for row in rows],
-            }
-        )
+        agent_id = str(agent_id or '').strip()
+        user_id = _positive_id(getattr(request.user, 'user_id', None))
+        company_id = _positive_id(getattr(request.user, 'company_id', None))
+        if user_id is None or company_id is None or not agent_id or len(agent_id) > 128:
+            return Response({'error': 'Not found.'}, status=404)
+        owned = owned_agent_call_logs(company_id=company_id, agent_id=agent_id, user_id=user_id)
+        if not owned.exists():
+            return Response({'error': 'Not found.'}, status=404)
+        return _page(owned, filters)

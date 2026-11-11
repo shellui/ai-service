@@ -243,7 +243,8 @@ class GatewayCallLogTests(TestCase):
     @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
     @patch('apps.connector.mcp_approvals.approval_state', return_value='denied')
     @patch('shellui_django.mcp.gateway.requests.post')
-    def test_denied_link_writes_one_row(self, post, _state, _mint, _http, *_mocks):
+    def test_prior_deny_opens_a_fresh_link_approval(self, post, _state, _mint, _http, *_mocks):
+        """A stored deny without an explicit client deny opens a fresh link approval."""
         _storage(post)
         token = _token(secret=self.secret, issuer=self.issuer, mcp_access='ask')
         response = self._call(
@@ -252,12 +253,13 @@ class GatewayCallLogTests(TestCase):
             {'name': 'Ada'},
             _meta={'shellui_approval': {'approval_id': 'appr-no'}},
         )
-        self.assertIn('denied', response.json()['result']['content'][0]['text'].lower())
+        text = response.json()['result']['content'][0]['text'].lower()
+        self.assertIn('approval pending', text)
         rows = list(McpCallLog.objects.filter(company_id=10))
         self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0].status, 'denied')
-        self.assertEqual(rows[0].approval_outcome, 'denied')
+        self.assertEqual(rows[0].status, 'waiting_approval')
         self.assertEqual(rows[0].approval_channel, 'link')
+        self.assertEqual(rows[0].tool_name, 'storage_create_bucket')
 
     @patch('apps.connector.mcp_identity._http_post', side_effect=_identity_http)
     @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')

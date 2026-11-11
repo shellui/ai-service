@@ -35,6 +35,9 @@ class McpCallLog(models.Model):
     client_name = models.CharField(max_length=120, blank=True, default='')
     token_kind = models.CharField(max_length=32, blank=True, default='')
     user_id = models.PositiveIntegerField(null=True, blank=True)
+    # Regional user the agent acts for (identity Agent.created_by). Null when the
+    # agent JWT omitted owner_user_id, including every row written before this column.
+    owner_user_id = models.PositiveIntegerField(null=True, blank=True)
     user_email = models.CharField(max_length=254, blank=True, default='')
     service = models.CharField(max_length=32, blank=True, default='')
     tool_name = models.CharField(max_length=255, blank=True, default='')
@@ -61,6 +64,7 @@ class McpCallLog(models.Model):
         indexes = [
             models.Index(fields=['company_id', 'created_at'], name='mcpcall_co_created_idx'),
             models.Index(fields=['company_id', 'agent_id'], name='mcpcall_co_agent_idx'),
+            models.Index(fields=['company_id', 'agent_id', 'owner_user_id'], name='mcpcall_co_ag_owner_idx'),
         ]
 
     def __str__(self) -> str:

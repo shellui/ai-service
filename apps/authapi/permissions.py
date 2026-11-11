@@ -28,6 +28,22 @@ def _is_agent_principal(user) -> bool:
     return username.startswith('agent:')
 
 
+class IsPersonalAgentCallLogReader(BasePermission):
+    """Authenticated app user. Agent tokens are refused.
+
+    Staff, company owner, and company admin flags do not widen access.
+    The view returns 404 unless the caller owns the agent.
+    """
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not user or not getattr(user, 'is_authenticated', False):
+            return False
+        if _is_agent_principal(user):
+            return False
+        return True
+
+
 class IsMcpCallLogReader(BasePermission):
     """Staff, company owners, or company admins. Agent tokens are refused.
 
