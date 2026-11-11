@@ -343,8 +343,9 @@ def discovery_tool_definitions() -> list[dict[str, Any]]:
             'title': 'AI: Approval status',
             'description': (
                 'Read one Shellui approval without running the tool. Pass the approval_id from a pending '
-                'tool result. Returns status pending, approved, denied, or expired, plus the approval link '
-                'and expiry when known. When status is approved, call the original tool again with the same '
+                'tool result. Prefer a single call with Accept text/event-stream: while pending, the response '
+                'holds as SSE until approved, denied, expired, or the wait times out. JSON-only callers get a '
+                'one-shot status. When status is approved, call the original tool again with the same '
                 'arguments. That runs it once.'
             ),
             'inputSchema': {

@@ -11,6 +11,7 @@ from drf_spectacular.views import (
 )
 
 from apps.authapi.ai_jwks_views import AiServiceJwksView
+from apps.connector.mcp_approval_decided_views import McpApprovalDecidedView
 from apps.connector.mcp_oauth import OAuthProtectedResourceMetadataView
 from apps.connector.mcp_views import mcp_endpoint, mcp_plain_endpoint
 
@@ -19,6 +20,11 @@ from . import views
 urlpatterns = [
     path('', views.root, name='root'),
     path('health/live', views.health_live, name='health-live'),
+    path(
+        'internal/mcp-approval-decided',
+        McpApprovalDecidedView.as_view(),
+        name='internal-mcp-approval-decided',
+    ),
     path('.well-known/jwks.json', AiServiceJwksView.as_view(), name='jwks'),
     # RFC 9728 path insertion: /.well-known/oauth-protected-resource + /c/<id>/mcp.
     # MCP clients also request the same path with a trailing slash.

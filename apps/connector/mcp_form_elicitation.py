@@ -152,28 +152,48 @@ def wait_for_link_page_approval(
     interval_seconds: float = 0.5,
     sleep: Callable[[float], None] = time.sleep,
     approval_state: Callable[[dict[str, Any]], str | None] | None = None,
+    wait_decision: Callable[..., str | None] | None = None,
 ) -> str | None:
-    """Poll Identity until the browser page decides, or the timeout elapses.
+    """Wait until the browser page decides, or the timeout elapses.
 
-    Client elicitation answers (Open / dismiss / decline) are drained and ignored —
+    Uses Redis/local wake (Identity POSTs decide → ai publish). One Identity
+    ``approval_state`` read at start and again on timeout as fallback. Client
+    elicitation answers (Open / dismiss / decline) are drained and ignored —
     only the identity approval page can approve or deny a link-channel row.
+
+    ``interval_seconds`` and ``sleep`` are retained for callers/tests; the happy
+    path no longer polls Identity on that interval.
     """
     from apps.connector import mcp_approvals as approvals
+    from apps.connector.mcp_approval_events import wait_approval_decision
 
+    _ = (interval_seconds, sleep)  # wake path; Identity is not polled on an interval
     state_fn = approval_state or approvals.approval_state
+    wait_fn = wait_decision or wait_approval_decision
     timeout = max(0.0, float(timeout_seconds))
-    interval = max(0.05, float(interval_seconds))
-    deadline = time.monotonic() + timeout
-    while True:
+
+    def drain() -> None:
         if session_id and rpc_id:
             _take_result(session_id, rpc_id)
-        state = state_fn(approval_payload)
-        if state in {'approved', 'denied', 'expired'}:
-            return state
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            return state if state in {'approved', 'denied', 'expired'} else None
-        sleep(min(interval, remaining))
+
+    drain()
+    state = state_fn(approval_payload)
+    if state in {'approved', 'denied', 'expired'}:
+        return state
+    if timeout <= 0:
+        return None
+
+    approval_id = str(
+        (approval_payload or {}).get('approval_id')
+        or (approval_payload or {}).get('id')
+        or ''
+    ).strip()
+    decided = wait_fn(approval_id, timeout_seconds=timeout, drain=drain)
+    if decided in {'approved', 'denied', 'expired'}:
+        return decided
+    drain()
+    state = state_fn(approval_payload)
+    return state if state in {'approved', 'denied', 'expired'} else None
 
 
 def sse_message(payload: dict[str, Any]) -> str:
@@ -223,8 +243,9 @@ def link_approval_stream(
     elicit_params: dict[str, Any] | None = None,
     approval_state: Callable[[dict[str, Any]], str | None] | None = None,
     interval_seconds: float = 0.5,
+    wait_decision: Callable[..., str | None] | None = None,
 ) -> Iterator[str]:
-    """Hold tools/call open, optionally offer URL elicitation, poll Identity, then finish."""
+    """Hold tools/call open, optionally offer URL elicitation, wait for decide wake, then finish."""
     from secrets import token_hex
 
     rpc_id = ''
@@ -247,6 +268,7 @@ def link_approval_stream(
         interval_seconds=interval_seconds,
         sleep=sleep,
         approval_state=approval_state,
+        wait_decision=wait_decision,
     )
     body = on_page_state(state)
     yield sse_message({'jsonrpc': '2.0', 'id': call_id, 'result': body.get('result', body)})

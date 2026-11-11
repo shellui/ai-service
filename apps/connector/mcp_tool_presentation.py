@@ -354,7 +354,7 @@ def shellui_gateway_instructions(
         'Workflow: call ai_list_services, then ai_search_tools with a short phrase, then tools/call or ai_call_tool. '
         'Use ai_describe_tool for argument names. Pass those names. Do not pass HTTP method or path. '
         'If a tool result says approval pending, show the approval link to the user. '
-        'After they approve, call the same tool again. ai_get_approval reads the decision without running the tool.\n'
+        'Call ai_get_approval once (SSE holds until decided). After they approve, call the same tool again.\n'
         f'Connected services for this agent: {services}.\n'
         f'Tool names start with a service id ({prefixes or "service_"}), then verb and resource '
         '(for example identity_list_users, hosting_list_apps).\n'

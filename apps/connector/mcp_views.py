@@ -8,7 +8,7 @@ import logging
 
 import requests
 from django.conf import settings
-from django.http import HttpRequest, HttpResponse, JsonResponse
+from django.http import HttpRequest, HttpResponse, JsonResponse, StreamingHttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from drf_spectacular.generators import SchemaGenerator
 from rest_framework.request import Request
@@ -1437,8 +1437,38 @@ class PrefixingMcpServer(AggregatingMcpServer):
             return finish(payload, is_error='error' in payload and not payload.get('tools'))
         if export_name == 'ai_get_approval':
             from apps.connector.mcp_approvals import approval_status_for_agent
+            from apps.connector.mcp_form_elicitation import (
+                elicitation_wait_seconds,
+                request_accepts_sse,
+            )
 
-            payload = approval_status_for_agent(str(arguments.get('approval_id') or ''), agent_claims)
+            approval_id = str(arguments.get('approval_id') or '')
+            payload = approval_status_for_agent(approval_id, agent_claims)
+            wait_seconds = elicitation_wait_seconds()
+            if (
+                payload.get('status') == 'pending'
+                and wait_seconds > 0
+                and request_accepts_sse(request)
+            ):
+                self._log_discovery_call(
+                    agent_claims=agent_claims,
+                    export_name=export_name,
+                    arguments=arguments,
+                    is_error=False,
+                    message='',
+                )
+                response = StreamingHttpResponse(
+                    _ai_get_approval_sse_stream(
+                        req_id=req_id,
+                        approval_id=str(payload.get('approval_id') or approval_id),
+                        agent_claims=agent_claims,
+                        timeout_seconds=wait_seconds,
+                    ),
+                    content_type='text/event-stream',
+                )
+                response['Cache-Control'] = 'no-cache'
+                response['X-Accel-Buffering'] = 'no'
+                return response
             return finish(payload, is_error=payload.get('status') == 'unknown')
         if export_name == 'ai_call_tool':
             inner = str(arguments.get('name') or '').strip()
@@ -1519,6 +1549,75 @@ class PrefixingMcpServer(AggregatingMcpServer):
 def _schema() -> dict:
     generator = SchemaGenerator()
     return generator.get_schema(request=None, public=True)
+
+
+def _ai_get_approval_sse_stream(
+    *,
+    req_id,
+    approval_id: str,
+    agent_claims: dict,
+    timeout_seconds: float,
+    keepalive_seconds: float = 15.0,
+):
+    """Yield SSE keepalives while waiting for an approval decide wake, then one tools/call result."""
+    import queue
+    import threading
+    import time
+
+    from apps.connector import mcp_approval_copy as copy
+    from apps.connector.mcp_approval_events import wait_approval_decision
+    from apps.connector.mcp_approvals import approval_status_for_agent
+    from apps.connector.mcp_form_elicitation import sse_message
+
+    timeout = max(0.0, float(timeout_seconds))
+    ping_every = max(1.0, float(keepalive_seconds))
+    result_q: queue.Queue[str | None] = queue.Queue(maxsize=1)
+
+    def _wait() -> None:
+        try:
+            result_q.put(wait_approval_decision(approval_id, timeout_seconds=timeout))
+        except Exception:
+            result_q.put(None)
+
+    threading.Thread(target=_wait, daemon=True).start()
+    deadline = time.monotonic() + timeout
+    decided: str | None = None
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            try:
+                decided = result_q.get_nowait()
+            except queue.Empty:
+                decided = None
+            break
+        try:
+            decided = result_q.get(timeout=min(ping_every, remaining))
+            break
+        except queue.Empty:
+            yield ': keepalive\n\n'
+    final = approval_status_for_agent(approval_id, agent_claims)
+    if decided in {'approved', 'denied', 'expired'} and final.get('status') == 'pending':
+        final = {**final, 'status': decided}
+        tool_name = str(final.get('tool') or 'the tool')
+        if decided == 'approved':
+            final['instruction'] = copy.approved_retry_instruction(tool_name=tool_name)
+            final.pop('message', None)
+        elif decided == 'denied':
+            final['message'] = copy.after_deny_text(tool_name=tool_name)
+            final.pop('instruction', None)
+        else:
+            final['message'] = copy.expired_text()
+            final.pop('instruction', None)
+    body = {
+        'content': [
+            {
+                'type': 'text',
+                'text': json.dumps(final, indent=2, sort_keys=True, default=str),
+            }
+        ],
+        'isError': final.get('status') == 'unknown',
+    }
+    yield sse_message({'jsonrpc': '2.0', 'id': req_id, 'result': body})
 
 
 def _mint_token(agent: AgentRecord, mcp_url: str) -> str:

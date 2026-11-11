@@ -1344,7 +1344,8 @@ class ApprovalLinkGateTests(TestCase):
         self.assertEqual(params['url'], outcome.elicit['approval_url'])
         self.assertNotIn(params['url'], params['message'])
 
-    def test_link_hold_polls_until_browser_approves(self):
+    def test_link_hold_waits_for_decide_wake(self):
+        from apps.connector.mcp_approval_events import publish_approval_decision
         from apps.connector.mcp_form_elicitation import (
             link_approval_stream,
             remember_open_elicitation,
@@ -1353,7 +1354,19 @@ class ApprovalLinkGateTests(TestCase):
         )
 
         payload = {'approval_id': 'appr-1'}
-        states = iter(['pending', 'pending', 'approved'])
+        identity_reads = []
+
+        def approval_state(_p):
+            identity_reads.append(1)
+            return 'pending'
+
+        def wait_decision(approval_id, *, timeout_seconds, drain=None):
+            self.assertEqual(approval_id, 'appr-1')
+            if drain:
+                drain()
+            publish_approval_decision('appr-1', 'approved')
+            return 'approved'
+
         seen = []
 
         def on_page_state(state):
@@ -1368,30 +1381,41 @@ class ApprovalLinkGateTests(TestCase):
                 approval_payload=payload,
                 on_page_state=on_page_state,
                 elicit_params={'mode': 'url', 'url': 'https://identity.test/a', 'message': 'Approve'},
-                approval_state=lambda _p: next(states),
-                interval_seconds=0.01,
-                sleep=lambda _s: None,
+                approval_state=approval_state,
+                wait_decision=wait_decision,
             )
         )
         self.assertEqual(len(chunks), 2)
         self.assertIn('elicitation/create', chunks[0])
         self.assertIn('state:approved', chunks[1])
         self.assertEqual(seen, ['approved'])
+        # Start read only (no Identity poll spam while waiting).
+        self.assertEqual(len(identity_reads), 1)
 
-        # Client decline is drained; wait continues until Identity reports approved.
+        # Client decline is drained; wait continues until wake reports approved.
         remember_open_elicitation('sess-drain', 'rpc-1')
         store_elicitation_result('sess-drain', 'rpc-1', {'action': 'decline'})
-        states2 = iter(['pending', 'approved'])
+        drained = []
+
+        def state2(_p):
+            return 'pending'
+
+        def wait2(approval_id, *, timeout_seconds, drain=None):
+            if drain:
+                drain()
+                drained.append(True)
+            return 'approved'
+
         decided = wait_for_link_page_approval(
             approval_payload={'approval_id': 'appr-2'},
             session_id='sess-drain',
             rpc_id='rpc-1',
             timeout_seconds=5,
-            interval_seconds=0.01,
-            sleep=lambda _s: None,
-            approval_state=lambda _p: next(states2),
+            approval_state=state2,
+            wait_decision=wait2,
         )
         self.assertEqual(decided, 'approved')
+        self.assertTrue(drained)
 
     def test_form_approve_records_allow_and_runs_once(self):
         from apps.connector.mcp_approval_gate import apply_elicitation_result

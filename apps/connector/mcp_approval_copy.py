@@ -50,7 +50,8 @@ def pending_agent_instruction(*, tool_name: str) -> str:
     return (
         'This link is for the human user. Show it to them verbatim as a clickable link. '
         'Do not open, fetch, or sign in to it yourself. '
-        f'After they say they approved {tool_name}, call this tool again with the same arguments.'
+        'Call ai_get_approval once with this approval_id (SSE holds until decided). '
+        f'When status is approved, call {tool_name} again with the same arguments.'
     )
 
 

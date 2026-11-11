@@ -53,7 +53,7 @@ By default **`tools/list`** returns a short set an agent can use to find the rig
 2. **`ai_search_tools`**: natural-language `query`, optional `service`, optional `access` (`read` or `write`), and `limit` (default 8, maximum 20). Matches include the name, description, read/write/destructive/approval flags, and the full input schema.
 3. **`ai_describe_tool`**: full schema and a usage note for one or more tool names. Search and describe load the full catalog when it is missing or expired, through the same fetch, company scope, and cache lifetime as `tools/list?tools=all`. Each company has its own cache entry.
 4. **`ai_call_tool`**: `{name, arguments}` runs that tool through the same tenant, scope, approval, masking, and audit path as a direct **`tools/call`**. In ask mode the person sees the real tool and its arguments.
-5. **`ai_get_approval`**: `{approval_id}` reads one approval without running the tool. Use it to poll after you show the user the approval link. It does not consume the grant. When the status is `approved`, call the original tool again with the same arguments. That runs it once.
+5. **`ai_get_approval`**: `{approval_id}` reads one approval without running the tool. Prefer one call with `Accept: text/event-stream`: while the row is still `pending`, the `tools/call` response is an SSE stream that holds until approved, denied, expired, or the wait times out (~`MCP_APPROVAL_FORM_ELICITATION_WAIT_SECONDS`). JSON-only callers still get a one-shot status. It does not consume the grant. When the status is `approved`, call the original tool again with the same arguments. That runs it once.
 6. Four common reads, when that service is connected: `identity_list_users`, `storage_list_bucket`, `hosting_list_apps`, `email_list_messages`. They answer "who, what files, what apps, what mail" without a search.
 
 Workflow: list services, search, then call. A direct **`tools/call`** of any of the 224 tools still works when that tool is not in the default list. The route cache and the tools list share one TTL, but a route lookup can refresh only the route key. The next call then still has a route after the list has expired. The gateway treats that as a miss and loads `tools/list` for that service again before it decides the tool is unknown. The error text says the tool was not found, or that the catalog could not be loaded. It does not say `Tool call rejected.`
@@ -138,16 +138,16 @@ The stream stays open for `MCP_APPROVAL_FORM_ELICITATION_WAIT_SECONDS` (default 
 
 For form Approve/Deny cards, the elicitation `message` includes the approval URL as a fallback. The pending tool result always puts that URL in the plain text `content` as well as in `structuredContent.approval_url`.
 
-**Link-channel elicitation (destructive tools, or company `link` override).** When the client accepts SSE on `2025-06-18` / `2025-11-25`, the gateway **holds the `tools/call` open** and polls Identity until the human decides on the approval page (or the wait times out). After Approve, it consumes the grant and finishes that same tool call — the person does not need to say “I approved” in chat.
+**Link-channel elicitation (destructive tools, or company `link` override).** When the client accepts SSE on `2025-06-18` / `2025-11-25`, the gateway **holds the `tools/call` open** and waits for Identity’s decide wake (Redis pub/sub on ai-service; one Identity state read at start and on timeout). After Approve, it consumes the grant and finishes that same tool call — the person does not need to say “I approved” in chat.
 
-- Clients that declared URL elicitation (`capabilities.elicitation.url`) also get `elicitation/create` with `mode: url` (one-click Open). The message does **not** repeat the URL; the gateway holds and polls until the browser decides.
-- Form-only clients (including Cursor today) get an **immediate pending tool result** with the raw approval URL in plain text / `structuredContent.approval_url` — no form Submit card (that cannot open the browser). The human opens the link; the agent retries after approval (or polls `ai_get_approval`).
+- Clients that declared URL elicitation (`capabilities.elicitation.url`) also get `elicitation/create` with `mode: url` (one-click Open). The message does **not** repeat the URL; the gateway holds until the browser decides.
+- Form-only clients (including Cursor today) get an **immediate pending tool result** with the raw approval URL in plain text / `structuredContent.approval_url` — no form Submit card (that cannot open the browser). The human opens the link; the agent calls `ai_get_approval` once (SSE holds) then retries the tool when approved.
 - Without SSE: URL-capable clients may still see URL mode as `input_required` on the pending result; otherwise the pending link text is returned immediately.
 - Dismissing or declining a URL elicitation does **not** decide the approval and does **not** end the wait early.
 
 Timeout falls back to the same pending link text as before.
 
-The link text is in the plain `content` text and in `structuredContent`. It tells the agent the link is for the human, to show it verbatim as a clickable link, not to open, fetch, or sign in, and to call the same tool again with the same arguments after the person says they approved.
+The link text is in the plain `content` text and in `structuredContent`. It tells the agent the link is for the human, to show it verbatim as a clickable link, not to open, fetch, or sign in, to call `ai_get_approval` once (SSE holds), and to retry the tool when approved.
 
 A retry with the same agent, tool, and arguments hash reuses the pending approval. The gateway does not create another row while Identity still reports that binding as `pending`.
 
