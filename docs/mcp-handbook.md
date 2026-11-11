@@ -126,7 +126,7 @@ Binding (`service`, `action` = export name, `arguments_hash`, company, agent) is
 
 ## Call logs
 
-The gateway writes one `McpCallLog` row per `tools/call` and does not forward that row to Identity. Company staff and owners list them with `GET /ai/v1/mcp/call-logs` (company taken from the JWT). Status values are `allowed`, `denied`, `waiting_approval`, `failed`, and `error`. See [mcp.md](./mcp.md).
+The gateway writes one `McpCallLog` row per `tools/call` and does not forward that row to Identity. Staff, company owners, and company admins list them with `GET /ai/v1/mcp/call-logs` (company taken from the JWT). Each row includes `operation_title`, `access_kind`, `outcome`, and `resource_label`. Global-company agents also include `agent_audit_scope`, `global_agent_id`, and `global_company_id`. Status values are `allowed`, `denied`, `waiting_approval`, `failed`, and `error`. See [mcp.md](./mcp.md).
 
 ## Revocation cache
 

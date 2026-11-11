@@ -176,6 +176,56 @@ def safe_error_message(value: object) -> str:
     return text[:500]
 
 
+_ACCESS_KINDS = frozenset({'read', 'write', 'destructive'})
+_DISPLAY_OUTCOMES = frozenset({'allowed', 'failed', 'denied', 'waiting_approval', 'session_used'})
+
+
+def access_kind_for_log(raw: object) -> str:
+    """read, write, or destructive from registry or gateway classification. Otherwise unknown."""
+    kind = str(raw or '').strip().lower()
+    return kind if kind in _ACCESS_KINDS else 'unknown'
+
+
+def display_outcome(*, audit_outcome: str, status: str, approval_outcome: str) -> str:
+    """Identity display label: allowed, failed, denied, waiting_approval, or session_used."""
+    o = str(audit_outcome or '').strip().lower()
+    if o in {'pending', 'pending_approval'} or status == 'waiting_approval':
+        return 'waiting_approval'
+    if o == 'session_used' or str(approval_outcome or '').strip().lower() == 'session_used':
+        return 'session_used'
+    if o == 'denied' or status == 'denied':
+        return 'denied'
+    if o in {'allowed', 'success'} or status == 'allowed':
+        return 'allowed'
+    if o in _DISPLAY_OUTCOMES:
+        return o
+    return 'failed'
+
+
+def operation_title_for_log(entry: dict, tool_name: str) -> str:
+    title = str(entry.get('operation_title') or '').strip()
+    fallback = tool_name or 'mcp_call'
+    synthetic = f'Operation {fallback}'
+    if not title or title == synthetic or title == 'Operation tool':
+        return fallback[:200]
+    return title[:200]
+
+
+def resource_label_for_log(entry: dict, tool_name: str) -> str:
+    label = str(entry.get('resource_label') or '').strip()
+    if label:
+        return label[:255]
+    return (tool_name or '')[:255]
+
+
+def global_ids_from_claims(claims: dict | None) -> tuple[str, str]:
+    if not isinstance(claims, dict):
+        return '', ''
+    agent = str(claims.get('global_agent_id') or '').strip()[:64]
+    company = str(claims.get('global_company_id') or '').strip()[:64]
+    return agent, company
+
+
 def _channel(value: object) -> str:
     raw = str(value or '').strip().lower()
     return raw if raw in _CHANNELS else 'none'
@@ -228,8 +278,10 @@ def persist_mcp_call(entry: dict, *, arguments: dict | None = None) -> None:
             status_code = 0
         error_code = sanitize_error_code(entry.get('error_code')) or ''
         status = public_status(outcome=outcome, status_code=status_code, error_code=error_code)
+        approval_outcome = _first_text(entry.get('approval_outcome'), note.get('approval_outcome'), limit=32)
         duration = entry.get('duration_ms')
         duration_ms = int(duration) if isinstance(duration, (int, float)) and duration >= 0 else 0
+        global_agent_id, global_company_id = global_ids_from_claims(claims)
         McpCallLog.objects.create(
             company_id=int(company),
             agent_id=_first_text(entry.get('agent_id'), claims.get('agent_id'), limit=128),
@@ -242,6 +294,12 @@ def persist_mcp_call(entry: dict, *, arguments: dict | None = None) -> None:
             service=service_for_log(str(entry.get('service') or ''), tool_name),
             tool_name=tool_name,
             wrapper_tool=wrapper,
+            operation_title=operation_title_for_log(entry, tool_name),
+            access_kind=access_kind_for_log(entry.get('access_kind')),
+            outcome=display_outcome(audit_outcome=outcome, status=status, approval_outcome=approval_outcome),
+            resource_label=resource_label_for_log(entry, tool_name),
+            global_agent_id=global_agent_id,
+            global_company_id=global_company_id,
             arguments_redacted=redact_arguments_for_log(raw_arguments),
             status=status,
             status_code=status_code,
@@ -250,7 +308,7 @@ def persist_mcp_call(entry: dict, *, arguments: dict | None = None) -> None:
             duration_ms=duration_ms,
             approval_id=_first_text(entry.get('approval_id'), note.get('approval_id'), limit=64),
             approval_channel=_channel(entry.get('approval_channel') or note.get('approval_channel')),
-            approval_outcome=_first_text(entry.get('approval_outcome'), note.get('approval_outcome'), limit=32),
+            approval_outcome=approval_outcome,
         )
         _logged.set(True)
     except Exception:

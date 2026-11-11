@@ -6,10 +6,11 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
+from rest_framework import serializers
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.authapi.permissions import IsStaffOrCompanyOwner
+from apps.authapi.permissions import IsMcpCallLogReader
 from apps.connector.mcp_call_store import SERVICES
 from apps.connector.models import McpCallLog
 
@@ -31,7 +32,7 @@ def _parse_bound(raw: str, *, name: str) -> tuple[object | None, Response | None
 
 
 def _row(row: McpCallLog) -> dict:
-    return {
+    item = {
         'id': row.id,
         'company_id': row.company_id,
         'agent_id': row.agent_id,
@@ -44,6 +45,10 @@ def _row(row: McpCallLog) -> dict:
         'service': row.service,
         'tool_name': row.tool_name,
         'wrapper_tool': row.wrapper_tool,
+        'operation_title': row.operation_title or row.tool_name or 'mcp_call',
+        'access_kind': row.access_kind or 'unknown',
+        'outcome': row.outcome or 'failed',
+        'resource_label': row.resource_label or row.tool_name or '',
         'arguments': row.arguments_redacted or {},
         'status': row.status,
         'status_code': row.status_code,
@@ -55,16 +60,62 @@ def _row(row: McpCallLog) -> dict:
         'approval_outcome': row.approval_outcome,
         'created_at': row.created_at.isoformat(),
     }
+    if row.global_agent_id or row.global_company_id:
+        item['agent_audit_scope'] = 'global_company'
+        item['global_agent_id'] = row.global_agent_id or None
+        item['global_company_id'] = row.global_company_id or None
+    return item
+
+
+class McpCallLogRowSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    company_id = serializers.IntegerField()
+    agent_id = serializers.CharField()
+    agent_name = serializers.CharField()
+    client_id = serializers.CharField()
+    client_name = serializers.CharField()
+    token_kind = serializers.CharField()
+    user_id = serializers.IntegerField(allow_null=True)
+    user_email = serializers.CharField()
+    service = serializers.CharField()
+    tool_name = serializers.CharField()
+    wrapper_tool = serializers.CharField()
+    operation_title = serializers.CharField()
+    access_kind = serializers.ChoiceField(choices=['read', 'write', 'destructive', 'unknown'])
+    outcome = serializers.ChoiceField(
+        choices=['allowed', 'failed', 'denied', 'waiting_approval', 'session_used']
+    )
+    resource_label = serializers.CharField()
+    arguments = serializers.JSONField()
+    status = serializers.ChoiceField(choices=[choice[0] for choice in McpCallLog.STATUSES])
+    status_code = serializers.IntegerField()
+    error_code = serializers.CharField()
+    error_message = serializers.CharField()
+    duration_ms = serializers.IntegerField()
+    approval_id = serializers.CharField()
+    approval_channel = serializers.ChoiceField(choices=['form', 'link', 'none'])
+    approval_outcome = serializers.CharField()
+    created_at = serializers.DateTimeField()
+    agent_audit_scope = serializers.CharField(required=False)
+    global_agent_id = serializers.CharField(required=False, allow_null=True)
+    global_company_id = serializers.CharField(required=False, allow_null=True)
+
+
+class McpCallLogListSerializer(serializers.Serializer):
+    count = serializers.IntegerField()
+    limit = serializers.IntegerField()
+    offset = serializers.IntegerField()
+    call_logs = McpCallLogRowSerializer(many=True)
 
 
 class McpCallLogListView(APIView):
-    """Company-scoped call log for staff and company owners.
+    """Company-scoped call log for staff, company owners, and company admins.
 
     The company comes from the JWT. A token cannot read another company's rows.
-    Agent access tokens are not accepted by this authentication class.
+    Agent access tokens are refused.
     """
 
-    permission_classes = [IsStaffOrCompanyOwner]
+    permission_classes = [IsMcpCallLogReader]
 
     @extend_schema(
         tags=['mcp-admin'],
@@ -72,7 +123,16 @@ class McpCallLogListView(APIView):
         summary='List MCP agent tool-call logs',
         description=(
             'Returns tool calls recorded by the Shellui AI MCP gateway for the company '
-            'on the caller JWT. Staff and company owners only. '
+            'on the caller JWT. Staff, company owners, and company admins only. '
+            'A company admin is user_metadata.is_company_admin, or a group named '
+            'admin, admins, or company admins, and does not have to be an owner. '
+            'Agent access tokens are refused. '
+            'Each row includes operation_title (tool name when no registry title), '
+            'access_kind (read, write, destructive, or unknown), outcome '
+            '(allowed, failed, denied, waiting_approval, or session_used), and '
+            'resource_label. Global-company agents also include agent_audit_scope '
+            'global_company, global_agent_id, and global_company_id when the token '
+            'carried those ids. '
             'Filters: agent (agent id), service, tool (tool name), status, '
             'created_after (inclusive), created_before (exclusive). '
             'limit defaults to 50 and cannot exceed 200. offset defaults to 0.'
@@ -106,10 +166,12 @@ class McpCallLogListView(APIView):
             OpenApiParameter('offset', OpenApiTypes.INT, description='Rows to skip. Default 0.'),
         ],
         responses={
-            200: OpenApiResponse(description='Matching call logs for this company.'),
+            200: McpCallLogListSerializer,
             400: OpenApiResponse(description='Invalid filter.'),
-            401: OpenApiResponse(description='Missing or invalid bearer token.'),
-            403: OpenApiResponse(description='Caller is not staff or a company owner, or has no company.'),
+            401: OpenApiResponse(description='Missing or invalid bearer token, including agent tokens.'),
+            403: OpenApiResponse(
+                description='Caller is not staff, a company owner, or a company admin, or has no company.'
+            ),
         },
     )
     def get(self, request):

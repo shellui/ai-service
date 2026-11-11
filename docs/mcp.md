@@ -229,7 +229,7 @@ The gateway does not POST tool-call logs to Identity `POST /api/v1/mcp/internal/
 
 `GET /ai/v1/mcp/call-logs`
 
-Authentication is a bearer JWT verified the same way as other ai-service APIs. The caller must be staff or a company owner. Rows are limited to the `company_id` on that JWT. A token cannot read another company. Agent access tokens are not accepted on this route.
+Authentication is a bearer JWT verified the same way as other ai-service APIs. The caller must be staff, a company owner, or a company admin for the `company_id` on that JWT. A company admin is `user_metadata.is_company_admin`, or a group named `admin`, `admins`, or `company admins`, and does not have to be an owner. A plain member cannot read the list. A token cannot read another company. Agent access tokens are refused.
 
 | Parameter | Meaning |
 | --- | --- |
@@ -261,6 +261,10 @@ Authentication is a bearer JWT verified the same way as other ai-service APIs. T
       "service": "storage",
       "tool_name": "storage_list_buckets",
       "wrapper_tool": "",
+      "operation_title": "storage_list_buckets",
+      "access_kind": "read",
+      "outcome": "allowed",
+      "resource_label": "storage_list_buckets",
       "arguments": {},
       "status": "allowed",
       "status_code": 200,
@@ -276,7 +280,11 @@ Authentication is a bearer JWT verified the same way as other ai-service APIs. T
 }
 ```
 
-`token_kind` is `delegated`, `personal`, or `agent`. `approval_channel` is `form`, `link`, or `none`. `failed` means the tool ran and reported an error. `error` means the gateway could not finish the call (timeout or upstream outage). Arguments go through `redact_arguments` before insert. Secret-shaped fields are stored as `***`.
+`token_kind` is `delegated`, `personal`, or `agent`. `approval_channel` is `form`, `link`, or `none`. `failed` means the tool ran and reported an error. `error` means the gateway could not finish the call (timeout or upstream outage). `outcome` is the display label: `allowed`, `failed`, `denied`, `waiting_approval`, or `session_used`. `access_kind` is `read`, `write`, or `destructive` from registry flags or the gateway classification, otherwise `unknown`. `operation_title` falls back to the tool name. `resource_label` is the audit label, or the tool name when that label is empty.
+
+When the agent token carries `global_agent_id` or `global_company_id`, the row also includes `agent_audit_scope` (`global_company`), `global_agent_id`, and `global_company_id`.
+
+Arguments go through `redact_arguments` before insert. Secret-shaped fields are stored as `***`.
 
 Retention is `MCP_CALL_LOG_RETENTION_DAYS` (default 90). `python manage.py prune_mcp_call_logs` deletes older rows.
 

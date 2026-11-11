@@ -13,12 +13,13 @@ from django.test import Client, TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from apps.authapi.principal import StoragePrincipal
+from apps.authapi.principal import StoragePrincipal, principal_from_claims
 from apps.connector.mcp_approvals import ConsumeResult, DecideResult
 from apps.connector.mcp_call_store import (
     persist_mcp_call,
     public_status,
     redact_arguments_for_log,
+    reset_gateway_tool_call,
     token_kind_from_claims,
 )
 from apps.connector.models import McpCallLog
@@ -149,6 +150,10 @@ class GatewayCallLogTests(TestCase):
         self.assertEqual(row.token_kind, 'agent')
         self.assertEqual(row.client_name, 'Inspector')
         self.assertEqual(row.approval_channel, 'none')
+        self.assertEqual(row.access_kind, 'read')
+        self.assertEqual(row.outcome, 'allowed')
+        self.assertEqual(row.operation_title, 'storage_list_buckets')
+        self.assertTrue(row.resource_label)
 
     @patch('apps.connector.mcp_identity._http_post', side_effect=_identity_http)
     @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
@@ -395,6 +400,64 @@ class CallLogHelperTests(TestCase):
         persist_mcp_call({'company_id': 'nope', 'tool': 'ai_list_services', 'outcome': 'allowed', 'status': 200})
         self.assertEqual(McpCallLog.objects.count(), 0)
 
+    def test_company_admin_claim_is_not_an_owner(self):
+        admin = principal_from_claims(
+            {
+                'sub': '4',
+                'user_id': 4,
+                'company_id': 10,
+                'user_metadata': {'is_company_owner': False, 'is_company_admin': True},
+            }
+        )
+        self.assertTrue(admin.is_company_admin)
+        self.assertFalse(admin.is_company_owner)
+        grouped = principal_from_claims(
+            {
+                'sub': '5',
+                'user_id': 5,
+                'company_id': 10,
+                'user_metadata': {'groups': ['Company admins']},
+            }
+        )
+        self.assertTrue(grouped.is_company_admin)
+        self.assertFalse(grouped.is_company_owner)
+        member = principal_from_claims(
+            {
+                'sub': '6',
+                'user_id': 6,
+                'company_id': 10,
+                'user_metadata': {'groups': ['Members']},
+            }
+        )
+        self.assertFalse(member.is_company_admin)
+        self.assertFalse(member.is_company_owner)
+
+    def test_persist_keeps_global_ids_from_the_token(self):
+        reset_gateway_tool_call()
+        persist_mcp_call(
+            {
+                'company_id': 10,
+                'tool': 'identity_list_users',
+                'service': 'identity',
+                'outcome': 'allowed',
+                'status': 200,
+                'access_kind': 'read',
+                'operation_title': 'Operation identity_list_users',
+                'agent_claims': {
+                    'agent_id': 'agent-g',
+                    'company_id': 10,
+                    'global_agent_id': '33333333-3333-4333-8333-333333333333',
+                    'global_company_id': '22222222-2222-4222-8222-222222222222',
+                },
+            }
+        )
+        row = McpCallLog.objects.get(tool_name='identity_list_users')
+        self.assertEqual(row.global_agent_id, '33333333-3333-4333-8333-333333333333')
+        self.assertEqual(row.global_company_id, '22222222-2222-4222-8222-222222222222')
+        self.assertEqual(row.operation_title, 'identity_list_users')
+        self.assertEqual(row.outcome, 'allowed')
+        self.assertEqual(row.access_kind, 'read')
+
 
 class CallLogListApiTests(TestCase):
     def setUp(self):
@@ -435,7 +498,7 @@ class CallLogListApiTests(TestCase):
         self.newer.refresh_from_db()
         self.client = APIClient()
 
-    def _auth(self, *, company_id=10, staff=False, owner=True):
+    def _auth(self, *, company_id=10, staff=False, owner=True, admin=False):
         self.client.force_authenticate(
             user=StoragePrincipal(
                 user_id=7,
@@ -443,6 +506,7 @@ class CallLogListApiTests(TestCase):
                 email='owner@example.com',
                 is_staff=staff,
                 is_company_owner=owner,
+                is_company_admin=admin,
             )
         )
 
@@ -481,6 +545,15 @@ class CallLogListApiTests(TestCase):
         self.assertEqual(other.json()['count'], 1)
         self.assertEqual(other.json()['call_logs'][0]['company_id'], 11)
 
+    def test_company_admin_non_owner_can_read_and_member_cannot(self):
+        self._auth(company_id=10, staff=False, owner=False, admin=True)
+        listed = self.client.get('/ai/v1/mcp/call-logs')
+        self.assertEqual(listed.status_code, 200, listed.content)
+        self.assertEqual(listed.json()['count'], 2)
+        self.assertTrue(all(row['company_id'] == 10 for row in listed.json()['call_logs']))
+        self._auth(company_id=10, staff=False, owner=False, admin=False)
+        self.assertEqual(self.client.get('/ai/v1/mcp/call-logs').status_code, 403)
+
     def test_staff_can_list_own_company_and_members_cannot(self):
         self._auth(company_id=10, staff=True, owner=False)
         self.assertEqual(self.client.get('/ai/v1/mcp/call-logs').status_code, 200)
@@ -489,9 +562,82 @@ class CallLogListApiTests(TestCase):
         self.client.force_authenticate(user=None)
         self.assertEqual(self.client.get('/ai/v1/mcp/call-logs').status_code, 401)
 
+    @override_settings(
+        DEBUG=True,
+        JWT_HS256_FALLBACK_SECRET='test-hs256-secret-for-mcp-gateway-tests-only',  # gitleaks:allow
+        ALLOW_JWT_HS256_FALLBACK=True,
+        IDENTITY_ISSUER='',
+        IDENTITY_AUDIENCE='',
+        IDENTITY_JWKS_URL='',
+    )
+    def test_agent_token_is_refused(self):
+        import time
+
+        import jwt
+
+        now = int(time.time())
+        token = jwt.encode(
+            {
+                'token_type': 'access',
+                'sub': 'agent:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+                'agent_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+                'company_id': 10,
+                'scope': 'ai',
+                'iat': now,
+                'exp': now + 600,
+            },
+            'test-hs256-secret-for-mcp-gateway-tests-only',  # gitleaks:allow
+            algorithm='HS256',
+        )
+        client = APIClient()
+        response = client.get('/ai/v1/mcp/call-logs', HTTP_AUTHORIZATION=f'Bearer {token}')
+        self.assertEqual(response.status_code, 401)
+        self.client.force_authenticate(
+            user=StoragePrincipal(
+                user_id=0,
+                company_id=10,
+                username='agent:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+                claims={
+                    'sub': 'agent:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+                    'agent_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+                },
+            )
+        )
+        self.assertEqual(self.client.get('/ai/v1/mcp/call-logs').status_code, 403)
+
     def test_prune_keeps_rows_inside_the_window(self):
         McpCallLog.objects.filter(pk=self.older.pk).update(created_at=timezone.now() - timedelta(days=91))
         call_command('prune_mcp_call_logs', days=90)
         self.assertFalse(McpCallLog.objects.filter(pk=self.older.pk).exists())
         self.assertTrue(McpCallLog.objects.filter(pk=self.newer.pk).exists())
         self.assertTrue(McpCallLog.objects.filter(company_id=11).exists())
+
+    def test_global_company_fields_are_included_only_when_present(self):
+        McpCallLog.objects.create(
+            company_id=10,
+            agent_id='agent-g',
+            service='identity',
+            tool_name='identity_list_users',
+            operation_title='List users',
+            access_kind='read',
+            outcome='session_used',
+            resource_label='GET /api/v1/users/',
+            status='allowed',
+            status_code=200,
+            global_agent_id='33333333-3333-4333-8333-333333333333',
+            global_company_id='22222222-2222-4222-8222-222222222222',
+        )
+        self._auth(owner=True)
+        row = self.client.get('/ai/v1/mcp/call-logs', {'agent': 'agent-g'}).json()['call_logs'][0]
+        self.assertEqual(row['agent_audit_scope'], 'global_company')
+        self.assertEqual(row['global_agent_id'], '33333333-3333-4333-8333-333333333333')
+        self.assertEqual(row['global_company_id'], '22222222-2222-4222-8222-222222222222')
+        self.assertEqual(row['operation_title'], 'List users')
+        self.assertEqual(row['access_kind'], 'read')
+        self.assertEqual(row['outcome'], 'session_used')
+        self.assertEqual(row['resource_label'], 'GET /api/v1/users/')
+        regional = self.client.get('/ai/v1/mcp/call-logs', {'agent': 'agent-a'}).json()['call_logs'][0]
+        self.assertNotIn('agent_audit_scope', regional)
+        self.assertNotIn('global_agent_id', regional)
+        self.assertEqual(regional['operation_title'], 'storage_list_buckets')
+        self.assertEqual(regional['access_kind'], 'unknown')
