@@ -128,26 +128,13 @@ The text content starts with `Approval pending.` and includes the same JSON. `_m
 
 Destructive tools (`destructiveHint`, registry `_meta.destructive`, or `DELETE`) always use the approval link. A company can force the link for every other tool with `MCP_APPROVAL_CHANNEL_BY_COMPANY` (JSON map of company id to `form` or `link`). That setting cannot turn a destructive tool into an in-chat approval. Identity has no per-company approval-channel field, so this override is gateway configuration.
 
-Form elicitation is used only when the client declared form mode and the negotiated revision can carry it:
+**URL first, then wait.** The first approval-gated `tools/call` **always** returns immediately with a pending tool result: the raw approval URL in plain `content` text and in `structuredContent.approval_url`. The gateway does **not** hold that `tools/call` open for elicitation or Identity decide. LLM agents (Cursor, Hermes, and others) only see tool results after they return; holding the call left chat blank until a ~90s timeout.
 
-- `2025-11-25` and `2025-06-18`: the `tools/call` POST is answered as `text/event-stream`. The first SSE event is a server request, `elicitation/create` (form Approve/Deny, or URL mode for link-channel approvals). The client posts the JSON-RPC result back on the same session. The gateway then finishes that tool call on the same stream. Hermes uses this path. Its default `protocol: auto` completes the legacy `initialize` handshake, so it lands on `2025-06-18` / `2025-11-25` and never reads `resultType: input_required`.
-- `2026-07-28` only: `resultType: input_required` with `inputResponses` on the retry. This gateway does not negotiate that revision, so it does not send form `input_required` for in-chat Approve/Deny. URL-capable clients that cannot hold SSE still receive URL mode as `input_required` on the pending link result.
-- Anything else, or a client that does not accept `text/event-stream`: the link text below.
+After showing the link, the agent calls **`ai_get_approval`** once (prefer `Accept: text/event-stream`: SSE holds until approved, denied, expired, or `MCP_APPROVAL_FORM_ELICITATION_WAIT_SECONDS`). When status is `approved`, call the original tool again with the same arguments. Identity notifies ai-service on decide so waiters wake over Redis.
 
-The stream stays open for `MCP_APPROVAL_FORM_ELICITATION_WAIT_SECONDS` (default 90). That stays under `GUNICORN_TIMEOUT` (default 120) so the worker can still write the link fallback. The wait is shared through the Django cache, so a multi-worker deployment needs `REDIS_URL`. If the client does not answer in time, or the stream cannot be held, the `tools/call` result is the link text. `accept` (including an empty `content` object, which is what Hermes sends for Yes) records `decision: allow` with `consent: in_chat` and runs the tool once. `decline` records `decision: deny` and does not run the tool. `cancel` does not decide; the result is the link text and the approval stays pending.
+URL-capable clients (`capabilities.elicitation.url`) may also get non-blocking `resultType: input_required` with `mode: url` on that same pending result (Open button). Dismissing or declining that elicitation does not decide the row. Hermes’s default `protocol: auto` lands on `2025-06-18` / `2025-11-25` and never reads `input_required`; it still gets the pending URL in the tool text.
 
-For form Approve/Deny cards, the elicitation `message` includes the approval URL as a fallback. The pending tool result always puts that URL in the plain text `content` as well as in `structuredContent.approval_url`.
-
-**Link-channel elicitation (destructive tools, or company `link` override).** When the client accepts SSE on `2025-06-18` / `2025-11-25`, the gateway **holds the `tools/call` open** and waits for Identity’s decide wake (Redis pub/sub on ai-service; one Identity state read at start and on timeout). After Approve, it consumes the grant and finishes that same tool call — the person does not need to say “I approved” in chat.
-
-- Clients that declared URL elicitation (`capabilities.elicitation.url`) also get `elicitation/create` with `mode: url` (one-click Open). The message does **not** repeat the URL; the gateway holds until the browser decides.
-- Form-only clients (including Cursor today) get an **immediate pending tool result** with the raw approval URL in plain text / `structuredContent.approval_url` — no form Submit card (that cannot open the browser). The human opens the link; the agent calls `ai_get_approval` once (SSE holds) then retries the tool when approved.
-- Without SSE: URL-capable clients may still see URL mode as `input_required` on the pending result; otherwise the pending link text is returned immediately.
-- Dismissing or declining a URL elicitation does **not** decide the approval and does **not** end the wait early.
-
-Timeout falls back to the same pending link text as before.
-
-The link text is in the plain `content` text and in `structuredContent`. It tells the agent the link is for the human, to show it verbatim as a clickable link, not to open, fetch, or sign in, to call `ai_get_approval` once (SSE holds), and to retry the tool when approved.
+The pending instruction tells the agent the link is for the human, to show it verbatim as a clickable link, not to open, fetch, or sign in, to call `ai_get_approval` once (SSE holds), and to retry the tool when approved.
 
 A retry with the same agent, tool, and arguments hash reuses the pending approval. The gateway does not create another row while Identity still reports that binding as `pending`.
 
@@ -155,35 +142,9 @@ In-chat consent trusts the MCP client. The gateway does not see a separate human
 
 `params._meta.shellui_approval.decision` of `allow` or `session_allow` is ignored. An agent cannot approve itself, including for destructive tools. `deny` is still honored. An `approval_id` in that block is only a correlation hint. Approval otherwise comes from the identity page, admin, or a real elicitation response for a non-destructive tool. **Approval-gated retries** must replay the **full** tool call (same export name and normalized arguments). Changing the action or normalized args requires a **new** approval.
 
-Form elicitation on `2025-06-18` (non-destructive, client declared form elicitation, `Accept` includes `text/event-stream`):
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": "<rpc id>",
-  "method": "elicitation/create",
-  "params": {
-    "mode": "form",
-    "message": "Allow storage_create_bucket? Choose Approve or Deny. This link is for the human user: https://identity.example/oauth/mcp/approval/<id>. Show it verbatim as a clickable link. Do not open, fetch, or sign in to it yourself.",
-    "requestedSchema": {
-      "type": "object",
-      "properties": {
-        "decision": {
-          "type": "string",
-          "title": "Decision",
-          "enum": ["approve", "deny"],
-          "enumNames": ["Approve", "Deny"]
-        }
-      },
-      "required": ["decision"]
-    }
-  }
-}
-```
-
 ### URL elicitation
 
-URL mode is `capabilities.elicitation.url` as an object (MCP spec 2025-11-25). An empty `elicitation` object is form mode only. Hermes declines URL-mode elicitations and does not declare `url`, so destructive approvals stay on the pending link text. Every other agent that declares `url` receives `mode: url` for link-channel approvals (SSE `elicitation/create`, or `input_required` when the session cannot stream). The elicitation `message` does not embed the URL; the `url` field carries it. The pending tool result still includes the human link in plain text and `structuredContent.approval_url`. A later retry that carries `inputResponses.approval.action` of `decline` or `cancel` does not run the tool. `accept` on that retry still waits for Identity to report the row approved before the tool runs.
+URL mode is `capabilities.elicitation.url` as an object (MCP spec 2025-11-25). An empty `elicitation` object is form mode only. Agents that declare `url` may receive non-blocking `input_required` with `mode: url` on the pending result (Open). The elicitation `message` does not embed the URL; the `url` field carries it. The pending tool result always includes the human link in plain text and `structuredContent.approval_url`. A later retry that carries `inputResponses.approval.action` of `decline` or `cancel` does not run the tool. `accept` on that retry still waits for Identity to report the row approved before the tool runs.
 
 ### When an approval cannot be created
 

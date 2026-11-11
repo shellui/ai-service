@@ -84,7 +84,7 @@ OPTIONAL = (
     Var(
         'MCP_APPROVAL_FORM_ELICITATION_WAIT_SECONDS',
         '90',
-        'Seconds a tools/call SSE stream waits for in-chat elicitation. Keep this under GUNICORN_TIMEOUT.',
+        'Seconds ai_get_approval SSE waits for an approval decide wake. Keep this under GUNICORN_TIMEOUT.',
     ),
     Var('MCP_CALL_LOG_RETENTION_DAYS', '90', 'Days to keep gateway MCP tool-call logs'),
     Var('MCP_RATE_LIMIT_AGENT', '120'),

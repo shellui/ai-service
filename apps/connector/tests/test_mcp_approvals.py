@@ -1327,22 +1327,15 @@ class ApprovalLinkGateTests(TestCase):
                 arguments={'id': 1},
             )
         self.assertFalse(outcome.proceed)
-        self.assertIsNotNone(outcome.elicit)
-        self.assertEqual(outcome.elicit.get('kind'), 'link')
-        self.assertTrue(outcome.elicit.get('url_mode'))
-        self.assertEqual(
-            outcome.elicit.get('approval_url'),
-            'https://identity.test/oauth/mcp/approval/appr-1',
-        )
-        message = outcome.elicit.get('message') or ''
-        self.assertIn('storage_delete_bucket', message)
-        self.assertNotIn('https://identity.test', message)
-        from apps.connector.mcp_form_elicitation import classic_url_params
-
-        params = classic_url_params(message=message, url=outcome.elicit['approval_url'])
-        self.assertEqual(params['mode'], 'url')
-        self.assertEqual(params['url'], outcome.elicit['approval_url'])
-        self.assertNotIn(params['url'], params['message'])
+        self.assertIsNone(outcome.elicit)
+        result = json.loads(outcome.response.content)['result']
+        self.assertEqual(result['structuredContent']['status'], 'pending')
+        self.assertIn(result['structuredContent']['approval_url'], result['content'][0]['text'])
+        self.assertEqual(result.get('resultType'), 'input_required')
+        url_params = result['inputRequests']['approval']['params']
+        self.assertEqual(url_params['mode'], 'url')
+        self.assertEqual(url_params['url'], 'https://identity.test/oauth/mcp/approval/appr-1')
+        self.assertNotIn(url_params['url'], url_params['message'])
 
     def test_link_hold_waits_for_decide_wake(self):
         from apps.connector.mcp_approval_events import publish_approval_decision

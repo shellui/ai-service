@@ -58,7 +58,7 @@ def pending_agent_instruction(*, tool_name: str) -> str:
 def url_elicitation_message(*, tool_name: str) -> str:
     return (
         f'Approve {tool_name} in your browser. '
-        'After you approve there, this request continues automatically.'
+        'After you approve there, call ai_get_approval (or retry the tool) to continue.'
     )
 
 

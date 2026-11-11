@@ -7,7 +7,7 @@ import hashlib
 import json
 import logging
 import secrets
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Any
 
 from django.http import HttpRequest, JsonResponse
@@ -954,8 +954,7 @@ def enforce_tool_call_approval(
         )
 
     from apps.connector.mcp_approval_channel import CHANNEL_FORM, CHANNEL_LINK
-    from apps.connector.mcp_form_elicitation import can_stream_elicitation, request_accepts_sse
-    from apps.connector.mcp_protocol import session_client_name, session_protocol_version
+    from apps.connector.mcp_protocol import session_client_name
 
     url_action = _url_elicitation_action(params)
     form_decision = _form_consent(params) if channel == CHANNEL_FORM else None
@@ -1117,16 +1116,11 @@ def enforce_tool_call_approval(
                 ),
             )
 
-    stream_ok = can_stream_elicitation(
-        protocol_version=session_protocol_version(_connection_id(request)),
-        accepts_sse=request_accepts_sse(request),
-    )
-    # Link channel + URL elicitation: hold tools/call, offer mode:url Open, poll Identity.
-    # Form-only clients get an immediate pending result with the raw approval URL in the
-    # tool text (clickable in chat). A form "Submit" card cannot open the browser.
-    stream_link_url = bool(approval_id and channel == CHANNEL_LINK and url_mode and stream_ok)
-    stream_form = bool(approval_id and channel == CHANNEL_FORM and delivery == 'sse')
-    outcome = _pending_approval_outcome(
+    # Never hold tools/call for approval. LLM agents only show the URL after a tool
+    # result returns; SSE elicitation/decide holds leave chat blank until timeout.
+    # Wait for browser Approve via ai_get_approval (SSE), then retry the tool.
+    # URL-capable clients still get non-blocking input_required Open on the pending result.
+    return _pending_approval_outcome(
         req_id,
         agent_claims=agent_claims,
         export_name=export_name,
@@ -1141,44 +1135,7 @@ def enforce_tool_call_approval(
         destructive=destructive,
         form_mode=form_mode,
         url_mode=url_mode,
-        channel='link' if (stream_form or stream_link_url) else channel,
-        delivery='sse' if stream_link_url else delivery,
-        include_url_elicitation=bool(url_mode and channel == CHANNEL_LINK and not stream_link_url),
+        channel=channel,
+        delivery=delivery,
+        include_url_elicitation=bool(url_mode and channel == CHANNEL_LINK),
     )
-    if stream_form or stream_link_url:
-        created_url = str(created.get('approval_url') or '') if isinstance(created, dict) else ''
-        created_path = str(created.get('fallback_path') or '') if isinstance(created, dict) else ''
-        page_url = approvals.resolve_approval_url(
-            approval_id,
-            approval_url=created_url or str(approval_payload.get('approval_url_field') or ''),
-            fallback_path=created_path or str(approval_payload.get('approval_fallback_path') or ''),
-        )
-        if stream_link_url:
-            message = copy.url_elicitation_message(tool_name=export_name)
-            kind = 'link'
-        else:
-            message = copy.form_approval_message(tool_name=export_name, approval_url=page_url)
-            kind = 'form'
-        outcome = replace(
-            outcome,
-            elicit={
-                'session_id': _connection_id(request),
-                'message': message,
-                'approval_id': approval_id,
-                'approval_url': page_url,
-                'kind': kind,
-                'url_mode': kind == 'link',
-                'client_name': session_client_name(_connection_id(request)),
-                'approval_payload': approval_payload,
-                'connection_id': connection_id,
-                'actor_email': actor_email,
-                'export_name': export_name,
-                'service_id': service_id,
-                'destructive': destructive,
-                'agent_claims': agent_claims,
-                'tool': tool,
-                'method': method,
-                'path': path,
-            },
-        )
-    return outcome
