@@ -15,6 +15,7 @@ from shellui_django.mcp.server import McpServer
 from shellui_django.mcp.write_gate import WriteGateDecision, decide_write
 
 _approval_bypass: contextvars.ContextVar[bool] = contextvars.ContextVar('mcp_approval_bypass', default=False)
+_approval_channel: contextvars.ContextVar[str] = contextvars.ContextVar('mcp_approval_channel', default='none')
 
 
 def bypass_shellui_write_gate() -> contextvars.Token:
@@ -177,6 +178,7 @@ def apply_elicitation_result(req_id: Any, elicit: dict[str, Any], result: dict[s
                 path=str(elicit.get('path') or ''),
                 log_result='client_denied',
                 approval_id=approval_id,
+                approval_channel='form',
             ),
         )
     if approvals.approval_consume_detail(approval_id, payload).consumed:
@@ -191,6 +193,7 @@ def apply_elicitation_result(req_id: Any, elicit: dict[str, Any], result: dict[s
                 path=str(elicit.get('path') or ''),
                 log_result='client_allowed',
                 approval_id=approval_id,
+                approval_channel='form',
             ),
         )
     return None
@@ -391,6 +394,23 @@ def _audit_status_from_log_result(log_result: str) -> tuple[int, bool | None]:
     return 200, None
 
 
+def _approval_outcome_for_log_result(log_result: str) -> str:
+    lr = str(log_result or '').strip().lower()
+    if lr in {'pending', 'pending_approval'}:
+        return 'pending'
+    if lr in {'denied', 'client_denied'}:
+        return 'denied'
+    if lr in {'identity_approved', 'approved', 'client_allowed'}:
+        return 'accepted'
+    if lr == 'client_session_allowed':
+        return 'session_used'
+    if lr == 'expired':
+        return 'expired'
+    if lr == 'error':
+        return 'failed'
+    return ''
+
+
 def _log_entry(
     *,
     agent_claims: dict[str, Any],
@@ -401,6 +421,7 @@ def _log_entry(
     path: str,
     log_result: str,
     approval_id: str | None = None,
+    approval_channel: str | None = None,
 ) -> dict[str, Any]:
     status, is_error = _audit_status_from_log_result(log_result)
     row = build_call_audit_log(
@@ -415,6 +436,11 @@ def _log_entry(
         is_error=is_error,
         approval_id=approval_id,
     )
+    channel = str(approval_channel or _approval_channel.get() or 'none').strip().lower()
+    if channel not in {'form', 'link', 'none'}:
+        channel = 'none'
+    row['approval_channel'] = channel
+    row['approval_outcome'] = _approval_outcome_for_log_result(log_result)
     row['_mcp_audit_ready'] = True
     row['duration_ms'] = 0
     return row
@@ -651,6 +677,36 @@ def _pending_approval_outcome(
     )
 
 
+def _resolve_approval_channel(
+    request: HttpRequest,
+    params: dict[str, Any],
+    *,
+    destructive: bool,
+    company_id: int,
+) -> tuple[bool, bool, str, str]:
+    from apps.connector.mcp_approval_channel import approval_channel
+    from apps.connector.mcp_form_elicitation import (
+        elicitation_wait_seconds,
+        form_delivery,
+        request_accepts_sse,
+    )
+    from apps.connector.mcp_protocol import session_protocol_version
+
+    form_mode, url_mode = _client_elicitation_modes(request, params)
+    delivery = form_delivery(
+        protocol_version=session_protocol_version(_connection_id(request)),
+        form_declared=form_mode,
+        accepts_sse=request_accepts_sse(request),
+        wait_seconds=elicitation_wait_seconds(),
+    )
+    channel = approval_channel(
+        destructive=destructive,
+        company_id=company_id,
+        form_supported=delivery != 'link',
+    )
+    return form_mode, url_mode, delivery, channel
+
+
 def enforce_tool_call_approval(
     request: HttpRequest,
     req_id: Any,
@@ -664,6 +720,7 @@ def enforce_tool_call_approval(
     path: str,
     arguments: dict[str, Any],
 ) -> GateOutcome:
+    _approval_channel.set('none')
     read_only, destructive = tool_traits_from_export(tool, method=method)
     access = access_mode_from_claims(agent_claims)
     allow_destructive_flag = bool(agent_claims.get('mcp_destructive'))
@@ -703,6 +760,13 @@ def enforce_tool_call_approval(
             ),
         )
     company_id = cid
+    form_mode, url_mode, delivery, channel = _resolve_approval_channel(
+        request,
+        params,
+        destructive=destructive,
+        company_id=company_id,
+    )
+    _approval_channel.set(channel)
 
     if not decision.needs_approval and decision.allowed:
         return GateOutcome(proceed=True)
@@ -802,7 +866,18 @@ def enforce_tool_call_approval(
                     log_result='denied',
                 ),
             )
-        return GateOutcome(proceed=True)
+        return GateOutcome(
+            proceed=True,
+            log=_log_entry(
+                agent_claims=agent_claims,
+                service=service_id,
+                export_name=export_name,
+                tool=tool,
+                method=method,
+                path=path,
+                log_result='client_session_allowed',
+            ),
+        )
 
     state = approvals.approval_state(approval_payload)
     if state == 'expired':
@@ -879,26 +954,9 @@ def enforce_tool_call_approval(
             path=path,
         )
 
-    from apps.connector.mcp_approval_channel import CHANNEL_FORM, approval_channel
-    from apps.connector.mcp_form_elicitation import (
-        elicitation_wait_seconds,
-        form_delivery,
-        request_accepts_sse,
-    )
-    from apps.connector.mcp_protocol import session_client_name, session_protocol_version
+    from apps.connector.mcp_approval_channel import CHANNEL_FORM
+    from apps.connector.mcp_protocol import session_client_name
 
-    form_mode, url_mode = _client_elicitation_modes(request, params)
-    delivery = form_delivery(
-        protocol_version=session_protocol_version(_connection_id(request)),
-        form_declared=form_mode,
-        accepts_sse=request_accepts_sse(request),
-        wait_seconds=elicitation_wait_seconds(),
-    )
-    channel = approval_channel(
-        destructive=destructive,
-        company_id=company_id,
-        form_supported=delivery != 'link',
-    )
     url_action = _url_elicitation_action(params)
     form_decision = _form_consent(params) if channel == CHANNEL_FORM else None
     if channel != CHANNEL_FORM and url_action in {'decline', 'cancel'}:

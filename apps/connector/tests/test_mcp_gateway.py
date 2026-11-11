@@ -626,8 +626,7 @@ class McpGatewayTests(TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertNotIn('https://ai.test', response.content.decode())
 
-    @patch('apps.connector.mcp_views.forward_call_log')
-    def test_device_grant_token_calls_tool_like_oauth(self, _log, _rev_ok):
+    def test_device_grant_token_calls_tool_like_oauth(self, _rev_ok):
         """Device-grant access tokens use the same claims as the authorization-code grant."""
         agent_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
         now = int(time.time())

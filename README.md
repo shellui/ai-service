@@ -8,7 +8,7 @@ Shellui AI service: single MCP connector for all Shellui services.
 
 Python 3.14, Django 6, `shellui-django[mcp]==0.3.0`. See [docs/](docs/) and [PUBLISH.md](PUBLISH.md).
 
-**Identity alignment:** internal MCP contracts (delegated authority, call logs, approvals) follow **identity-service `develop`** (PR **#135** merge lineage, e.g. `bdb3c3` for strict `POST /mcp` call-log ingest)—not historical alternate PR pins. See [docs/mcp.md](docs/mcp.md).
+**Identity alignment:** delegated authority and approvals follow **identity-service `develop`** (PR **#135**). Tool-call logs are stored in ai-service (`GET /ai/v1/mcp/call-logs`). See [docs/mcp.md](docs/mcp.md).
 
 ## Run locally
 

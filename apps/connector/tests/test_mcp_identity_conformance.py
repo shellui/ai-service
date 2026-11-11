@@ -146,34 +146,33 @@ class McpIdentityConformanceTests(TestCase):
                 return _ok_json({'consumed': True})
             return MagicMock(status_code=404)
 
-        with patch('apps.connector.mcp_identity.forward_call_log'):
-            with patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='ds'):
-                with patch('shellui_django.mcp.gateway.requests.post', side_effect=http_post):
-                        r1 = client.post(
-                            '/c/10/mcp',
-                            data=_rpc('tools/call', name='storage_delete_bucket', arguments={}),
-                            content_type='application/json',
-                            HTTP_HOST='ai.test',
-                            **headers,
-                        )
-                        self.assertEqual(r1.status_code, 200)
-                        body1 = json.loads(r1.content)
-                        self.assertFalse(body1.get('result', {}).get('isError'))
-                        appr = (body1.get('result') or {}).get('_meta', {}).get('shellui_approval', {})
-                        self.assertEqual(appr.get('approval_id'), 'appr-e2e')
-                        self.assertEqual(appr.get('status'), 'pending')
-                        self.assertTrue(str(appr.get('approval_url') or '').startswith('https://identity.test/'))
+        with patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='ds'):
+            with patch('shellui_django.mcp.gateway.requests.post', side_effect=http_post):
+                    r1 = client.post(
+                        '/c/10/mcp',
+                        data=_rpc('tools/call', name='storage_delete_bucket', arguments={}),
+                        content_type='application/json',
+                        HTTP_HOST='ai.test',
+                        **headers,
+                    )
+                    self.assertEqual(r1.status_code, 200)
+                    body1 = json.loads(r1.content)
+                    self.assertFalse(body1.get('result', {}).get('isError'))
+                    appr = (body1.get('result') or {}).get('_meta', {}).get('shellui_approval', {})
+                    self.assertEqual(appr.get('approval_id'), 'appr-e2e')
+                    self.assertEqual(appr.get('status'), 'pending')
+                    self.assertTrue(str(appr.get('approval_url') or '').startswith('https://identity.test/'))
 
-                        r2 = client.post(
-                            '/c/10/mcp',
-                            data=_rpc('tools/call', name='storage_delete_bucket', arguments={}),
-                            content_type='application/json',
-                            HTTP_HOST='ai.test',
-                            **headers,
-                        )
-                        self.assertEqual(r2.status_code, 200)
-                        body2 = json.loads(r2.content)
-                        self.assertFalse(body2.get('result', {}).get('isError'))
+                    r2 = client.post(
+                        '/c/10/mcp',
+                        data=_rpc('tools/call', name='storage_delete_bucket', arguments={}),
+                        content_type='application/json',
+                        HTTP_HOST='ai.test',
+                        **headers,
+                    )
+                    self.assertEqual(r2.status_code, 200)
+                    body2 = json.loads(r2.content)
+                    self.assertFalse(body2.get('result', {}).get('isError'))
 
         for row in approvals:
             if row.get('_call_log'):

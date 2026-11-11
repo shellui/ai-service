@@ -7,8 +7,6 @@ from unittest.mock import MagicMock, patch
 from django.core.cache import cache
 from django.test import SimpleTestCase, override_settings
 from shellui_django.mcp.internal import (
-    CALL_LOG_AUDIENCE,
-    CALL_LOG_SCOPE,
     REVOCATION_AUDIENCE,
     REVOCATION_SCOPE,
     verify_mcp_internal_assertion,
@@ -58,68 +56,6 @@ class McpIdentitySigningTests(SimpleTestCase):
             mcp_identity._refresh_revocations()
         claims = self._verify(_bearer(get.call_args), audience=REVOCATION_AUDIENCE, scope=REVOCATION_SCOPE)
         self.assertEqual(claims['iss'], 'https://ai.test')
-
-    def test_call_log_is_signed_with_ai_service_key(self):
-        with patch('apps.connector.mcp_identity._http_post') as post:
-            mcp_identity.forward_call_log(
-                {
-                    'agent_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-                    'company_id': 1,
-                    'grant_version': 1,
-                    'service': 'ai',
-                    'tool': 'ai_list_services',
-                    'method': 'POST',
-                    'status': 200,
-                    'client_ip': '203.0.113.1',
-                    'duration_ms': 42,
-                    'outcome': 'allowed',
-                    'access_kind': 'write',
-                    'log_result': 'success',
-                    'agent_claims': {
-                        'agent_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-                        'company_id': 1,
-                        'grant_version': 1,
-                    },
-                }
-            )
-        self._verify(_bearer(post.call_args), audience=CALL_LOG_AUDIENCE, scope=CALL_LOG_SCOPE)
-        body = post.call_args.kwargs['json']
-        self.assertEqual(body['method'], 'POST')
-        self.assertEqual(body['path'], '/mcp')
-        self.assertEqual(body['outcome'], 'allowed')
-        self.assertEqual(body['duration_ms'], 42)
-        self.assertNotIn('client_ip', body)
-        self.assertNotIn('result', body)
-        self.assertNotIn('error_code', body)
-        self.assertNotIn('operation_title', body)
-        self.assertNotIn('arguments', body)
-        self.assertNotIn('arguments_redacted', body)
-
-    def test_call_log_pending_outcome_maps_for_identity(self):
-        with patch('apps.connector.mcp_identity._http_post') as post:
-            mcp_identity.forward_call_log(
-                {
-                    'agent_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-                    'company_id': 1,
-                    'grant_version': 0,
-                    'service': 'ai',
-                    'tool': 'ai_list_services',
-                    'method': 'GET',
-                    'path': '/api/r?q=1',
-                    'outcome': 'pending_approval',
-                    'access_kind': 'read',
-                    'log_result': 'pending_approval',
-                    'status': 202,
-                    'agent_claims': {
-                        'agent_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-                        'company_id': 1,
-                        'grant_version': 0,
-                    },
-                }
-            )
-        body = post.call_args.kwargs['json']
-        self.assertEqual(body['outcome'], 'waiting_approval')
-        self.assertEqual(body['path'], '/mcp')
 
     def _delegated_ok_json(self, **overrides):
         """Minimal valid **200** body matching identity ``d7fe351`` ``_delegated_authority_fixed_payload`` (15 keys)."""
@@ -284,60 +220,9 @@ class McpIdentitySigningTests(SimpleTestCase):
             )
         self.assertFalse(ok)
 
-    def test_call_log_omits_jwt_display_labels(self):
-        with patch('apps.connector.mcp_identity._http_post') as post:
-            mcp_identity.forward_call_log(
-                {
-                    'agent_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-                    'company_id': 1,
-                    'grant_version': 1,
-                    'service': 'ai',
-                    'tool': 'ai_list_services',
-                    'method': 'POST',
-                    'status': 200,
-                    'company_name': 'EvilCo',
-                    'agent_name': 'EvilAgent',
-                    'outcome': 'allowed',
-                    'access_kind': 'write',
-                    'agent_claims': {
-                        'agent_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-                        'company_id': 1,
-                        'grant_version': 1,
-                    },
-                }
-            )
-        body = post.call_args.kwargs['json']
-        self.assertNotIn('company_name', body)
-        self.assertNotIn('agent_name', body)
-
-    def test_call_log_skipped_without_grant_version(self):
-        with patch('apps.connector.mcp_identity._http_post') as post:
-            mcp_identity.forward_call_log(
-                {
-                    'agent_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-                    'company_id': 1,
-                    'method': 'POST',
-                    'status': 200,
-                    'outcome': 'allowed',
-                    'access_kind': 'write',
-                    'service': 'ai',
-                    'tool': 'ai_list_services',
-                    'agent_claims': {
-                        'agent_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-                        'company_id': 1,
-                    },
-                }
-            )
-        post.assert_not_called()
-
     @override_settings(AI_SERVICE_SIGNING_KEY=None)
     def test_without_signing_key_revocation_fails_closed(self):
         with patch('apps.connector.mcp_identity.requests.get') as get:
             self.assertTrue(mcp_identity.agent_is_revoked('agent-1', 1))
         get.assert_not_called()
 
-    @override_settings(AI_SERVICE_SIGNING_KEY=None)
-    def test_without_signing_key_call_log_is_not_sent(self):
-        with patch('apps.connector.mcp_identity._http_post') as post:
-            mcp_identity.forward_call_log({'agent_id': 'a', 'company_id': 1})
-        post.assert_not_called()

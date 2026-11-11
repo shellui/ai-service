@@ -19,7 +19,7 @@ OUTCOMES = frozenset({'allowed', 'failed', 'denied', 'pending_approval', 'sessio
 
 
 def legacy_result_token(*, outcome: str) -> str:
-    """Short legacy ``result`` string for identity call-log whitelist (must align with ``forward_call_log``)."""
+    """Short legacy ``result`` string kept on in-memory audit rows."""
     o = str(outcome or '').strip().lower()
     if o == 'allowed':
         return 'success'
