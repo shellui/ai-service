@@ -1192,6 +1192,75 @@ class ApprovalLinkGateTests(TestCase):
         self.assertIn(result['structuredContent']['approval_url'], text)
         self.assertNotIn('inputRequests', result)
 
+    def test_link_channel_sse_offers_open_approval_card(self):
+        def state(payload):
+            payload['approval_id'] = 'appr-1'
+            payload['approval_url_field'] = 'https://identity.test/oauth/mcp/approval/appr-1'
+            return 'pending'
+
+        destructive = {
+            'annotations': {'readOnlyHint': False, 'destructiveHint': True},
+            '_meta': {
+                'method': 'DELETE',
+                'path': '/api/v1/buckets/{id}/',
+                'read_only': False,
+                'destructive': True,
+            },
+        }
+        request = self._request()
+        request.headers = {
+            'Mcp-Session-Id': 'sess-link',
+            'Accept': 'application/json, text/event-stream',
+        }
+        with (
+            patch('apps.connector.mcp_approval_gate.decide_write') as decide,
+            patch('apps.connector.mcp_approval_gate.approvals.session_grant_covers_write', return_value=False),
+            patch('apps.connector.mcp_approval_gate.approvals.approval_state', side_effect=state),
+            patch(
+                'apps.connector.mcp_approval_gate.approvals.create_approval_request',
+                return_value={
+                    'id': 'appr-1',
+                    'status': 'pending',
+                    'approval_url': 'https://identity.test/oauth/mcp/approval/appr-1',
+                },
+            ),
+            patch(
+                'apps.connector.mcp_approval_gate._resolve_approval_channel',
+                return_value=(True, False, 'sse', 'link'),
+            ),
+            override_settings(MCP_APPROVAL_FORM_ELICITATION_WAIT_SECONDS=90),
+        ):
+            decide.return_value = WriteGateDecision(
+                allowed=False, needs_approval=True, reason='Destructive change requires approval.'
+            )
+            outcome = enforce_tool_call_approval(
+                request,
+                7,
+                params={
+                    '_meta': {
+                        'io.modelcontextprotocol/clientCapabilities': {'elicitation': {}},
+                    }
+                },
+                agent_claims=_gate_claims(),
+                export_name='storage_delete_bucket',
+                service_id='storage',
+                tool=destructive,
+                method='DELETE',
+                path='/api/v1/buckets/{id}/',
+                arguments={'id': 1},
+            )
+        self.assertFalse(outcome.proceed)
+        self.assertIsNotNone(outcome.elicit)
+        self.assertEqual(outcome.elicit.get('kind'), 'link')
+        self.assertFalse(outcome.elicit.get('url_mode'))
+        self.assertIn('https://identity.test/oauth/mcp/approval/appr-1', outcome.elicit.get('message') or '')
+        from apps.connector.mcp_form_elicitation import classic_link_open_params
+
+        params = classic_link_open_params(message=outcome.elicit['message'])
+        self.assertEqual(params['mode'], 'form')
+        self.assertEqual(params['requestedSchema']['properties']['decision']['enum'], ['open'])
+        self.assertEqual(params['requestedSchema']['properties']['decision']['enumNames'], ['Open approval'])
+
     def test_form_approve_records_allow_and_runs_once(self):
         from apps.connector.mcp_approval_gate import apply_elicitation_result
         from apps.connector.mcp_form_elicitation import form_elicitation_stream

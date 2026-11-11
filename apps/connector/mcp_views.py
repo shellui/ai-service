@@ -703,7 +703,12 @@ class PrefixingMcpServer(AggregatingMcpServer):
         import json as _json
 
         from apps.connector.mcp_approval_gate import apply_elicitation_result
-        from apps.connector.mcp_form_elicitation import form_elicitation_response
+        from apps.connector.mcp_form_elicitation import (
+            classic_form_params,
+            classic_link_open_params,
+            classic_url_params,
+            form_elicitation_response,
+        )
 
         elicit = outcome.elicit or {}
         fallback = outcome.response
@@ -738,11 +743,21 @@ class PrefixingMcpServer(AggregatingMcpServer):
             except (TypeError, ValueError, AttributeError):
                 return {'content': [{'type': 'text', 'text': 'Approval pending.'}], 'isError': False}
 
+        message = str(elicit.get('message') or '')
+        kind = str(elicit.get('kind') or 'form')
+        approval_url = str(elicit.get('approval_url') or '')
+        if kind == 'link' and elicit.get('url_mode') and approval_url:
+            elicit_params = classic_url_params(message=message, url=approval_url)
+        elif kind == 'link':
+            elicit_params = classic_link_open_params(message=message)
+        else:
+            elicit_params = classic_form_params(message=message)
         response = form_elicitation_response(
             session_id=str(elicit.get('session_id') or ''),
             call_id=req_id,
-            message=str(elicit.get('message') or ''),
+            message=message,
             on_decision=on_decision,
+            params=elicit_params,
         )
         # The view resets request context before Django iterates this stream.
         # Forwarding the approved call still needs the company cache key.

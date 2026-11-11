@@ -126,16 +126,19 @@ def _form_consent(params: dict[str, Any] | None) -> str | None:
 
 def apply_elicitation_result(req_id: Any, elicit: dict[str, Any], result: dict[str, Any]) -> GateOutcome | None:
     """Turn a classic elicitation/create result into an in-chat decision. None falls back to the link."""
-    if elicit.get('destructive'):
-        return None
     action = str(result.get('action') or '').strip().lower()
     content = result.get('content') if isinstance(result.get('content'), dict) else {}
     decision = str(content.get('decision') or '').strip().lower()
     if action == 'cancel':
         return None
+    # Link-channel cards never grant or deny in-chat. Open/accept/decline/cancel all
+    # fall through to the pending link result; only the identity page decides.
+    # (Hermes often sends decline when dismissing the card — that must not reject the row.)
+    if str(elicit.get('kind') or '') == 'link' or elicit.get('destructive'):
+        return None
     if action == 'decline' or decision in {'deny', 'decline'}:
         chosen = 'deny'
-    elif action == 'accept' and decision in {'', 'approve', 'allow'}:
+    elif action == 'accept' and decision in {'', 'approve', 'allow', 'open'}:
         chosen = 'allow'
     else:
         return None
@@ -911,24 +914,31 @@ def enforce_tool_call_approval(
         approval_payload.pop('approval_url_field', None)
         approval_payload.pop('approval_expires_at', None)
     if state == 'denied':
-        return GateOutcome(
-            proceed=False,
-            response=_approval_result(
-                req_id,
-                text=copy.after_deny_text(tool_name=export_name),
-                meta={'shellui_approval': {'status': 'denied'}},
-            ),
-            log=_log_entry(
-                agent_claims=agent_claims,
-                service=service_id,
-                export_name=export_name,
-                tool=tool,
-                method=method,
-                path=path,
-                log_result='denied',
-                approval_id=client_approval_id,
-            ),
-        )
+        # A prior deny for this binding should not block forever. Only keep the
+        # hard-deny response when this call itself carried an explicit deny.
+        if client_decision == 'deny':
+            return GateOutcome(
+                proceed=False,
+                response=_approval_result(
+                    req_id,
+                    text=copy.after_deny_text(tool_name=export_name),
+                    meta={'shellui_approval': {'status': 'denied'}},
+                ),
+                log=_log_entry(
+                    agent_claims=agent_claims,
+                    service=service_id,
+                    export_name=export_name,
+                    tool=tool,
+                    method=method,
+                    path=path,
+                    log_result='denied',
+                    approval_id=client_approval_id,
+                ),
+            )
+        state = None
+        approval_payload.pop('approval_id', None)
+        approval_payload.pop('approval_url_field', None)
+        approval_payload.pop('approval_expires_at', None)
     if state == 'approved':
         approval_id = str(approval_payload.get('approval_id') or client_approval_id or '')
         return _consume_approved_outcome(
@@ -943,7 +953,7 @@ def enforce_tool_call_approval(
             path=path,
         )
 
-    from apps.connector.mcp_approval_channel import CHANNEL_FORM
+    from apps.connector.mcp_approval_channel import CHANNEL_FORM, CHANNEL_LINK
     from apps.connector.mcp_protocol import session_client_name
 
     url_action = _url_elicitation_action(params)
@@ -1125,7 +1135,7 @@ def enforce_tool_call_approval(
         delivery=delivery,
         include_url_elicitation=False,
     )
-    if channel == CHANNEL_FORM and delivery == 'sse' and approval_id:
+    if delivery == 'sse' and approval_id and channel in {CHANNEL_FORM, CHANNEL_LINK}:
         created_url = str(created.get('approval_url') or '') if isinstance(created, dict) else ''
         created_path = str(created.get('fallback_path') or '') if isinstance(created, dict) else ''
         page_url = approvals.resolve_approval_url(
@@ -1133,23 +1143,32 @@ def enforce_tool_call_approval(
             approval_url=created_url or str(approval_payload.get('approval_url_field') or ''),
             fallback_path=created_path or str(approval_payload.get('approval_fallback_path') or ''),
         )
+        if channel == CHANNEL_LINK:
+            message = copy.link_open_message(tool_name=export_name, approval_url=page_url)
+            kind = 'link'
+        else:
+            message = copy.form_approval_message(tool_name=export_name, approval_url=page_url)
+            kind = 'form'
         outcome = replace(
             outcome,
             elicit={
-            'session_id': _connection_id(request),
-            'message': copy.form_approval_message(tool_name=export_name, approval_url=page_url),
-            'approval_id': approval_id,
-            'client_name': session_client_name(_connection_id(request)),
-            'approval_payload': approval_payload,
-            'connection_id': connection_id,
-            'actor_email': actor_email,
-            'export_name': export_name,
-            'service_id': service_id,
-            'destructive': destructive,
-            'agent_claims': agent_claims,
-            'tool': tool,
-            'method': method,
-            'path': path,
+                'session_id': _connection_id(request),
+                'message': message,
+                'approval_id': approval_id,
+                'approval_url': page_url,
+                'kind': kind,
+                'url_mode': bool(url_mode) and kind == 'link',
+                'client_name': session_client_name(_connection_id(request)),
+                'approval_payload': approval_payload,
+                'connection_id': connection_id,
+                'actor_email': actor_email,
+                'export_name': export_name,
+                'service_id': service_id,
+                'destructive': destructive,
+                'agent_claims': agent_claims,
+                'tool': tool,
+                'method': method,
+                'path': path,
             },
         )
     return outcome

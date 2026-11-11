@@ -75,6 +75,43 @@ def classic_form_params(*, message: str) -> dict[str, Any]:
     }
 
 
+def classic_link_open_params(*, message: str) -> dict[str, Any]:
+    """Form elicitation for link-channel approvals when the client has no URL mode.
+
+    One primary button keeps the chat UI looking like a real elicitation. The
+    approval URL stays in ``message`` so the human can open it from the card.
+    Clicking the button does not grant approval; the browser page still decides.
+    """
+    return {
+        'mode': 'form',
+        'message': message,
+        'requestedSchema': {
+            'type': 'object',
+            'properties': {
+                'decision': {
+                    'type': 'string',
+                    'title': 'Approval',
+                    'enum': ['open'],
+                    'enumNames': ['Open approval'],
+                }
+            },
+            'required': ['decision'],
+        },
+    }
+
+
+def classic_url_params(*, message: str, url: str) -> dict[str, Any]:
+    """``elicitation/create`` with ``mode: url`` so the client can open the page."""
+    from secrets import token_urlsafe
+
+    return {
+        'mode': 'url',
+        'elicitationId': token_urlsafe(16),
+        'url': url,
+        'message': message,
+    }
+
+
 def remember_open_elicitation(session_id: str, rpc_id: str) -> None:
     cache.set(f'{_OPEN_PREFIX}{session_id}', str(rpc_id), _TTL_SECONDS)
 
@@ -133,15 +170,17 @@ def form_elicitation_stream(
     timeout_seconds: float,
     on_decision: Callable[[dict[str, Any] | None], dict[str, Any]],
     sleep: Callable[[float], None] = time.sleep,
+    params: dict[str, Any] | None = None,
 ) -> Iterator[str]:
     """Yield the elicitation request, then the tools/call JSON-RPC response."""
     remember_open_elicitation(session_id, rpc_id)
+    create_params = params if isinstance(params, dict) else classic_form_params(message=message)
     yield sse_message(
         {
             'jsonrpc': '2.0',
             'id': rpc_id,
             'method': 'elicitation/create',
-            'params': classic_form_params(message=message),
+            'params': create_params,
         }
     )
     result = wait_for_elicitation_result(
@@ -160,6 +199,7 @@ def form_elicitation_response(
     call_id: Any,
     message: str,
     on_decision: Callable[[dict[str, Any] | None], dict[str, Any]],
+    params: dict[str, Any] | None = None,
 ) -> StreamingHttpResponse:
     from secrets import token_hex
 
@@ -171,6 +211,7 @@ def form_elicitation_response(
         message=message,
         timeout_seconds=elicitation_wait_seconds(),
         on_decision=on_decision,
+        params=params,
     )
     response = StreamingHttpResponse(stream, content_type='text/event-stream')
     response['Cache-Control'] = 'no-cache'

@@ -136,7 +136,14 @@ Form elicitation is used only when the client declared form mode and the negotia
 
 The stream stays open for `MCP_APPROVAL_FORM_ELICITATION_WAIT_SECONDS` (default 90). That stays under `GUNICORN_TIMEOUT` (default 120) so the worker can still write the link fallback. The wait is shared through the Django cache, so a multi-worker deployment needs `REDIS_URL`. If the client does not answer in time, or the stream cannot be held, the `tools/call` result is the link text. `accept` (including an empty `content` object, which is what Hermes sends for Yes) records `decision: allow` with `consent: in_chat` and runs the tool once. `decline` records `decision: deny` and does not run the tool. `cancel` does not decide; the result is the link text and the approval stays pending.
 
-The elicitation `message` includes the approval URL. The link is never delivered only as URL-mode elicitation. Hermes declines URL mode. The pending tool result always puts that URL in the plain text `content` as well as in `structuredContent.approval_url`.
+The elicitation `message` includes the approval URL. The pending tool result always puts that URL in the plain text `content` as well as in `structuredContent.approval_url`.
+
+**Link-channel elicitation (destructive tools, or company `link` override).** When the client declared form elicitation and accepts SSE (`2025-06-18`), the gateway still opens an in-chat card instead of dumping only a raw URL into the tool result:
+
+- Clients that also declared URL elicitation (`capabilities.elicitation.url`) get `elicitation/create` with `mode: url` and the approval page URL (the client’s Open control).
+- Form-only clients (Hermes) get `mode: form` with a single **Open approval** button and the URL in the message. Clicking the button, dismissing the card, or declining the elicitation does **not** decide the approval; the human must finish on the identity page.
+
+Timeout or cancel falls back to the same pending link text as before.
 
 The link text is in the plain `content` text and in `structuredContent`. It tells the agent the link is for the human, to show it verbatim as a clickable link, not to open, fetch, or sign in, and to call the same tool again with the same arguments after the person says they approved.
 
