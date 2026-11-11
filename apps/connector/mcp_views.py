@@ -197,14 +197,16 @@ def iter_gateway_remote_exports(
             service_id=service_id,
         )
         exported_tool['_meta'] = meta
+        # Always publish hints from registry meta. An empty annotations object used to
+        # skip this block, so search showed list/get tools as read_only=false.
+        read_only = bool(meta.get('read_only'))
+        destructive = bool(meta.get('destructive')) and not read_only
         annotations = dict(exported_tool.get('annotations') or {})
-        if annotations:
-            read_only = bool(meta.get('read_only'))
-            annotations['readOnlyHint'] = read_only
-            annotations['destructiveHint'] = bool(meta.get('destructive')) and not read_only
-            if read_only:
-                annotations['idempotentHint'] = True
-            exported_tool['annotations'] = annotations
+        annotations['readOnlyHint'] = read_only
+        annotations['destructiveHint'] = destructive
+        annotations.setdefault('idempotentHint', read_only or destructive)
+        annotations.setdefault('openWorldHint', False)
+        exported_tool['annotations'] = annotations
         tool = exported_tool
         tenant = tenant_binding_from_meta(meta)
         if tenant:
@@ -240,10 +242,13 @@ def prefixed_tool_catalog(
 
 
 def _public_tool(tool: dict) -> dict:
-    """Client catalog row: no registry meta, and no HTTP method or path arguments."""
+    """Agent-facing catalog row: flat arguments, registry ``_meta`` kept for search/gate.
+
+    ``tools/list`` strips ``_meta`` at the wire boundary via ``_client_tool``.
+    """
     from apps.connector.mcp_agent_arguments import public_input_schema
 
-    out = {k: v for k, v in tool.items() if not str(k).startswith('_')}
+    out = dict(tool)
     if isinstance(out.get('inputSchema'), dict):
         out['inputSchema'] = public_input_schema(out['inputSchema'])
     return out
@@ -357,6 +362,12 @@ class PrefixingMcpServer(AggregatingMcpServer):
         method_raw = str(meta.get('method') or '').strip().upper()
         path_tmpl = str(meta.get('path') or '').strip()
         if not method_raw or not path_tmpl:
+            # Flat agent schemas (and public tools/list) omit path/method; rebuild once.
+            tool_row = normalize_mcp_tool(tool_row)
+            meta = tool_row.get('_meta') if isinstance(tool_row.get('_meta'), dict) else {}
+            method_raw = str(meta.get('method') or '').strip().upper()
+            path_tmpl = str(meta.get('path') or '').strip()
+        if not method_raw or not path_tmpl:
             return None, 'malformed_tool'
         if isinstance(route, dict):
             rsid = str(route.get('service_id') or '')
@@ -380,6 +391,15 @@ class PrefixingMcpServer(AggregatingMcpServer):
     def _tool_call_error_text(self, detail: str) -> str:
         if detail in {'unknown_tool', 'tool_not_found'}:
             return 'This tool was not found. Call ai_search_tools or tools/list, then try again.'
+        if detail == 'malformed_tool':
+            return (
+                'This tool is missing registry path/method metadata. '
+                'Call ai_search_tools or tools/list to refresh the catalog, then try again.'
+            )
+        if detail == 'route_mismatch':
+            return 'This tool route does not match the connected service. Call ai_list_services, then try again.'
+        if detail == 'catalog_unavailable':
+            return 'The tool catalog could not be loaded. Try again shortly.'
         return 'The tool catalog could not be loaded. Try again shortly.'
 
     def _tool_call_error_response(self, req_id, *, detail: str) -> JsonResponse:
@@ -454,9 +474,15 @@ class PrefixingMcpServer(AggregatingMcpServer):
         cached = self._cache().get(cache_key)
         if isinstance(cached, list) and cached:
             first = cached[0]
-            if isinstance(first, dict) and isinstance(first.get('_meta'), dict):
+            meta = first.get('_meta') if isinstance(first, dict) else None
+            # Flat downstream catalogs used to ship empty ``_meta: {}`` after stripping.
+            # Require path+method so we never reuse a poisoned cache entry.
+            if (
+                isinstance(meta, dict)
+                and str(meta.get('path') or '').strip()
+                and str(meta.get('method') or '').strip()
+            ):
                 return cached
-            # Legacy cache entries without `_meta`: refetch
             self._cache().delete(cache_key)
         payload = {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list', 'params': {}}
         try:
@@ -665,6 +691,13 @@ class PrefixingMcpServer(AggregatingMcpServer):
             agent_claims=agent_claims,
         )
         if err_detail is not None or tool_row is None:
+            detail = err_detail or 'unknown_tool'
+            logger.warning(
+                'MCP gateway tool call rejected export=%s service=%s detail=%s',
+                export_name,
+                service_id,
+                detail,
+            )
             audit = build_call_audit_log(
                 agent_claims=agent_claims,
                 service_id=service_id,
@@ -682,7 +715,7 @@ class PrefixingMcpServer(AggregatingMcpServer):
             audit['duration_ms'] = 0
             if self.on_call:
                 self.on_call(dict(audit))
-            return self._tool_call_error_response(req_id, detail=err_detail or 'unknown_tool')
+            return self._tool_call_error_response(req_id, detail=detail)
         meta = tool_row.get('_meta') if isinstance(tool_row.get('_meta'), dict) else {}
         method = str(meta.get('method') or 'GET').strip().upper()
         path = str(meta.get('path') or '').strip()

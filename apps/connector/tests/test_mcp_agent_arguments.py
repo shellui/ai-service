@@ -110,3 +110,66 @@ class AgentArgumentTests(SimpleTestCase):
         self.assertLessEqual(len(row['description']), 180)
         trimmed = trim_input_schema(huge)
         self.assertLessEqual(len(json.dumps(trimmed, sort_keys=True)), DESCRIBE_SCHEMA_BUDGET)
+
+    def test_trim_keeps_document_when_contract_exceeds_budget(self):
+        from apps.connector.mcp_discovery import describe_match
+        from apps.connector.mcp_agent_arguments import bound_describe_tools
+        from apps.connector.mcp_tool_schema import normalize_mcp_tool
+
+        tool = normalize_mcp_tool(
+            {
+                'name': 'email_create_template_versions',
+                'description': 'Creates a draft version of a template.',
+                'inputSchema': {
+                    'type': 'object',
+                    'properties': {
+                        'path': {
+                            'type': 'string',
+                            'const': '/api/v1/templates/{template_id}/versions',
+                        },
+                        'method': {'type': 'string', 'enum': ['POST']},
+                        'body': {
+                            'type': 'object',
+                            'additionalProperties': False,
+                            'properties': {
+                                'subject': {'type': 'string'},
+                                'preheader': {'type': 'string'},
+                                'document': {
+                                    'type': 'object',
+                                    'additionalProperties': True,
+                                    'description': 'JSON value',
+                                },
+                                'translations': {
+                                    'type': 'object',
+                                    'additionalProperties': True,
+                                },
+                                'theme': {
+                                    'type': 'object',
+                                    'additionalProperties': True,
+                                },
+                                'library_id': {'type': 'integer'},
+                            },
+                        },
+                        'path_params': {
+                            'type': 'object',
+                            'additionalProperties': False,
+                            'properties': {'template_id': {'type': 'integer'}},
+                            'required': ['template_id'],
+                        },
+                    },
+                    'required': ['path', 'method', 'path_params'],
+                },
+                '_meta': {
+                    'method': 'POST',
+                    'path': '/api/v1/templates/{template_id}/versions',
+                },
+            }
+        )
+        described = bound_describe_tools([describe_match(tool, access_mode='ask')])
+        props = described[0]['inputSchema']['properties']
+        self.assertIn('document', props)
+        self.assertIn('theme', props)
+        self.assertIn('translations', props)
+        self.assertEqual(props['document'].get('type'), 'object')
+        self.assertIs(props['document'].get('additionalProperties'), True)
+        self.assertLessEqual(len(json.dumps(described[0]['inputSchema'], sort_keys=True)), DESCRIBE_SCHEMA_BUDGET)

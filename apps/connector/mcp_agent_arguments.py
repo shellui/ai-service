@@ -18,6 +18,13 @@ DESCRIBE_PAYLOAD_BUDGET = 6000
 
 _PROXY_KEYS = ('path', 'method', 'query', 'body', 'path_params', 'headers')
 _SECTIONS = ('path_params', 'query', 'body', 'headers')
+# DRF browsable-API noise older MCP clients still put under query.
+_IGNORED_QUERY_FIELDS = frozenset({'format'})
+# TipTap / editor payloads expand to tens of KB via mcp_json_contracts. Describe
+# must keep the argument names; collapse the contract instead of dropping fields.
+_COMPACT_OBJECT_FIELDS = frozenset(
+    {'document', 'theme', 'translations', 'variables', 'data', 'blocks', 'content'}
+)
 
 
 def one_line(text: object, *, limit: int = SEARCH_DESCRIPTION_MAX) -> str:
@@ -104,6 +111,10 @@ def _registry_path(schema: dict[str, Any], meta: dict[str, Any]) -> str:
     return ''
 
 
+def _drop_ignored_query_fields(query: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in query.items() if key not in _IGNORED_QUERY_FIELDS}
+
+
 def coerce_call_arguments(
     arguments: dict[str, Any] | None,
     schema: dict[str, Any] | None,
@@ -115,10 +126,35 @@ def coerce_call_arguments(
     """
     if not isinstance(arguments, dict):
         arguments = {}
-    if not isinstance(schema, dict) or not is_proxy_input_schema(schema):
-        return dict(arguments)
     meta = meta if isinstance(meta, dict) else {}
     supplied = dict(arguments)
+    legacy = any(isinstance(supplied.get(section), dict) for section in _SECTIONS) or (
+        'method' in supplied or 'path' in supplied
+    )
+    # Flat published schemas (no path/method args) still receive legacy Hermes envelopes.
+    if not isinstance(schema, dict) or not is_proxy_input_schema(schema):
+        if not legacy:
+            return dict(arguments)
+        # Rebuild a nested envelope from registry meta so validation can run.
+        schema = {
+            'type': 'object',
+            'properties': {
+                'path': {'type': 'string', 'const': str(meta.get('path') or '')},
+                'method': {'type': 'string', 'enum': [str(meta.get('method') or 'GET').upper()]},
+                'query': {
+                    'type': 'object',
+                    'properties': {name: {} for name in (meta.get('query_fields') or [])},
+                },
+                'body': {
+                    'type': 'object',
+                    'properties': {name: {} for name in (meta.get('body_fields') or [])},
+                },
+                'path_params': {
+                    'type': 'object',
+                    'properties': {name: {} for name in (meta.get('path_params') or [])},
+                },
+            },
+        }
     supplied.pop('method', None)
     supplied.pop('path', None)
     buckets: dict[str, dict[str, Any]] = {section: {} for section in _SECTIONS}
@@ -143,6 +179,8 @@ def coerce_call_arguments(
                 buckets['body'][key] = value
             else:
                 buckets['query'][key] = value
+    if buckets['query']:
+        buckets['query'] = _drop_ignored_query_fields(buckets['query'])
     from apps.connector.mcp_tenant import is_hidden_agent_field, is_tenant_field
     from shellui_django.mcp.routing import McpToolArgumentError
 
@@ -212,17 +250,50 @@ def _walk_trim(node: Any, *, description_limit: int, drop_descriptions: bool) ->
             _walk_trim(item, description_limit=description_limit, drop_descriptions=drop_descriptions)
 
 
+def _compact_heavy_object_fields(schema: dict[str, Any]) -> None:
+    """Replace oversized nested object contracts with a short free-form stub."""
+    props = schema.get('properties')
+    if not isinstance(props, dict):
+        return
+    for key in list(props):
+        if key not in _COMPACT_OBJECT_FIELDS:
+            continue
+        node = props.get(key)
+        if not isinstance(node, dict):
+            continue
+        if _encoded_len(node) < 240:
+            continue
+        desc = one_line(node.get('description') or key, limit=120)
+        props[key] = {
+            'type': 'object',
+            'additionalProperties': True,
+            'description': desc or f'JSON object for `{key}`.',
+        }
+
+
 def trim_input_schema(schema: dict[str, Any] | None, *, budget: int = DESCRIBE_SCHEMA_BUDGET) -> dict[str, Any]:
     """Keep type, enum, and required fields inside a character budget."""
     current = public_input_schema(schema)
     _walk_trim(current, description_limit=160, drop_descriptions=False)
     if _encoded_len(current) <= budget:
         return current
+    _compact_heavy_object_fields(current)
+    if _encoded_len(current) <= budget:
+        return current
     _walk_trim(current, description_limit=0, drop_descriptions=True)
+    _compact_heavy_object_fields(current)
+    if _encoded_len(current) <= budget:
+        return current
     props = current.get('properties')
     required_names = [str(key) for key in current.get('required') or []]
     while isinstance(props, dict) and props and _encoded_len(current) > budget:
-        optional = [key for key in props if key not in required_names]
+        optional = [
+            key
+            for key in props
+            if key not in required_names and key not in _COMPACT_OBJECT_FIELDS
+        ]
+        if not optional:
+            optional = [key for key in props if key not in required_names]
         if not optional:
             break
         props.pop(optional[-1])

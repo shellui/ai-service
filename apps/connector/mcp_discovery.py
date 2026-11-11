@@ -383,6 +383,11 @@ def tools_list_mode(request: Any, params: dict[str, Any] | None) -> str:
     return 'discovery'
 
 
+def _client_tool(tool: dict[str, Any]) -> dict[str, Any]:
+    """MCP ``tools/list`` row: no private registry keys."""
+    return {k: v for k, v in tool.items() if not str(k).startswith('_')}
+
+
 def listed_tools(full_catalog: list[dict[str, Any]], *, mode: str, company_label: str) -> list[dict[str, Any]]:
     """Default list is discovery. ``all`` is the operational catalog plus search, describe, and call."""
     from apps.connector.mcp_tool_presentation import apply_gateway_tool_presentation
@@ -393,7 +398,8 @@ def listed_tools(full_catalog: list[dict[str, Any]], *, mode: str, company_label
     ]
     if mode == 'all':
         present = {str(tool.get('name') or '') for tool in full_catalog}
-        return list(full_catalog) + [tool for tool in extras if tool['name'] not in present]
+        rows = list(full_catalog) + [tool for tool in extras if tool['name'] not in present]
+        return [_client_tool(tool) for tool in rows]
     by_name = {str(tool.get('name') or ''): tool for tool in full_catalog}
     listed: list[dict[str, Any]] = []
     services = by_name.get('ai_list_services')
@@ -404,7 +410,7 @@ def listed_tools(full_catalog: list[dict[str, Any]], *, mode: str, company_label
         tool = by_name.get(name)
         if tool is not None:
             listed.append(tool)
-    return listed
+    return [_client_tool(tool) for tool in listed]
 
 
 def enrich_service_rows(
@@ -574,7 +580,28 @@ def _traits(tool: dict[str, Any]) -> tuple[bool, bool]:
         return bool(meta.get('read_only')), bool(meta.get('destructive'))
     if 'read_only' in tool or 'destructive' in tool:
         return bool(tool.get('read_only')), bool(tool.get('destructive'))
-    return bool(annotations.get('readOnlyHint')), bool(annotations.get('destructiveHint'))
+    if 'readOnlyHint' in annotations or 'destructiveHint' in annotations:
+        return bool(annotations.get('readOnlyHint')), bool(annotations.get('destructiveHint'))
+    # Flat agent schemas omit method; recover from leftover proxy fields or the verb.
+    method = str(meta.get('method') or '').strip().upper()
+    if not method:
+        props = tool.get('inputSchema', {}).get('properties') if isinstance(tool.get('inputSchema'), dict) else {}
+        node = props.get('method') if isinstance(props, dict) else None
+        if isinstance(node, dict):
+            enum = node.get('enum')
+            if isinstance(enum, list) and enum:
+                method = str(enum[0]).strip().upper()
+            elif isinstance(node.get('const'), str):
+                method = str(node.get('const')).strip().upper()
+    if method in {'GET', 'HEAD', 'OPTIONS'}:
+        return True, False
+    if method == 'DELETE':
+        return False, True
+    name = str(tool.get('name') or '')
+    core = name.split('_', 1)[1] if '_' in name else name
+    read_only = core.startswith(('list_', 'get_')) or core.endswith(('_list', '_retrieve', '_get'))
+    destructive = core.startswith(('delete_', 'destroy_')) or core.endswith(('_destroy', '_delete'))
+    return read_only, destructive and not read_only
 
 
 def _needs_approval(tool: dict[str, Any], access_mode: str) -> bool:
