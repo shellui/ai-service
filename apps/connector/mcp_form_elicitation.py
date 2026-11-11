@@ -22,7 +22,10 @@ from django.core.cache import cache
 from django.http import HttpRequest, StreamingHttpResponse
 
 FORM_ELICITATION_PROTOCOL = '2025-06-18'
+URL_ELICITATION_PROTOCOL = '2025-11-25'
 INPUT_REQUIRED_PROTOCOL = '2026-07-28'
+# Classic ``elicitation/create`` on the tools/call SSE stream (form and/or url).
+SSE_ELICITATION_PROTOCOLS = frozenset({FORM_ELICITATION_PROTOCOL, URL_ELICITATION_PROTOCOL})
 _OPEN_PREFIX = 'mcp_gateway:elicit-open:'
 _RESULT_PREFIX = 'mcp_gateway:elicit-result:'
 _TTL_SECONDS = 120
@@ -35,9 +38,17 @@ def form_delivery(*, protocol_version: str, form_declared: bool, accepts_sse: bo
     version = str(protocol_version or '').strip()
     if version == INPUT_REQUIRED_PROTOCOL:
         return 'input_required'
-    if version == FORM_ELICITATION_PROTOCOL and accepts_sse:
+    if version in SSE_ELICITATION_PROTOCOLS and accepts_sse:
         return 'sse'
     return 'link'
+
+
+def can_stream_elicitation(*, protocol_version: str, accepts_sse: bool, wait_seconds: float | None = None) -> bool:
+    """Whether this session can carry ``elicitation/create`` on a tools/call SSE response."""
+    seconds = elicitation_wait_seconds() if wait_seconds is None else float(wait_seconds)
+    if seconds <= 0 or not accepts_sse:
+        return False
+    return str(protocol_version or '').strip() in SSE_ELICITATION_PROTOCOLS
 
 
 def request_accepts_sse(request: HttpRequest) -> bool:
@@ -68,31 +79,6 @@ def classic_form_params(*, message: str) -> dict[str, Any]:
                     'title': 'Decision',
                     'enum': ['approve', 'deny'],
                     'enumNames': ['Approve', 'Deny'],
-                }
-            },
-            'required': ['decision'],
-        },
-    }
-
-
-def classic_link_open_params(*, message: str) -> dict[str, Any]:
-    """Form elicitation for link-channel approvals when the client has no URL mode.
-
-    One primary button keeps the chat UI looking like a real elicitation. The
-    approval URL stays in ``message`` so the human can open it from the card.
-    Clicking the button does not grant approval; the browser page still decides.
-    """
-    return {
-        'mode': 'form',
-        'message': message,
-        'requestedSchema': {
-            'type': 'object',
-            'properties': {
-                'decision': {
-                    'type': 'string',
-                    'title': 'Approval',
-                    'enum': ['open'],
-                    'enumNames': ['Open approval'],
                 }
             },
             'required': ['decision'],
@@ -157,6 +143,39 @@ def wait_for_elicitation_result(
         sleep(min(0.05, remaining))
 
 
+def wait_for_link_page_approval(
+    *,
+    approval_payload: dict[str, Any],
+    session_id: str = '',
+    rpc_id: str = '',
+    timeout_seconds: float,
+    interval_seconds: float = 0.5,
+    sleep: Callable[[float], None] = time.sleep,
+    approval_state: Callable[[dict[str, Any]], str | None] | None = None,
+) -> str | None:
+    """Poll Identity until the browser page decides, or the timeout elapses.
+
+    Client elicitation answers (Open / dismiss / decline) are drained and ignored —
+    only the identity approval page can approve or deny a link-channel row.
+    """
+    from apps.connector import mcp_approvals as approvals
+
+    state_fn = approval_state or approvals.approval_state
+    timeout = max(0.0, float(timeout_seconds))
+    interval = max(0.05, float(interval_seconds))
+    deadline = time.monotonic() + timeout
+    while True:
+        if session_id and rpc_id:
+            _take_result(session_id, rpc_id)
+        state = state_fn(approval_payload)
+        if state in {'approved', 'denied', 'expired'}:
+            return state
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return state if state in {'approved', 'denied', 'expired'} else None
+        sleep(min(interval, remaining))
+
+
 def sse_message(payload: dict[str, Any]) -> str:
     return f'event: message\ndata: {json.dumps(payload, default=str)}\n\n'
 
@@ -193,6 +212,46 @@ def form_elicitation_stream(
     yield sse_message({'jsonrpc': '2.0', 'id': call_id, 'result': body.get('result', body)})
 
 
+def link_approval_stream(
+    *,
+    session_id: str,
+    call_id: Any,
+    timeout_seconds: float,
+    approval_payload: dict[str, Any],
+    on_page_state: Callable[[str | None], dict[str, Any]],
+    sleep: Callable[[float], None] = time.sleep,
+    elicit_params: dict[str, Any] | None = None,
+    approval_state: Callable[[dict[str, Any]], str | None] | None = None,
+    interval_seconds: float = 0.5,
+) -> Iterator[str]:
+    """Hold tools/call open, optionally offer URL elicitation, poll Identity, then finish."""
+    from secrets import token_hex
+
+    rpc_id = ''
+    if isinstance(elicit_params, dict) and elicit_params:
+        rpc_id = token_hex(8)
+        remember_open_elicitation(session_id, rpc_id)
+        yield sse_message(
+            {
+                'jsonrpc': '2.0',
+                'id': rpc_id,
+                'method': 'elicitation/create',
+                'params': elicit_params,
+            }
+        )
+    state = wait_for_link_page_approval(
+        approval_payload=approval_payload,
+        session_id=session_id,
+        rpc_id=rpc_id,
+        timeout_seconds=timeout_seconds,
+        interval_seconds=interval_seconds,
+        sleep=sleep,
+        approval_state=approval_state,
+    )
+    body = on_page_state(state)
+    yield sse_message({'jsonrpc': '2.0', 'id': call_id, 'result': body.get('result', body)})
+
+
 def form_elicitation_response(
     *,
     session_id: str,
@@ -212,6 +271,30 @@ def form_elicitation_response(
         timeout_seconds=elicitation_wait_seconds(),
         on_decision=on_decision,
         params=params,
+    )
+    response = StreamingHttpResponse(stream, content_type='text/event-stream')
+    response['Cache-Control'] = 'no-cache'
+    response['X-Accel-Buffering'] = 'no'
+    if session_id:
+        response['Mcp-Session-Id'] = session_id
+    return response
+
+
+def link_approval_response(
+    *,
+    session_id: str,
+    call_id: Any,
+    approval_payload: dict[str, Any],
+    on_page_state: Callable[[str | None], dict[str, Any]],
+    elicit_params: dict[str, Any] | None = None,
+) -> StreamingHttpResponse:
+    stream = link_approval_stream(
+        session_id=session_id,
+        call_id=call_id,
+        timeout_seconds=elicitation_wait_seconds(),
+        approval_payload=approval_payload,
+        on_page_state=on_page_state,
+        elicit_params=elicit_params,
     )
     response = StreamingHttpResponse(stream, content_type='text/event-stream')
     response['Cache-Control'] = 'no-cache'

@@ -1090,6 +1090,7 @@ class ApprovalLinkGateTests(TestCase):
     def test_url_mode_result_includes_elicitation_and_pending_shape(self):
         def state(payload):
             payload['approval_id'] = 'appr-1'
+            payload['approval_url_field'] = 'https://identity.test/oauth/mcp/approval/appr-1'
             return 'pending'
 
         outcome = self._run(
@@ -1104,8 +1105,11 @@ class ApprovalLinkGateTests(TestCase):
         body = json.loads(outcome.response.content)
         result = body['result']
         self.assertFalse(result['isError'])
-        self.assertNotIn('inputRequests', result)
-        self.assertNotIn('resultType', result)
+        self.assertEqual(result['resultType'], 'input_required')
+        url_params = result['inputRequests']['approval']['params']
+        self.assertEqual(url_params['mode'], 'url')
+        self.assertEqual(url_params['url'], 'https://identity.test/oauth/mcp/approval/appr-1')
+        self.assertNotIn('https://identity.test', url_params['message'])
         self.assertEqual(result['structuredContent']['status'], 'pending')
         self.assertEqual(result['structuredContent']['approval_url'], 'https://identity.test/oauth/mcp/approval/appr-1')
         self.assertIn('human user', result['content'][0]['text'])
@@ -1192,7 +1196,7 @@ class ApprovalLinkGateTests(TestCase):
         self.assertIn(result['structuredContent']['approval_url'], text)
         self.assertNotIn('inputRequests', result)
 
-    def test_link_channel_sse_offers_open_approval_card(self):
+    def test_link_channel_form_only_returns_raw_pending_link(self):
         def state(payload):
             payload['approval_id'] = 'appr-1'
             payload['approval_url_field'] = 'https://identity.test/oauth/mcp/approval/appr-1'
@@ -1228,6 +1232,10 @@ class ApprovalLinkGateTests(TestCase):
                 'apps.connector.mcp_approval_gate._resolve_approval_channel',
                 return_value=(True, False, 'sse', 'link'),
             ),
+            patch(
+                'apps.connector.mcp_protocol.session_protocol_version',
+                return_value='2025-06-18',
+            ),
             override_settings(MCP_APPROVAL_FORM_ELICITATION_WAIT_SECONDS=90),
         ):
             decide.return_value = WriteGateDecision(
@@ -1250,16 +1258,140 @@ class ApprovalLinkGateTests(TestCase):
                 arguments={'id': 1},
             )
         self.assertFalse(outcome.proceed)
+        self.assertIsNone(outcome.elicit)
+        result = json.loads(outcome.response.content)['result']
+        self.assertEqual(result['structuredContent']['status'], 'pending')
+        self.assertIn(result['structuredContent']['approval_url'], result['content'][0]['text'])
+
+    def test_link_channel_sse_offers_url_mode_open_for_any_url_client(self):
+        def state(payload):
+            payload['approval_id'] = 'appr-1'
+            payload['approval_url_field'] = 'https://identity.test/oauth/mcp/approval/appr-1'
+            return 'pending'
+
+        destructive = {
+            'annotations': {'readOnlyHint': False, 'destructiveHint': True},
+            '_meta': {
+                'method': 'DELETE',
+                'path': '/api/v1/buckets/{id}/',
+                'read_only': False,
+                'destructive': True,
+            },
+        }
+        request = self._request()
+        request.headers = {
+            'Mcp-Session-Id': 'sess-link',
+            'Accept': 'application/json, text/event-stream',
+        }
+        with (
+            patch('apps.connector.mcp_approval_gate.decide_write') as decide,
+            patch('apps.connector.mcp_approval_gate.approvals.session_grant_covers_write', return_value=False),
+            patch('apps.connector.mcp_approval_gate.approvals.approval_state', side_effect=state),
+            patch(
+                'apps.connector.mcp_approval_gate.approvals.create_approval_request',
+                return_value={
+                    'id': 'appr-1',
+                    'status': 'pending',
+                    'approval_url': 'https://identity.test/oauth/mcp/approval/appr-1',
+                },
+            ),
+            patch(
+                'apps.connector.mcp_approval_gate._resolve_approval_channel',
+                return_value=(True, True, 'sse', 'link'),
+            ),
+            patch(
+                'apps.connector.mcp_protocol.session_protocol_version',
+                return_value='2025-11-25',
+            ),
+            override_settings(MCP_APPROVAL_FORM_ELICITATION_WAIT_SECONDS=90),
+        ):
+            decide.return_value = WriteGateDecision(
+                allowed=False, needs_approval=True, reason='Destructive change requires approval.'
+            )
+            outcome = enforce_tool_call_approval(
+                request,
+                7,
+                params={
+                    '_meta': {
+                        'io.modelcontextprotocol/clientCapabilities': {
+                            'elicitation': {'form': {}, 'url': {}},
+                        },
+                    }
+                },
+                agent_claims=_gate_claims(),
+                export_name='storage_delete_bucket',
+                service_id='storage',
+                tool=destructive,
+                method='DELETE',
+                path='/api/v1/buckets/{id}/',
+                arguments={'id': 1},
+            )
+        self.assertFalse(outcome.proceed)
         self.assertIsNotNone(outcome.elicit)
         self.assertEqual(outcome.elicit.get('kind'), 'link')
-        self.assertFalse(outcome.elicit.get('url_mode'))
-        self.assertIn('https://identity.test/oauth/mcp/approval/appr-1', outcome.elicit.get('message') or '')
-        from apps.connector.mcp_form_elicitation import classic_link_open_params
+        self.assertTrue(outcome.elicit.get('url_mode'))
+        self.assertEqual(
+            outcome.elicit.get('approval_url'),
+            'https://identity.test/oauth/mcp/approval/appr-1',
+        )
+        message = outcome.elicit.get('message') or ''
+        self.assertIn('storage_delete_bucket', message)
+        self.assertNotIn('https://identity.test', message)
+        from apps.connector.mcp_form_elicitation import classic_url_params
 
-        params = classic_link_open_params(message=outcome.elicit['message'])
-        self.assertEqual(params['mode'], 'form')
-        self.assertEqual(params['requestedSchema']['properties']['decision']['enum'], ['open'])
-        self.assertEqual(params['requestedSchema']['properties']['decision']['enumNames'], ['Open approval'])
+        params = classic_url_params(message=message, url=outcome.elicit['approval_url'])
+        self.assertEqual(params['mode'], 'url')
+        self.assertEqual(params['url'], outcome.elicit['approval_url'])
+        self.assertNotIn(params['url'], params['message'])
+
+    def test_link_hold_polls_until_browser_approves(self):
+        from apps.connector.mcp_form_elicitation import (
+            link_approval_stream,
+            remember_open_elicitation,
+            store_elicitation_result,
+            wait_for_link_page_approval,
+        )
+
+        payload = {'approval_id': 'appr-1'}
+        states = iter(['pending', 'pending', 'approved'])
+        seen = []
+
+        def on_page_state(state):
+            seen.append(state)
+            return {'result': {'content': [{'type': 'text', 'text': f'state:{state}'}], 'isError': False}}
+
+        chunks = list(
+            link_approval_stream(
+                session_id='sess-hold',
+                call_id=9,
+                timeout_seconds=5,
+                approval_payload=payload,
+                on_page_state=on_page_state,
+                elicit_params={'mode': 'url', 'url': 'https://identity.test/a', 'message': 'Approve'},
+                approval_state=lambda _p: next(states),
+                interval_seconds=0.01,
+                sleep=lambda _s: None,
+            )
+        )
+        self.assertEqual(len(chunks), 2)
+        self.assertIn('elicitation/create', chunks[0])
+        self.assertIn('state:approved', chunks[1])
+        self.assertEqual(seen, ['approved'])
+
+        # Client decline is drained; wait continues until Identity reports approved.
+        remember_open_elicitation('sess-drain', 'rpc-1')
+        store_elicitation_result('sess-drain', 'rpc-1', {'action': 'decline'})
+        states2 = iter(['pending', 'approved'])
+        decided = wait_for_link_page_approval(
+            approval_payload={'approval_id': 'appr-2'},
+            session_id='sess-drain',
+            rpc_id='rpc-1',
+            timeout_seconds=5,
+            interval_seconds=0.01,
+            sleep=lambda _s: None,
+            approval_state=lambda _p: next(states2),
+        )
+        self.assertEqual(decided, 'approved')
 
     def test_form_approve_records_allow_and_runs_once(self):
         from apps.connector.mcp_approval_gate import apply_elicitation_result

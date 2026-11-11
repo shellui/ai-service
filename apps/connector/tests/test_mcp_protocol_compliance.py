@@ -147,7 +147,7 @@ class McpProtocolComplianceTests(TestCase):
             '/c/10/mcp',
             data=_rpc(
                 'initialize',
-                protocolVersion='2025-11-25',
+                protocolVersion='2026-07-28',
                 capabilities={},
                 clientInfo={'name': 'future', 'version': '1.0'},
             ),
@@ -156,7 +156,7 @@ class McpProtocolComplianceTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertEqual(body['result']['protocolVersion'], '2025-06-18')
+        self.assertEqual(body['result']['protocolVersion'], '2025-11-25')
 
     def test_initialize_negotiates_older_protocol_version(self, *_mocks):
         token = _agent_token(secret=self.secret, issuer=self.issuer)

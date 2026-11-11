@@ -22,7 +22,7 @@ So the default suite proves **MCP + OAuth + ai gateway + identity** for the flow
 
 The default `tools/list` result is the discovery set. `?tools=all` returns everything.
 
-The gateway **`initialize`** response echoes **`protocolVersion`** when the client sends one of the revisions in `apps.connector.mcp_protocol.SUPPORTED_PROTOCOL_VERSIONS`. A newer revision, such as the official SDK's `2025-11-25`, is answered with the newest revision this gateway implements (`2025-06-18`). A missing version is still **JSON-RPC -32600**. Default CI still uses empty downstream URLs and the SaaS mock, so **live** delegated downstream MCP is not exercised automatically.
+The gateway **`initialize`** response echoes **`protocolVersion`** when the client sends one of the revisions in `apps.connector.mcp_protocol.SUPPORTED_PROTOCOL_VERSIONS`. A newer revision, such as `2026-07-28`, is answered with the newest revision this gateway implements (`2025-11-25`). A missing version is still **JSON-RPC -32600**. Default CI still uses empty downstream URLs and the SaaS mock, so **live** delegated downstream MCP is not exercised automatically.
 
 ## Optional downstream URLs (manual local evidence only)
 

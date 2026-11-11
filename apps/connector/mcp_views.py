@@ -702,40 +702,22 @@ class PrefixingMcpServer(AggregatingMcpServer):
     def _form_elicitation_response(self, req_id, outcome, on_approved):
         import json as _json
 
-        from apps.connector.mcp_approval_gate import apply_elicitation_result
+        from apps.connector import mcp_approval_copy as copy
+        from apps.connector.mcp_approval_gate import _consume_approved_outcome, apply_elicitation_result
         from apps.connector.mcp_form_elicitation import (
             classic_form_params,
-            classic_link_open_params,
             classic_url_params,
             form_elicitation_response,
+            link_approval_response,
         )
 
         elicit = outcome.elicit or {}
         fallback = outcome.response
+        kind = str(elicit.get('kind') or 'form')
+        message = str(elicit.get('message') or '')
+        approval_url = str(elicit.get('approval_url') or '')
 
-        def on_decision(result):
-            if isinstance(result, dict):
-                applied = apply_elicitation_result(req_id, elicit, result)
-                if applied is not None:
-                    if applied.proceed:
-                        if applied.log:
-                            note_approval(applied.log)
-                        forwarded = on_approved()
-                        if forwarded is not None:
-                            try:
-                                return _json.loads(forwarded.content)
-                            except (TypeError, ValueError, AttributeError):
-                                pass
-                        if applied.log and self.on_call:
-                            self.on_call(dict(applied.log))
-                    else:
-                        if applied.log and self.on_call:
-                            self.on_call(dict(applied.log))
-                    if applied.response is not None:
-                        try:
-                            return _json.loads(applied.response.content)
-                        except (TypeError, ValueError, AttributeError):
-                            pass
+        def _fallback_body():
             if outcome.log and self.on_call:
                 self.on_call(dict(outcome.log))
             try:
@@ -743,21 +725,118 @@ class PrefixingMcpServer(AggregatingMcpServer):
             except (TypeError, ValueError, AttributeError):
                 return {'content': [{'type': 'text', 'text': 'Approval pending.'}], 'isError': False}
 
-        message = str(elicit.get('message') or '')
-        kind = str(elicit.get('kind') or 'form')
-        approval_url = str(elicit.get('approval_url') or '')
-        if kind == 'link' and elicit.get('url_mode') and approval_url:
-            elicit_params = classic_url_params(message=message, url=approval_url)
-        elif kind == 'link':
-            elicit_params = classic_link_open_params(message=message)
-        else:
-            elicit_params = classic_form_params(message=message)
+        def _apply_gate_outcome(applied):
+            if applied is None:
+                return None
+            if applied.proceed:
+                if applied.log:
+                    note_approval(applied.log)
+                forwarded = on_approved()
+                if forwarded is not None:
+                    try:
+                        return _json.loads(forwarded.content)
+                    except (TypeError, ValueError, AttributeError):
+                        pass
+                if applied.log and self.on_call:
+                    self.on_call(dict(applied.log))
+            else:
+                if applied.log and self.on_call:
+                    self.on_call(dict(applied.log))
+            if applied.response is not None:
+                try:
+                    return _json.loads(applied.response.content)
+                except (TypeError, ValueError, AttributeError):
+                    pass
+            return None
+
+        if kind == 'link':
+            approval_payload = (
+                elicit.get('approval_payload') if isinstance(elicit.get('approval_payload'), dict) else {}
+            )
+            export_name = str(elicit.get('export_name') or '')
+            elicit_params = None
+            if elicit.get('url_mode') and approval_url:
+                elicit_params = classic_url_params(message=message, url=approval_url)
+
+            def on_page_state(state):
+                if state == 'approved':
+                    applied = _consume_approved_outcome(
+                        req_id,
+                        approval_id=str(elicit.get('approval_id') or ''),
+                        approval_payload=approval_payload,
+                        agent_claims=elicit.get('agent_claims')
+                        if isinstance(elicit.get('agent_claims'), dict)
+                        else {},
+                        service_id=str(elicit.get('service_id') or ''),
+                        export_name=export_name,
+                        tool=elicit.get('tool') if isinstance(elicit.get('tool'), dict) else None,
+                        method=str(elicit.get('method') or ''),
+                        path=str(elicit.get('path') or ''),
+                    )
+                    finished = _apply_gate_outcome(applied)
+                    if finished is not None:
+                        return finished
+                    return _fallback_body()
+                if state == 'denied':
+                    body = {
+                        'content': [{'type': 'text', 'text': copy.after_deny_text(tool_name=export_name)}],
+                        'isError': False,
+                        '_meta': {
+                            'shellui_approval': {
+                                'status': 'denied',
+                                'approval_id': str(elicit.get('approval_id') or ''),
+                            }
+                        },
+                    }
+                    if outcome.log and self.on_call:
+                        log = dict(outcome.log)
+                        log['outcome'] = 'denied'
+                        log['log_result'] = 'denied'
+                        self.on_call(log)
+                    return {'result': body}
+                if state == 'expired':
+                    body = {
+                        'content': [{'type': 'text', 'text': copy.expired_text()}],
+                        'isError': True,
+                        '_meta': {
+                            'shellui_approval': {
+                                'status': 'expired',
+                                'approval_id': str(elicit.get('approval_id') or ''),
+                            }
+                        },
+                    }
+                    if outcome.log and self.on_call:
+                        log = dict(outcome.log)
+                        log['outcome'] = 'expired'
+                        log['log_result'] = 'expired'
+                        self.on_call(log)
+                    return {'result': body}
+                return _fallback_body()
+
+            response = link_approval_response(
+                session_id=str(elicit.get('session_id') or ''),
+                call_id=req_id,
+                approval_payload=approval_payload,
+                on_page_state=on_page_state,
+                elicit_params=elicit_params,
+            )
+            response.streaming_content = _bind_mcp_context(response.streaming_content)
+            return response
+
+        def on_decision(result):
+            if isinstance(result, dict):
+                applied = apply_elicitation_result(req_id, elicit, result)
+                finished = _apply_gate_outcome(applied)
+                if finished is not None:
+                    return finished
+            return _fallback_body()
+
         response = form_elicitation_response(
             session_id=str(elicit.get('session_id') or ''),
             call_id=req_id,
             message=message,
             on_decision=on_decision,
-            params=elicit_params,
+            params=classic_form_params(message=message),
         )
         # The view resets request context before Django iterates this stream.
         # Forwarding the approved call still needs the company cache key.

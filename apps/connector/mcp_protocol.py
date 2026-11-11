@@ -36,6 +36,7 @@ from shellui_django.mcp.server import McpServer
 # Supported MCP revisions, newest first. ``negotiate_protocol_version`` echoes a requested
 # member and otherwise answers with the newest revision this gateway implements.
 SUPPORTED_PROTOCOL_VERSIONS: tuple[str, ...] = (
+    '2025-11-25',
     '2025-06-18',
     '2025-03-26',
     '2024-11-05',
@@ -53,8 +54,8 @@ _SUPPORTED_PROTOCOL_SET = frozenset(SUPPORTED_PROTOCOL_VERSIONS)
 def negotiate_protocol_version(client_version: str | None) -> str | None:
     """Echo a supported client revision, or the newest gateway revision when the client asks for another.
 
-    A missing version is rejected. The official SDK sends its latest revision (for example
-    ``2025-11-25``) and accepts an older revision from this list in the initialize result.
+    A missing version is rejected. The official SDK may send a newer revision (for example
+    ``2026-07-28``); this gateway answers with the newest revision it implements.
     """
     requested = str(client_version or '').strip()
     if not requested:

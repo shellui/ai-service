@@ -130,20 +130,22 @@ Destructive tools (`destructiveHint`, registry `_meta.destructive`, or `DELETE`)
 
 Form elicitation is used only when the client declared form mode and the negotiated revision can carry it:
 
-- `2025-06-18` (the newest revision this gateway negotiates): the `tools/call` POST is answered as `text/event-stream`. The first SSE event is a server request, `elicitation/create` with `mode: form`. The client posts the JSON-RPC result back on the same session. The gateway then finishes that tool call on the same stream. Hermes uses this path. Its default `protocol: auto` completes the legacy `initialize` handshake, so it lands on `2025-06-18` and never reads `resultType: input_required`.
-- `2026-07-28` only: `resultType: input_required` with `inputResponses` on the retry. This gateway does not negotiate that revision, so it does not send `input_required`.
+- `2025-11-25` and `2025-06-18`: the `tools/call` POST is answered as `text/event-stream`. The first SSE event is a server request, `elicitation/create` (form Approve/Deny, or URL mode for link-channel approvals). The client posts the JSON-RPC result back on the same session. The gateway then finishes that tool call on the same stream. Hermes uses this path. Its default `protocol: auto` completes the legacy `initialize` handshake, so it lands on `2025-06-18` / `2025-11-25` and never reads `resultType: input_required`.
+- `2026-07-28` only: `resultType: input_required` with `inputResponses` on the retry. This gateway does not negotiate that revision, so it does not send form `input_required` for in-chat Approve/Deny. URL-capable clients that cannot hold SSE still receive URL mode as `input_required` on the pending link result.
 - Anything else, or a client that does not accept `text/event-stream`: the link text below.
 
 The stream stays open for `MCP_APPROVAL_FORM_ELICITATION_WAIT_SECONDS` (default 90). That stays under `GUNICORN_TIMEOUT` (default 120) so the worker can still write the link fallback. The wait is shared through the Django cache, so a multi-worker deployment needs `REDIS_URL`. If the client does not answer in time, or the stream cannot be held, the `tools/call` result is the link text. `accept` (including an empty `content` object, which is what Hermes sends for Yes) records `decision: allow` with `consent: in_chat` and runs the tool once. `decline` records `decision: deny` and does not run the tool. `cancel` does not decide; the result is the link text and the approval stays pending.
 
-The elicitation `message` includes the approval URL. The pending tool result always puts that URL in the plain text `content` as well as in `structuredContent.approval_url`.
+For form Approve/Deny cards, the elicitation `message` includes the approval URL as a fallback. The pending tool result always puts that URL in the plain text `content` as well as in `structuredContent.approval_url`.
 
-**Link-channel elicitation (destructive tools, or company `link` override).** When the client declared form elicitation and accepts SSE (`2025-06-18`), the gateway still opens an in-chat card instead of dumping only a raw URL into the tool result:
+**Link-channel elicitation (destructive tools, or company `link` override).** When the client accepts SSE on `2025-06-18` / `2025-11-25`, the gateway **holds the `tools/call` open** and polls Identity until the human decides on the approval page (or the wait times out). After Approve, it consumes the grant and finishes that same tool call — the person does not need to say “I approved” in chat.
 
-- Clients that also declared URL elicitation (`capabilities.elicitation.url`) get `elicitation/create` with `mode: url` and the approval page URL (the client’s Open control).
-- Form-only clients (Hermes) get `mode: form` with a single **Open approval** button and the URL in the message. Clicking the button, dismissing the card, or declining the elicitation does **not** decide the approval; the human must finish on the identity page.
+- Clients that declared URL elicitation (`capabilities.elicitation.url`) also get `elicitation/create` with `mode: url` (one-click Open). The message does **not** repeat the URL; the gateway holds and polls until the browser decides.
+- Form-only clients (including Cursor today) get an **immediate pending tool result** with the raw approval URL in plain text / `structuredContent.approval_url` — no form Submit card (that cannot open the browser). The human opens the link; the agent retries after approval (or polls `ai_get_approval`).
+- Without SSE: URL-capable clients may still see URL mode as `input_required` on the pending result; otherwise the pending link text is returned immediately.
+- Dismissing or declining a URL elicitation does **not** decide the approval and does **not** end the wait early.
 
-Timeout or cancel falls back to the same pending link text as before.
+Timeout falls back to the same pending link text as before.
 
 The link text is in the plain `content` text and in `structuredContent`. It tells the agent the link is for the human, to show it verbatim as a clickable link, not to open, fetch, or sign in, and to call the same tool again with the same arguments after the person says they approved.
 
@@ -181,7 +183,7 @@ Form elicitation on `2025-06-18` (non-destructive, client declared form elicitat
 
 ### URL elicitation
 
-URL mode is `capabilities.elicitation.url` as an object (MCP spec 2025-11-25). An empty `elicitation` object is form mode only. Hermes declines URL-mode elicitations. This gateway does not send `mode: url`. The human link is always in the tool result text, including when form elicitation is also offered. A later retry that carries `inputResponses.approval.action` of `decline` or `cancel` does not run the tool. `accept` on that retry still waits for Identity to report the row approved before the tool runs.
+URL mode is `capabilities.elicitation.url` as an object (MCP spec 2025-11-25). An empty `elicitation` object is form mode only. Hermes declines URL-mode elicitations and does not declare `url`, so destructive approvals stay on the pending link text. Every other agent that declares `url` receives `mode: url` for link-channel approvals (SSE `elicitation/create`, or `input_required` when the session cannot stream). The elicitation `message` does not embed the URL; the `url` field carries it. The pending tool result still includes the human link in plain text and `structuredContent.approval_url`. A later retry that carries `inputResponses.approval.action` of `decline` or `cancel` does not run the tool. `accept` on that retry still waits for Identity to report the row approved before the tool runs.
 
 ### When an approval cannot be created
 

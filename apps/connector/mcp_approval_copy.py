@@ -55,16 +55,9 @@ def pending_agent_instruction(*, tool_name: str) -> str:
 
 
 def url_elicitation_message(*, tool_name: str) -> str:
-    return f'Approve {tool_name} in your browser, then return here.'
-
-
-def link_open_message(*, tool_name: str, approval_url: str) -> str:
-    """Elicitation card copy for destructive / link-channel approvals."""
     return (
         f'Approve {tool_name} in your browser. '
-        f'Open this page: {approval_url} '
-        'After you approve there, tell the agent to continue. '
-        'Do not open, fetch, or sign in to it yourself as the agent.'
+        'After you approve there, this request continues automatically.'
     )
 
 
