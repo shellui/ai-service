@@ -137,7 +137,7 @@ def global_binding_conflict_claims(
     assertion path), ``grant_version`` alone is a personal token: no ``global_company_id``
     and no ``company_binding_version``. ``mcp_authority`` of ``delegated`` or
     ``global_delegated`` without the full triple is still a conflict. The JWT can carry
-    that grant version for call logs and approval assertions without implying delegated mode.
+    that grant version for approval assertions without implying delegated mode.
     """
     if not isinstance(agent_claims, dict):
         return False

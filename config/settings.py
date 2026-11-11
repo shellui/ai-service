@@ -207,12 +207,13 @@ SPECTACULAR_SETTINGS = {
     'TAGS': [
         {'name': 'health', 'description': 'Service health checks.'},
         {'name': 'mcp-tools', 'description': 'Operations exposed to Shellui MCP agents.'},
+        {'name': 'mcp-admin', 'description': 'Company admin APIs for MCP agent tool-call logs.'},
     ],
     'PREPROCESSING_HOOKS': ['apps.authapi.spectacular_hooks.preprocessing_exclude_internal_endpoints'],
     'POSTPROCESSING_HOOKS': ['apps.authapi.spectacular_hooks.postprocess_mcp_tool_tags'],
 }
 
-# Outbound signed assertions to identity-service MCP internal APIs (approvals, call logs).
+# Outbound signed assertions to identity-service MCP internal APIs (approvals, revocation).
 SIMPLE_JWT = {
     'SIGNING_KEY': _secret_key,
     'ALGORITHM': 'HS256',
@@ -424,6 +425,8 @@ MCP_APPROVAL_CHANNEL_BY_COMPANY = os.getenv('MCP_APPROVAL_CHANNEL_BY_COMPANY', '
 MCP_APPROVAL_FORM_ELICITATION_WAIT_SECONDS = max(
     0, _env_int('MCP_APPROVAL_FORM_ELICITATION_WAIT_SECONDS', 90)
 )
+# How long gateway tool-call rows are kept. prune_mcp_call_logs deletes older rows.
+MCP_CALL_LOG_RETENTION_DAYS = max(1, _env_int('MCP_CALL_LOG_RETENTION_DAYS', 90))
 # Connected Shellui services (origins only; MCP paths are appended in code).
 STORAGE_SERVICE_URL = os.getenv('STORAGE_SERVICE_URL', '').strip().rstrip('/') or None
 HOSTING_SERVICE_URL = os.getenv('HOSTING_SERVICE_URL', '').strip().rstrip('/') or None

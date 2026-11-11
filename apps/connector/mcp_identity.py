@@ -1,4 +1,8 @@
-"""Identity revocation polling and MCP call log forwarding."""
+"""Identity revocation polling and delegated-authority checks.
+
+Tool-call logs are stored in ai-service (``McpCallLog``). This module does not
+forward them to identity ingest.
+"""
 
 from __future__ import annotations
 
@@ -22,13 +26,10 @@ from django.core.cache import cache
 from shellui_django.mcp.internal import (
     REVOCATION_CACHE_SECONDS,
     InternalAssertionError,
-    build_mcp_call_log_assertion,
     build_mcp_revocation_assertion,
     verify_mcp_revocation_list_response,
 )
 
-from apps.connector.mcp_audit_codes import error_code_from_http, sanitize_error_code
-from apps.connector.mcp_call_audit import OUTCOMES, legacy_result_token
 from apps.connector.mcp_company_id import strict_numeric_company_id
 from apps.connector.mcp_revocation import revocation_fingerprint_material
 from apps.connector.mcp_setup_context import (
@@ -578,183 +579,3 @@ def personal_agent_bearer_valid(claims: dict) -> bool:
     if not personal_token_id:
         return True
     return bool(str(claims.get('jti') or '').strip())
-
-
-_ACCESS_KINDS = frozenset({'read', 'write', 'destructive'})
-
-
-def _identity_ingest_outcome(*, outcome: str, log_result: str | None) -> str:
-    o = str(outcome or '').strip().lower()
-    if o == 'pending':
-        o = 'pending_approval'
-    if o == 'session_used':
-        return 'session_used'
-    if o == 'allowed':
-        return 'allowed'
-    if o == 'failed':
-        return 'failed'
-    if o == 'denied':
-        return 'denied'
-    if o == 'pending_approval':
-        return 'waiting_approval'
-    lr = str(log_result or '').strip().lower() if log_result else ''
-    if lr == 'pending':
-        lr = 'pending_approval'
-    eff = o if o in OUTCOMES else lr
-    if eff not in OUTCOMES:
-        eff = 'failed'
-    token = legacy_result_token(outcome=eff)
-    if token == 'success':
-        return 'allowed'
-    if token == 'error':
-        return 'failed'
-    if token == 'denied':
-        return 'denied'
-    if token == 'pending_approval':
-        return 'waiting_approval'
-    return 'failed'
-
-
-def forward_call_log(entry: dict) -> None:
-    origin = _identity_origin()
-    if not origin:
-        return
-    url = f'{origin}/api/v1/mcp/internal/mcp-call-logs'
-    try:
-        assertion = build_mcp_call_log_assertion(audience_url=_identity_audience(origin), **_signing_kwargs())
-    except InternalAssertionError:
-        logger.warning('MCP call log failed: service assertion signing is not configured')
-        return
-    claims = entry.get('agent_claims')
-    if not isinstance(claims, dict) or not claims:
-        logger.warning('MCP call log skipped: missing agent JWT claims context')
-        return
-    raw_aid = entry.get('agent_id')
-    try:
-        agent_uuid = uuid.UUID(str(raw_aid).strip())
-    except (TypeError, ValueError, AttributeError):
-        logger.warning('MCP call log skipped: invalid agent_id')
-        return
-    try:
-        claim_agent = uuid.UUID(str(claims.get('agent_id') or '').strip())
-    except (TypeError, ValueError, AttributeError):
-        logger.warning('MCP call log skipped: invalid agent_id claim')
-        return
-    if claim_agent != agent_uuid:
-        logger.warning('MCP call log skipped: agent_id does not match JWT')
-        return
-    cid = strict_numeric_company_id(entry.get('company_id'))
-    if cid is None:
-        logger.warning('MCP call log skipped: invalid company_id')
-        return
-    claim_cid = strict_numeric_company_id(claims.get('company_id'))
-    if claim_cid is None or claim_cid != cid:
-        logger.warning('MCP call log skipped: company_id does not match JWT')
-        return
-    gv_claim, cbv_claim, gcid_claim = global_binding_triplet_from_claims(claims)
-    if gv_claim is None:
-        logger.warning('MCP call log skipped: grant_version missing from JWT')
-        return
-    gv_entry = parse_int_version_claim(entry.get('grant_version'))
-    if gv_entry is None or int(gv_entry) != int(gv_claim):
-        logger.warning('MCP call log skipped: grant_version mismatch or missing on entry')
-        return
-    delegated = is_global_delegated_claims(claims)
-    gcid_entry = parse_global_company_id(entry.get('global_company_id'))
-    cbv_entry = parse_int_version_claim(entry.get('company_binding_version'))
-    if delegated:
-        if gcid_claim is None or cbv_claim is None:
-            logger.warning('MCP call log skipped: incomplete delegated claims')
-            return
-        if gcid_entry is None or cbv_entry is None:
-            logger.warning('MCP call log skipped: delegated entry missing global pair')
-            return
-        if gcid_entry != gcid_claim or int(cbv_entry) != int(cbv_claim):
-            logger.warning('MCP call log skipped: global binding pair inconsistent with JWT')
-            return
-    else:
-        if gcid_entry is not None or cbv_entry is not None:
-            logger.warning('MCP call log skipped: global fields on non-delegated forward')
-            return
-
-    outcome_raw = str(entry.get('outcome') or '').strip().lower()
-    log_res = str(entry.get('log_result') or '').strip() if entry.get('log_result') is not None else None
-    ingest_outcome = _identity_ingest_outcome(outcome=outcome_raw, log_result=log_res)
-    access_raw = str(entry.get('access_kind') or entry.get('access_level') or '').strip().lower()
-    access_kind = access_raw if access_raw in _ACCESS_KINDS else 'unknown'
-    tool_name = str(entry.get('tool_export_id') or entry.get('tool') or '')[:255] or 'tool'
-    aid_raw = str(entry.get('approval_id') or '').strip()
-    approval_uuid: str | None = None
-    if aid_raw:
-        try:
-            approval_uuid = str(uuid.UUID(aid_raw))
-        except (ValueError, TypeError, AttributeError):
-            approval_uuid = None
-    duration = entry.get('duration_ms')
-    dur_ms = int(duration) if isinstance(duration, (int, float)) and duration >= 0 else 0
-    status_code = int(entry.get('status') or 0)
-    is_err = entry.get('is_error')
-
-    destructive_audit = access_kind == 'destructive' or bool(entry.get('destructive_hint'))
-    if destructive_audit:
-        if ingest_outcome == 'denied':
-            ec_derived = sanitize_error_code(entry.get('error_code')) or 'denied'
-        elif ingest_outcome == 'waiting_approval':
-            ec_derived = sanitize_error_code(entry.get('error_code')) or 'waiting_approval'
-        elif ingest_outcome in ('allowed', 'session_used'):
-            if approval_uuid is None:
-                ingest_outcome = 'failed'
-                ec_derived = sanitize_error_code(entry.get('error_code')) or 'mcp_tool_error'
-            else:
-                ec_derived = None
-        elif ingest_outcome == 'failed':
-            ec_derived = sanitize_error_code(entry.get('error_code')) or error_code_from_http(
-                status=status_code, is_error=is_err
-            )
-            if ec_derived is None:
-                ec_derived = 'mcp_tool_error'
-        else:
-            ingest_outcome = 'failed'
-            approval_uuid = None
-            ec_derived = sanitize_error_code(entry.get('error_code')) or 'mcp_tool_error'
-    else:
-        ec_raw = entry.get('error_code')
-        ec_derived = sanitize_error_code(ec_raw)
-        if ec_derived is None and ingest_outcome not in ('allowed', 'session_used'):
-            ec_derived = error_code_from_http(status=status_code, is_error=is_err)
-        if ec_derived is None and ingest_outcome == 'waiting_approval':
-            ec_derived = 'waiting_approval'
-        if ec_derived is None and ingest_outcome == 'denied':
-            ec_derived = 'denied'
-        if ec_derived is None and ingest_outcome == 'failed':
-            ec_derived = error_code_from_http(status=status_code, is_error=is_err) or 'internal_error'
-
-    body: dict[str, Any] = {
-        'agent_id': str(agent_uuid),
-        'company_id': int(cid),
-        'grant_version': int(gv_claim),
-        'service': str(entry.get('service') or 'ai')[:32],
-        'tool': tool_name,
-        'method': 'POST',
-        'path': '/mcp',
-        'status': status_code,
-        'duration_ms': dur_ms,
-        'outcome': ingest_outcome,
-        'access_kind': access_kind,
-    }
-    if delegated:
-        body['global_company_id'] = str(gcid_claim)
-        body['company_binding_version'] = int(cbv_claim)
-    if approval_uuid:
-        body['approval_id'] = approval_uuid
-    if ec_derived:
-        body['error_code'] = ec_derived
-    try:
-        _http_post(
-            url,
-            json=body,
-            headers={'Authorization': f'Bearer {assertion}', 'Content-Type': 'application/json'},
-            timeout=5,
-        )
-    except requests.RequestException as exc:
-        logger.warning('MCP call log forward failed: %s', type(exc).__name__)

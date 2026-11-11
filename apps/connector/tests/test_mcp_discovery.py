@@ -383,11 +383,10 @@ class DiscoveryGatewayTests(TestCase):
 
     @patch('apps.connector.mcp_identity._http_post', side_effect=_identity_http)
     @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
-    @patch('apps.connector.mcp_identity.forward_call_log')
     @patch('apps.connector.mcp_approvals.fetch_approval_state', return_value=(None, None))
     @patch('shellui_django.mcp.gateway.requests.post')
     @patch('apps.connector.mcp_approvals.create_approval_request', return_value={'id': 'appr-1', 'status': 'pending'})
-    def test_call_tool_ask_shows_real_tool_and_masks_secrets(self, _create, post, _state, _log, _mint, _http, *_mocks):
+    def test_call_tool_ask_shows_real_tool_and_masks_secrets(self, _create, post, _state, _mint, _http, *_mocks):
         self._storage(post)
         token = _token(secret=self.secret, issuer=self.issuer, mcp_access='ask')
         session = self._session(token)
@@ -423,9 +422,8 @@ class DiscoveryGatewayTests(TestCase):
 
     @patch('apps.connector.mcp_identity._http_post', side_effect=_identity_http)
     @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
-    @patch('apps.connector.mcp_identity.forward_call_log')
     @patch('shellui_django.mcp.gateway.requests.post')
-    def test_call_tool_read_full_and_unlisted_direct_call(self, post, _log, _mint, _http, *_mocks):
+    def test_call_tool_read_full_and_unlisted_direct_call(self, post, _mint, _http, *_mocks):
         self._storage(post)
         token = _token(secret=self.secret, issuer=self.issuer, mcp_access='full')
         listed = set(self._names(token))
@@ -451,9 +449,8 @@ class DiscoveryGatewayTests(TestCase):
 
     @patch('apps.connector.mcp_identity._http_post', side_effect=_identity_http)
     @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
-    @patch('apps.connector.mcp_identity.forward_call_log')
     @patch('shellui_django.mcp.gateway.requests.post')
-    def test_cold_tools_cache_is_refilled_before_reject(self, post, _log, _mint, _http, *_mocks):
+    def test_cold_tools_cache_is_refilled_before_reject(self, post, _mint, _http, *_mocks):
         from apps.connector.mcp_views import _get_server, tools_list_cache_key
 
         self._storage(post)
@@ -495,11 +492,10 @@ class DiscoveryGatewayTests(TestCase):
 
     @patch('apps.connector.mcp_identity._http_post', side_effect=_identity_http)
     @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
-    @patch('apps.connector.mcp_identity.forward_call_log')
     @patch('apps.connector.mcp_approvals.fetch_approval_state', return_value=(None, None))
     @patch('shellui_django.mcp.gateway.requests.post')
     @patch('apps.connector.mcp_approvals.create_approval_request', return_value={'id': 'appr-d', 'status': 'pending'})
-    def test_destructive_call_tool_has_no_session_button(self, _create, post, _state, _log, _mint, _http, *_mocks):
+    def test_destructive_call_tool_has_no_session_button(self, _create, post, _state, _mint, _http, *_mocks):
         self._storage(post)
         token = _token(secret=self.secret, issuer=self.issuer, mcp_access='ask')
         session = self._session(token)
@@ -522,10 +518,9 @@ class DiscoveryGatewayTests(TestCase):
 
     @patch('apps.connector.mcp_identity._http_post', side_effect=_identity_http)
     @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
-    @patch('apps.connector.mcp_identity.forward_call_log')
     @patch('apps.connector.mcp_approvals.approval_state', return_value='expired')
     @patch('shellui_django.mcp.gateway.requests.post')
-    def test_expired_and_denied_and_consumed_match_direct_calls(self, post, _state, _log, _mint, _http, *_mocks):
+    def test_expired_and_denied_and_consumed_match_direct_calls(self, post, _state, _mint, _http, *_mocks):
         self._storage(post)
         token = _token(secret=self.secret, issuer=self.issuer, mcp_access='ask')
         session = self._session(token)
@@ -608,9 +603,8 @@ class DiscoveryGatewayTests(TestCase):
 
     @patch('apps.connector.mcp_identity._http_post', side_effect=_identity_http)
     @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
-    @patch('apps.connector.mcp_identity.forward_call_log')
     @patch('shellui_django.mcp.gateway.requests.post')
-    def test_cold_cache_search_describe_and_call_load_the_catalog(self, post, _log, _mint, _http, *_mocks):
+    def test_cold_cache_search_describe_and_call_load_the_catalog(self, post, _mint, _http, *_mocks):
         self._storage(post)
         token = _token(secret=self.secret, issuer=self.issuer, mcp_access='full')
 

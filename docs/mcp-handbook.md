@@ -124,9 +124,9 @@ or
 
 Binding (`service`, `action` = export name, `arguments_hash`, company, agent) is carried **only** in the signed `Authorization` assertion JWT headers—never `arguments`, `path`, `method`, or `short_action_summary` in the POST JSON.
 
-## Call log outcomes (activity)
+## Call logs
 
-Internal audit rows use **`outcome`** (`allowed`, `failed`, `denied`, `pending_approval`, `session_used`). **`forward_call_log`** maps to Identity **`develop`** canonical ingest (**`waiting_approval`** instead of **`pending_approval`**) and always reports the **wire** downstream call as **`POST /mcp`** with allowlisted **`error_code`** when needed. The POST body matches **`McpInternalCallLogView`** + **`canonical_call_path`** (required **`grant_version`** from JWT, optional delegated pair only when the JWT is delegated); see [mcp.md](./mcp.md) call logs section.
+The gateway writes one `McpCallLog` row per `tools/call` and does not forward that row to Identity. Staff, company owners, and company admins list them with `GET /ai/v1/mcp/call-logs` (company taken from the JWT). Each row includes `operation_title`, `access_kind`, `outcome`, and `resource_label`. Global-company agents also include `agent_audit_scope`, `global_agent_id`, and `global_company_id`. Status values are `allowed`, `denied`, `waiting_approval`, `failed`, and `error`. See [mcp.md](./mcp.md).
 
 ## Revocation cache
 

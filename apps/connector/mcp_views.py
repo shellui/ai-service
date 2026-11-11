@@ -39,7 +39,19 @@ from apps.connector.mcp_approval_gate import (
 )
 from apps.connector.mcp_call_audit import build_call_audit_log, legacy_result_token
 from apps.connector.mcp_call_log import apply_duration_ms, client_ip_from_request, mcp_call_result
-from apps.connector.mcp_identity import agent_is_revoked, forward_call_log, identity_revocation_unavailable
+from apps.connector.mcp_call_store import (
+    bind_call_arguments,
+    bind_export_name,
+    bind_wrapper_tool,
+    note_approval,
+    persist_mcp_call,
+    reset_call_log_context,
+    reset_gateway_tool_call,
+    reset_wrapper_tool,
+    restore_call_log_context,
+    snapshot_call_log_context,
+)
+from apps.connector.mcp_identity import agent_is_revoked, identity_revocation_unavailable
 from apps.connector.mcp_setup_context import parse_global_company_id, parse_int_version_claim
 from apps.connector.mcp_urls import (
     PLAIN_MCP_MESSAGE,
@@ -97,15 +109,40 @@ def _enrich_call_log_identity_authority(entry: dict, claims: dict | None) -> Non
         entry['company_binding_version'] = cbv
 
 
+def _client_name_for_log(request: HttpRequest | None) -> str:
+    if request is None:
+        return ''
+    session_id = str(request.headers.get('Mcp-Session-Id') or request.headers.get('MCP-Session-Id') or '').strip()
+    if not session_id:
+        return ''
+    from apps.connector.mcp_protocol import session_client_name
+
+    return session_client_name(session_id)[:120]
+
+
 def _record_mcp_call(entry: dict) -> None:
+    """Store one local call-log row. Failures are logged and never fail the tool call."""
+    try:
+        _record_mcp_call_inner(entry)
+    except Exception:
+        logger.warning('MCP call log write failed', exc_info=True)
+
+
+def _record_mcp_call_inner(entry: dict) -> None:
     apply_duration_ms(entry)
     request = _mcp_http_request.get()
     claims = _mcp_agent_claims.get() or {}
-    _enrich_call_log_identity_authority(entry, claims if isinstance(claims, dict) else None)
+    if not isinstance(claims, dict):
+        claims = {}
+    _enrich_call_log_identity_authority(entry, claims)
     entry['client_ip'] = client_ip_from_request(request)
+    client_name = _client_name_for_log(request)
+    if client_name and not entry.get('client_name'):
+        entry['client_name'] = client_name
     status_code = int(entry.get('status') or 0)
     is_error = entry.pop('is_error', None)
     log_result = entry.pop('log_result', None)
+    raw_arguments = entry.get('arguments') if isinstance(entry.get('arguments'), dict) else None
     # shellui_django McpServer ``on_call`` omits ``is_error``; treat 2xx/3xx inner HTTP as non-error so audit does not fail closed.
     if is_error is None and 200 <= status_code < 400:
         is_error = False
@@ -116,14 +153,15 @@ def _record_mcp_call(entry: dict) -> None:
     )
     if entry.get('_mcp_audit_ready') is True:
         entry['result'] = legacy_result_token(outcome=str(entry.get('outcome') or 'failed'))
-        entry['agent_claims'] = dict(claims)
+        if not isinstance(entry.get('agent_claims'), dict):
+            entry['agent_claims'] = dict(claims)
         if log_result is not None:
             entry['log_result'] = str(log_result)
         if is_error is not None:
             entry['is_error'] = bool(is_error)
         entry.pop('_mcp_audit_ready', None)
         entry.pop('arguments', None)
-        forward_call_log(entry)
+        persist_mcp_call(entry, arguments=raw_arguments)
         return
 
     server = _get_server()
@@ -147,15 +185,48 @@ def _record_mcp_call(entry: dict) -> None:
         log_result=str(log_result) if log_result else None,
         status=status_code,
         is_error=is_error,
-        approval_id=None,
+        approval_id=entry.get('approval_id'),
     )
     audit['client_ip'] = entry.get('client_ip') or client_ip_from_request(request)
-    audit['result'] = legacy_result_token(outcome=str(audit.get('outcome') or 'failed'))
+    audit['client_name'] = entry.get('client_name') or client_name
+    audit['result'] = legacy
     audit['agent_claims'] = dict(claims)
+    if entry.get('error_message'):
+        audit['error_message'] = entry.get('error_message')
+    if entry.get('error_code') and not audit.get('error_code'):
+        audit['error_code'] = entry.get('error_code')
+    if entry.get('approval_channel'):
+        audit['approval_channel'] = entry.get('approval_channel')
+    if entry.get('approval_outcome'):
+        audit['approval_outcome'] = entry.get('approval_outcome')
     entry.clear()
     entry.update(audit)
     entry.pop('arguments', None)
-    forward_call_log(entry)
+    persist_mcp_call(entry, arguments=raw_arguments)
+
+
+def _downstream_error(
+    req_id,
+    *,
+    text: str,
+    status_code: int,
+    error_code: str,
+    error_message: str,
+) -> JsonResponse:
+    """JSON-RPC tool error that also carries log fields for the gateway row."""
+    response = JsonResponse(
+        McpServer._result(
+            req_id,
+            {'content': [{'type': 'text', 'text': text}], 'isError': True},
+        )
+    )
+    response.mcp_call_log = {
+        'status': int(status_code),
+        'error_code': error_code,
+        'error_message': error_message,
+        'is_error': True,
+    }
+    return response
 
 
 def iter_gateway_remote_exports(
@@ -641,20 +712,27 @@ class PrefixingMcpServer(AggregatingMcpServer):
             if isinstance(result, dict):
                 applied = apply_elicitation_result(req_id, elicit, result)
                 if applied is not None:
-                    if applied.log and self.on_call:
-                        self.on_call(dict(applied.log))
                     if applied.proceed:
+                        if applied.log:
+                            note_approval(applied.log)
                         forwarded = on_approved()
                         if forwarded is not None:
                             try:
                                 return _json.loads(forwarded.content)
                             except (TypeError, ValueError, AttributeError):
                                 pass
+                        if applied.log and self.on_call:
+                            self.on_call(dict(applied.log))
+                    else:
+                        if applied.log and self.on_call:
+                            self.on_call(dict(applied.log))
                     if applied.response is not None:
                         try:
                             return _json.loads(applied.response.content)
                         except (TypeError, ValueError, AttributeError):
                             pass
+            if outcome.log and self.on_call:
+                self.on_call(dict(outcome.log))
             try:
                 return _json.loads(fallback.content)
             except (TypeError, ValueError, AttributeError):
@@ -734,7 +812,10 @@ class PrefixingMcpServer(AggregatingMcpServer):
         if outcome.elicit and outcome.response is not None and on_approved is not None:
             return self._form_elicitation_response(req_id, outcome, on_approved)
         if outcome.log and self.on_call:
-            self.on_call(dict(outcome.log))
+            if outcome.proceed:
+                note_approval(outcome.log)
+            else:
+                self.on_call(dict(outcome.log))
         if not outcome.proceed:
             return outcome.response
         return None
@@ -801,6 +882,19 @@ class PrefixingMcpServer(AggregatingMcpServer):
                 },
                 timeout=self._gateway.downstream_timeout_seconds,
             )
+        except requests.Timeout:
+            logger.warning(
+                'MCP gateway tools/call timeout service=%s tool=%s',
+                service_id,
+                tool_name,
+            )
+            return _downstream_error(
+                req_id,
+                text='Downstream service unavailable.',
+                status_code=504,
+                error_code='timeout',
+                error_message='Downstream service timed out.',
+            )
         except (requests.RequestException, OSError) as exc:
             logger.warning(
                 'MCP gateway tools/call transport error service=%s tool=%s err=%s',
@@ -808,14 +902,12 @@ class PrefixingMcpServer(AggregatingMcpServer):
                 tool_name,
                 type(exc).__name__,
             )
-            return JsonResponse(
-                McpServer._result(
-                    req_id,
-                    {
-                        'content': [{'type': 'text', 'text': 'Downstream service unavailable.'}],
-                        'isError': True,
-                    },
-                )
+            return _downstream_error(
+                req_id,
+                text='Downstream service unavailable.',
+                status_code=503,
+                error_code='upstream_error',
+                error_message='Downstream service unavailable.',
             )
         if response.status_code >= 400:
             logger.warning(
@@ -824,34 +916,73 @@ class PrefixingMcpServer(AggregatingMcpServer):
                 service_id,
                 tool_name,
             )
-            return JsonResponse(
-                McpServer._result(
-                    req_id,
-                    {
-                        'content': [{'type': 'text', 'text': 'Downstream service error.'}],
-                        'isError': True,
-                    },
-                )
+            error_code = 'timeout' if response.status_code in {408, 504} else (
+                'upstream_error' if response.status_code >= 500 else 'downstream_error'
+            )
+            return _downstream_error(
+                req_id,
+                text='Downstream service error.',
+                status_code=int(response.status_code),
+                error_code=error_code,
+                error_message='Downstream service error.',
             )
         try:
             body = response.json()
         except ValueError:
-            return JsonResponse(
-                McpServer._result(
-                    req_id,
-                    {'content': [{'type': 'text', 'text': 'Invalid downstream response.'}], 'isError': True},
-                )
+            return _downstream_error(
+                req_id,
+                text='Invalid downstream response.',
+                status_code=502,
+                error_code='upstream_error',
+                error_message='Invalid downstream response.',
             )
         if not isinstance(body, dict):
-            return JsonResponse(McpServer._error(req_id, -32603, 'Invalid downstream response'))
+            return _downstream_error(
+                req_id,
+                text='Invalid downstream response.',
+                status_code=502,
+                error_code='upstream_error',
+                error_message='Invalid downstream response.',
+            )
         return JsonResponse(body)
+
+    def _log_rejected_call(self, *, agent_claims: dict, export_name: str, arguments: dict | None, message: str) -> None:
+        if not self.on_call:
+            return
+        service_id = str(export_name.split('_', 1)[0] or 'ai')
+        audit = build_call_audit_log(
+            agent_claims=agent_claims,
+            service_id=service_id if service_id in {'identity', 'storage', 'hosting', 'email', 'saas', 'ai'} else 'ai',
+            export_name=export_name or 'tool',
+            tool=None,
+            method='POST',
+            path='',
+            log_result='error',
+            status=200,
+            is_error=True,
+            error_code='bad_request',
+        )
+        audit['_mcp_audit_ready'] = True
+        audit['error_message'] = message[:500]
+        bind_export_name(export_name or 'tool')
+        bind_call_arguments(arguments if isinstance(arguments, dict) else {})
+        self.on_call(audit)
 
     def _maybe_forward_tool_call(self, request: HttpRequest, req_id, params, agent_claims):
         export_name = str((params or {}).get('name') or '')
+        raw_arguments = (params or {}).get('arguments') if isinstance((params or {}).get('arguments'), dict) else {}
+        bind_export_name(export_name)
+        bind_call_arguments(raw_arguments)
         if export_name in DISCOVERY_ONLY_TOOLS:
             return self._call_discovery_tool(request, req_id, params, agent_claims)
         call_params, error = self._prepare_tool_call_params(params, agent_claims, req_id)
         if error is not None:
+            self._log_rejected_call(
+                agent_claims=agent_claims,
+                export_name=export_name,
+                arguments=raw_arguments,
+                message='Tool arguments were rejected.',
+            )
             return error
         export_name = str((params or {}).get('name') or '')
         local_name = self._local_tool_export_name(export_name)
@@ -904,16 +1035,38 @@ class PrefixingMcpServer(AggregatingMcpServer):
             return response
         tool_name = str(params.get('name') or '')
         route = self._lookup_route(tool_name)
+        extra = getattr(response, 'mcp_call_log', None)
+        transport = extra if isinstance(extra, dict) else {}
+        status_code = int(transport.get('status') or response.status_code or 0)
+        error_message = str(transport.get('error_message') or '')
         if route is None:
+            audit = build_call_audit_log(
+                agent_claims=agent_claims,
+                service_id='ai',
+                export_name=tool_name or 'tool',
+                tool=None,
+                method='POST',
+                path='',
+                log_result='error',
+                status=status_code or 200,
+                is_error=True,
+                error_code=str(transport.get('error_code') or 'mcp_tool_error'),
+            )
+            audit['outcome'] = 'failed'
+            audit['_mcp_audit_ready'] = True
+            if error_message:
+                audit['error_message'] = error_message
+            self.on_call(audit)
             return response
-        is_error = False
-        try:
-            body = json.loads(response.content)
-            result = body.get('result') if isinstance(body, dict) else None
-            if isinstance(result, dict):
-                is_error = bool(result.get('isError'))
-        except (ValueError, TypeError, AttributeError):
-            is_error = response.status_code >= 400
+        is_error = bool(transport.get('is_error'))
+        if not transport:
+            try:
+                body = json.loads(response.content)
+                result = body.get('result') if isinstance(body, dict) else None
+                if isinstance(result, dict):
+                    is_error = bool(result.get('isError'))
+            except (ValueError, TypeError, AttributeError):
+                is_error = response.status_code >= 400
         tool_row, err_detail = self._trusted_tool_operation(
             tool_name,
             service_id=str(route['service_id']),
@@ -929,13 +1082,15 @@ class PrefixingMcpServer(AggregatingMcpServer):
                 method='GET',
                 path='',
                 log_result='error',
-                status=int(response.status_code),
+                status=status_code or int(response.status_code),
                 is_error=True,
-                error_code='mcp_tool_error',
+                error_code=str(transport.get('error_code') or 'mcp_tool_error'),
             )
             audit['outcome'] = 'failed'
             audit['_mcp_audit_ready'] = True
             audit['duration_ms'] = 0
+            if error_message:
+                audit['error_message'] = error_message
             self.on_call(audit)
             return response
         meta = tool_row.get('_meta') if isinstance(tool_row.get('_meta'), dict) else {}
@@ -948,10 +1103,14 @@ class PrefixingMcpServer(AggregatingMcpServer):
             tool=tool_row,
             method=m,
             path=pth,
-            log_result=None,
-            status=int(response.status_code),
+            log_result='error' if is_error else None,
+            status=status_code,
             is_error=is_error,
+            error_code=str(transport.get('error_code') or '') or None,
         )
+        audit['_mcp_audit_ready'] = True
+        if error_message:
+            audit['error_message'] = error_message
         self.on_call(audit)
         return response
 
@@ -965,11 +1124,19 @@ class PrefixingMcpServer(AggregatingMcpServer):
         gateway_export_name: str | None = None,
     ):
         call_params, error = self._prepare_tool_call_params(params, agent_claims, req_id)
-        if error is not None:
-            return error
         export_name = str(gateway_export_name or (params or {}).get('name') or '')
-        local_name = str(call_params.get('name') or '')
         arguments = call_params.get('arguments') if isinstance(call_params.get('arguments'), dict) else {}
+        bind_export_name(export_name)
+        bind_call_arguments(arguments)
+        if error is not None:
+            self._log_rejected_call(
+                agent_claims=agent_claims,
+                export_name=export_name,
+                arguments=arguments,
+                message='Tool arguments were rejected.',
+            )
+            return error
+        local_name = str(call_params.get('name') or '')
 
         def _run_local_approved():
             import shellui_django.mcp.server as mcp_server_module
@@ -1112,12 +1279,54 @@ class PrefixingMcpServer(AggregatingMcpServer):
             )
         )
 
+    def _log_discovery_call(
+        self,
+        *,
+        agent_claims: dict,
+        export_name: str,
+        arguments: dict | None,
+        is_error: bool,
+        message: str = '',
+    ) -> None:
+        if not self.on_call:
+            return
+        bind_export_name(export_name)
+        bind_call_arguments(arguments if isinstance(arguments, dict) else {})
+        audit = build_call_audit_log(
+            agent_claims=agent_claims,
+            service_id='ai',
+            export_name=export_name,
+            tool=None,
+            method='POST',
+            path='',
+            log_result='error' if is_error else 'success',
+            status=200,
+            is_error=is_error,
+            error_code='mcp_tool_error' if is_error else None,
+        )
+        audit['_mcp_audit_ready'] = True
+        if message:
+            audit['error_message'] = message[:500]
+        self.on_call(audit)
+
     def _call_discovery_tool(self, request, req_id, params, agent_claims):
         """Search and describe stay on the gateway. ai_call_tool re-enters the normal call path."""
         export_name = str((params or {}).get('name') or '')
         arguments = (params or {}).get('arguments')
         if not isinstance(arguments, dict):
             arguments = {}
+
+        def finish(payload: dict, *, is_error: bool, tool_name: str | None = None, call_arguments: dict | None = None):
+            message = str(payload.get('error') or '') if is_error else ''
+            self._log_discovery_call(
+                agent_claims=agent_claims,
+                export_name=tool_name or export_name,
+                arguments=arguments if call_arguments is None else call_arguments,
+                is_error=is_error,
+                message=message,
+            )
+            return self._discovery_result(req_id, payload, is_error=is_error)
+
         # Search and describe load the full catalog when it is missing or expired.
         # That is the same fetch, tenant check, and TTL as tools/list?tools=all.
         # ai_list_services stays on the cache and omits counts when it is cold.
@@ -1128,71 +1337,88 @@ class PrefixingMcpServer(AggregatingMcpServer):
         access_mode = str(agent_claims.get('mcp_access') or 'ask')
         if export_name == 'ai_search_tools':
             payload = search_payload(catalog, arguments, access_mode=access_mode)
-            return self._discovery_result(req_id, payload, is_error='error' in payload and not payload.get('matches'))
+            return finish(payload, is_error='error' in payload and not payload.get('matches'))
         if export_name == 'ai_describe_tool':
             payload = describe_payload(catalog, arguments, access_mode=access_mode)
-            return self._discovery_result(req_id, payload, is_error='error' in payload and not payload.get('tools'))
+            return finish(payload, is_error='error' in payload and not payload.get('tools'))
         if export_name == 'ai_get_approval':
             from apps.connector.mcp_approvals import approval_status_for_agent
 
             payload = approval_status_for_agent(str(arguments.get('approval_id') or ''), agent_claims)
-            return self._discovery_result(req_id, payload, is_error=payload.get('status') == 'unknown')
+            return finish(payload, is_error=payload.get('status') == 'unknown')
         if export_name == 'ai_call_tool':
             inner = str(arguments.get('name') or '').strip()
             inner_args = arguments.get('arguments') if isinstance(arguments.get('arguments'), dict) else {}
-            if not inner:
-                return self._discovery_result(
-                    req_id,
-                    {
-                        'error': 'Pass name and arguments. Example: {"name": "identity_list_users", "arguments": {}}.',
-                    },
-                    is_error=True,
+            wrapper_token = bind_wrapper_tool('ai_call_tool')
+            try:
+                if not inner:
+                    return finish(
+                        {
+                            'error': 'Pass name and arguments. Example: {"name": "identity_list_users", "arguments": {}}.',
+                        },
+                        is_error=True,
+                        tool_name='ai_call_tool',
+                    )
+                if inner == 'ai_call_tool':
+                    return finish(
+                        {'error': 'ai_call_tool cannot call itself. Pass the gateway tool name, such as identity_list_users.'},
+                        is_error=True,
+                        tool_name='ai_call_tool',
+                    )
+                known = {str(tool.get('name') or '') for tool in catalog}
+                known |= DISCOVERY_ONLY_TOOLS | {'ai_list_services'}
+                service_id = inner.split('_', 1)[0]
+                allowed = scope_service_ids(agent_claims)
+                agent = self._gateway.resolve_agent(agent_claims)
+                agent_services = set(agent.services_allowed or []) if agent else set()
+                urls = set(self._gateway.get_service_urls())
+                out_of_scope = (
+                    service_id != self._gateway.local_service_id
+                    and service_id in urls
+                    and (service_id not in allowed or service_id not in agent_services)
                 )
-            if inner == 'ai_call_tool':
-                return self._discovery_result(
-                    req_id,
-                    {'error': 'ai_call_tool cannot call itself. Pass the gateway tool name, such as identity_list_users.'},
-                    is_error=True,
-                )
-            known = {str(tool.get('name') or '') for tool in catalog}
-            known |= DISCOVERY_ONLY_TOOLS | {'ai_list_services'}
-            service_id = inner.split('_', 1)[0]
-            allowed = scope_service_ids(agent_claims)
-            agent = self._gateway.resolve_agent(agent_claims)
-            agent_services = set(agent.services_allowed or []) if agent else set()
-            urls = set(self._gateway.get_service_urls())
-            out_of_scope = (
-                service_id != self._gateway.local_service_id
-                and service_id in urls
-                and (service_id not in allowed or service_id not in agent_services)
-            )
-            cache_ready = self._remote_catalog_cached(agent_claims)
-            if cache_ready and inner not in known and not out_of_scope:
-                suggestions = suggest_tool_names(catalog, inner, limit=3)
-                hint = (
-                    f'No tool named {inner}.'
-                    + (f' Close matches: {", ".join(suggestions)}.' if suggestions else '')
-                    + ' Search with ai_search_tools, or call ai_list_services to see connected services.'
-                )
-                return self._discovery_result(req_id, {'error': hint, 'suggestions': suggestions}, is_error=True)
-            if out_of_scope:
-                allowed_ids = sorted((allowed & agent_services) | {self._gateway.local_service_id})
-                return self._discovery_result(
-                    req_id,
-                    {
-                        'error': (
-                            f'{inner} is not available to this agent. '
-                            f'Allowed services: {", ".join(allowed_ids)}. '
-                            'Call ai_list_services to see this connection.'
-                        ),
-                        'suggestions': suggest_tool_names(catalog, inner, limit=3),
-                    },
-                    is_error=True,
-                )
-            forwarded = dict(params or {})
-            forwarded['name'] = inner
-            forwarded['arguments'] = inner_args
-            return self._maybe_forward_tool_call(request, req_id, forwarded, agent_claims)
+                cache_ready = self._remote_catalog_cached(agent_claims)
+                if cache_ready and inner not in known and not out_of_scope:
+                    suggestions = suggest_tool_names(catalog, inner, limit=3)
+                    hint = (
+                        f'No tool named {inner}.'
+                        + (f' Close matches: {", ".join(suggestions)}.' if suggestions else '')
+                        + ' Search with ai_search_tools, or call ai_list_services to see connected services.'
+                    )
+                    return finish(
+                        {'error': hint, 'suggestions': suggestions},
+                        is_error=True,
+                        tool_name=inner,
+                        call_arguments=inner_args,
+                    )
+                if out_of_scope:
+                    allowed_ids = sorted((allowed & agent_services) | {self._gateway.local_service_id})
+                    return finish(
+                        {
+                            'error': (
+                                f'{inner} is not available to this agent. '
+                                f'Allowed services: {", ".join(allowed_ids)}. '
+                                'Call ai_list_services to see this connection.'
+                            ),
+                            'suggestions': suggest_tool_names(catalog, inner, limit=3),
+                        },
+                        is_error=True,
+                        tool_name=inner,
+                        call_arguments=inner_args,
+                    )
+                forwarded = dict(params or {})
+                forwarded['name'] = inner
+                forwarded['arguments'] = inner_args
+                return self._maybe_forward_tool_call(request, req_id, forwarded, agent_claims)
+            finally:
+                reset_wrapper_tool(wrapper_token)
+        self._log_discovery_call(
+            agent_claims=agent_claims,
+            export_name=export_name or 'tool',
+            arguments=arguments,
+            is_error=True,
+            message='Unknown tool',
+        )
         return JsonResponse(self._error(req_id, -32602, 'Unknown tool'))
 
 
@@ -1268,13 +1494,16 @@ def _bind_mcp_context(chunks):
     """Re-apply MCP request context while a streaming tools/call body is read."""
     request = _mcp_http_request.get()
     claims = _mcp_agent_claims.get()
+    call_snapshot = snapshot_call_log_context()
 
     def bound():
         request_token = _mcp_http_request.set(request)
         claims_token = _mcp_agent_claims.set(claims)
+        call_tokens = restore_call_log_context(call_snapshot)
         try:
             yield from chunks
         finally:
+            reset_call_log_context(call_tokens)
             _mcp_agent_claims.reset(claims_token)
             _mcp_http_request.reset(request_token)
 
@@ -1308,6 +1537,7 @@ def mcp_endpoint(request: HttpRequest, company_id: int):
         return response
     if identity_revocation_unavailable():
         return JsonResponse({'error': 'identity_unavailable'}, status=503)
+    reset_gateway_tool_call()
     token = _mcp_http_request.set(request)
     claims_token = _mcp_agent_claims.set(claims)
     try:
@@ -1317,6 +1547,7 @@ def mcp_endpoint(request: HttpRequest, company_id: int):
     finally:
         _mcp_agent_claims.reset(claims_token)
         _mcp_http_request.reset(token)
+        reset_gateway_tool_call()
 
 
 @csrf_exempt

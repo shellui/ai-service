@@ -17,6 +17,7 @@ from django.http import HttpRequest, HttpResponse, JsonResponse
 from shellui_django.mcp.gateway import AggregatingMcpServer
 
 from apps.connector.mcp_call_log import begin_mcp_tool_call_timer, reset_mcp_tool_call_timer
+from apps.connector.mcp_call_store import begin_gateway_tool_call
 from apps.connector.mcp_company_id import strict_numeric_company_id
 from apps.connector.mcp_identity import (
     DelegatedAuthorityFailureReason,
@@ -453,6 +454,7 @@ def handle_mcp_gateway_request(
         return server._aggregated_tools_list(req_id, agent_claims, params)
 
     if method == 'tools/call':
+        begin_gateway_tool_call()
         timer = begin_mcp_tool_call_timer()
         try:
             forwarded = server._maybe_forward_tool_call(request, req_id, params, agent_claims)

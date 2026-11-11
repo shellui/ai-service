@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### ✨ Feature
 
+- MCP tool-call logs are stored in ai-service (`McpCallLog`) for every gateway `tools/call`. Staff, company owners, and company admins list them at `GET /ai/v1/mcp/call-logs`. Rows include `operation_title`, `access_kind`, `outcome`, and `resource_label`, plus global-company ids when the agent token carries them. The gateway no longer forwards those rows to Identity ingest. `MCP_CALL_LOG_RETENTION_DAYS` (default 90) and `python manage.py prune_mcp_call_logs` prune old rows.
 - Company MCP OAuth discovery advertises Identity's issuer, scope `mcp`, and a `WWW-Authenticate` challenge (`realm="mcp"`, `resource_metadata`, `scope="mcp"`) so headless clients can use the device authorization grant. Device-grant access tokens are accepted like other OAuth agent tokens. See [docs/mcp-device-login.md](docs/mcp-device-login.md).
 
 ### 🐛 Bug Fixes

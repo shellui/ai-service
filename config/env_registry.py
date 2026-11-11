@@ -86,6 +86,7 @@ OPTIONAL = (
         '90',
         'Seconds a tools/call SSE stream waits for in-chat elicitation. Keep this under GUNICORN_TIMEOUT.',
     ),
+    Var('MCP_CALL_LOG_RETENTION_DAYS', '90', 'Days to keep gateway MCP tool-call logs'),
     Var('MCP_RATE_LIMIT_AGENT', '120'),
     Var('CORS_ALLOW_ALL_ORIGINS', 'true', 'CORS and HTTPS'),
     Var('CORS_ALLOW_CREDENTIALS', 'false'),
