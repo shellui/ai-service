@@ -94,7 +94,7 @@ The agent JWT may carry **`mcp_access`** (default **`ask`**). The gateway combin
 
 The gateway calls Identity’s internal endpoint **`POST /api/v1/mcp/internal/mcp-downstream-access-token`** with an **RS256 service assertion** (`AI_SERVICE_SIGNING_KEY`, `AI_SERVICE_ISSUER`, JWKS at **`/.well-known/jwks.json`**). Identity returns **`{ "access_token": "…" }`** for calling downstream APIs.
 
-The **same** signing material is used for other internal Identity calls (**revocation poll**, **call logs**, **approval** assertions). If signing is not configured, **revocation polling fails closed** (treat as blocked) and **call logs are skipped**; see `apps/connector/mcp_identity.py`.
+The **same** signing material is used for other internal Identity calls (**revocation poll** and **approval** assertions). If signing is not configured, **revocation polling fails closed** (treat as blocked). See `apps/connector/mcp_identity.py`. Tool-call logs are stored in this service and are not sent to Identity.
 
 ## MCP approvals and session grants
 
@@ -219,24 +219,80 @@ Logic lives in `apps/connector/mcp_setup_context.py`:
 
 **commons pin:** `shellui-django[mcp]` is pinned in `pyproject.toml` / `uv.lock` (see the repo for the current revision).
 
-## Call logs and activity (Identity)
+## Call logs
 
-`POST /api/v1/mcp/internal/mcp-call-logs` tracks **downstream MCP tool execution** against **identity-service `develop`** (e.g. `bdb3c3` on `McpInternalCallLogView` + `canonical_call_path` in `call_log_internal.py`). The gateway sends only what Identity accepts for **remote** ingest: **`agent_id`**, **`company_id`**, **`grant_version`** (must match the agent JWT), **`service`**, **`tool`**, wire **`method`: `POST`** and **`path`: `/mcp`** (so Identity can build `POST /mcp (service)` resource labels—**not** REST templates or query strings), **`status`**, **`duration_ms`**, **`outcome`**, **`access_kind`**, optional **`approval_id`** (UUID only), and optional **`error_code`** from Identity’s allowlist (`apps/agents/mcp_audit_codes.py`). **No** `client_ip`, **`result`**, `operation_title`, `resource_label`, `arguments`, or **`approval_request_id`**. **Delegated** agents (JWT has full `global_company_id` + `company_binding_version` + `grant_version` triple): forward includes **`global_company_id`** and **`company_binding_version`** and must match the JWT; **personal / non-delegated** forwards omit both. If the JWT lacks **`grant_version`** or the entry disagrees with claims on company or binding, **`forward_call_log` sends nothing** (avoids inventing versions).
+ai-service stores one row in `McpCallLog` for every gateway `tools/call`. That includes direct remote tools, `ai_call_tool` (one row with the inner tool name and wrapper `ai_call_tool`), discovery tools (`ai_list_services`, `ai_search_tools`, `ai_describe_tool`, `ai_get_approval`, and a failed `ai_call_tool`), approval waiting, denied, and accepted on the form and link channels, and upstream errors and timeouts. A write failure is logged and does not fail the tool call.
 
-**Destructive tools:** Identity only accepts **`access_kind`: `destructive`** with **`outcome`** **`allowed`** or **`session_used`** and a matching **`approval_id`** for an approved destructive row. On any other outcome the gateway **drops `approval_id`**, sets **`outcome`** to **`failed`**, and attaches an **`error_code`** (never a false success with a pending/waiting destructive approval).
+The gateway does not POST tool-call logs to Identity `POST /api/v1/mcp/internal/mcp-call-logs`. Revocation polling, delegated-authority checks, and approval requests still use Identity. Those are not tool-call logs.
 
-### Gateway **`outcome`** vs Identity ingest
+### Company admin list
 
-Internal rows still use **`OUTCOMES`** in `mcp_call_audit.py`. **`forward_call_log`** maps those to Identity’s five ingest outcomes; see `_identity_ingest_outcome` in `apps/connector/mcp_identity.py`.
+`GET /ai/v1/mcp/call-logs`
 
-### Safe metadata only
+Authentication is a bearer JWT verified the same way as other ai-service APIs. The caller must be staff, a company owner, or a company admin for the `company_id` on that JWT. A company admin is `user_metadata.is_company_admin`, or a group named `admin`, `admins`, or `company admins`, and does not have to be an owner. A plain member cannot read the list. A token cannot read another company. Agent access tokens are refused.
 
-- **Wire route:** always **`POST /mcp`** on forward; OpenAPI **method/path** stay in local audit only.
-- **Labels:** **`company_name`** and **`agent_name`** are **not** forwarded (JWT display strings are not server-enforced registry data).
-- **`access_kind`:** **`read`**, **`write`**, **`destructive`**, or **`unknown`** from tool traits and HTTP method (`access_kind_from_tool`).
-- **No** raw tool arguments: sending `arguments` or `arguments_redacted` on an approval create returns **400**. A redacted `arguments_summary` string (max 500 characters) is the only argument text Identity accepts, and only on that create.
+| Parameter | Meaning |
+| --- | --- |
+| `agent` | Exact agent id |
+| `service` | `identity`, `storage`, `hosting`, `email`, `saas`, or `ai` |
+| `tool` | Exact tool name |
+| `status` | `allowed`, `denied`, `waiting_approval`, `failed`, or `error` |
+| `created_after` | Inclusive ISO-8601 datetime |
+| `created_before` | Exclusive ISO-8601 datetime |
+| `limit` | Page size, 1 to 200, default 50 |
+| `offset` | Rows to skip, default 0 |
 
-A downstream HTTP **2xx** alone does **not** imply **`allowed`** if the gateway classified the operation as an error (`is_error`, audit `log_result`, etc.). See **`outcome_from_audit`**.
+```json
+{
+  "count": 1,
+  "limit": 50,
+  "offset": 0,
+  "call_logs": [
+    {
+      "id": 1,
+      "company_id": 10,
+      "agent_id": "agent-id",
+      "agent_name": "Example agent",
+      "client_id": "",
+      "client_name": "",
+      "token_kind": "agent",
+      "user_id": null,
+      "user_email": "",
+      "service": "storage",
+      "tool_name": "storage_list_buckets",
+      "wrapper_tool": "",
+      "operation_title": "storage_list_buckets",
+      "access_kind": "read",
+      "outcome": "allowed",
+      "resource_label": "storage_list_buckets",
+      "arguments": {},
+      "status": "allowed",
+      "status_code": 200,
+      "error_code": "",
+      "error_message": "",
+      "duration_ms": 12,
+      "approval_id": "",
+      "approval_channel": "none",
+      "approval_outcome": "",
+      "created_at": "2026-11-11T00:00:00+00:00"
+    }
+  ]
+}
+```
+
+`token_kind` is `delegated`, `personal`, or `agent`. `approval_channel` is `form`, `link`, or `none`. `failed` means the tool ran and reported an error. `error` means the gateway could not finish the call (timeout or upstream outage). `outcome` is the display label: `allowed`, `failed`, `denied`, `waiting_approval`, or `session_used`. `access_kind` is `read`, `write`, or `destructive` from registry flags or the gateway classification, otherwise `unknown`. `operation_title` falls back to the tool name. `resource_label` is the audit label, or the tool name when that label is empty.
+
+When the agent token carries `global_agent_id` or `global_company_id`, the row also includes `agent_audit_scope` (`global_company`), `global_agent_id`, and `global_company_id`.
+
+Arguments go through `redact_arguments` before insert. Secret-shaped fields are stored as `***`.
+
+Retention is `MCP_CALL_LOG_RETENTION_DAYS` (default 90). `python manage.py prune_mcp_call_logs` deletes older rows.
+
+### Safe metadata
+
+Approval creates still must not send `arguments` or `arguments_redacted`. A redacted `arguments_summary` string (max 500 characters) is the only argument text Identity accepts, and only on that create.
+
+A downstream HTTP 2xx alone does not imply `allowed` if the gateway classified the operation as an error (`is_error`, audit `log_result`). See `outcome_from_audit`.
 
 ### Approvals: state before create, retry, and bodies
 
@@ -251,7 +307,7 @@ See **`test_mcp_identity_conformance`** for a mocked Identity round-trip (state 
 
 ### Coordinator: sibling services (storage / hosting / email)
 
-Other service gateways that write MCP approvals or forward activity to Identity should match the same contract: **no** `arguments` or `arguments_redacted` on approval creates; binding only in signed assertions; **live** delegated-authority checks where applicable; and activity fields from **registry `_meta`** only. This repo does not change those PRs; align their gateways independently.
+Other service gateways that write MCP approvals should match the same approval contract: **no** `arguments` or `arguments_redacted` on approval creates; binding only in signed assertions; **live** delegated-authority checks where applicable. Tool calls made through this gateway are logged here. storage-service, hosting-service, and email-service still forward their own MCP calls to Identity ingest, and identity-service still writes a local call log for tools invoked on identity itself. Follow-up changes in those repositories should stop sending tool-call copies to Identity so this list stays the only copy.
 
 ## Client conformance and CI
 

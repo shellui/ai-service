@@ -1,4 +1,4 @@
-"""Shape MCP call log rows forwarded to identity (no arguments or secrets)."""
+"""Timing and client address helpers for gateway MCP call logs."""
 
 from __future__ import annotations
 

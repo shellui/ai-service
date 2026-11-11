@@ -12,6 +12,7 @@ from django.core.cache import cache
 from django.test import Client, TestCase, override_settings
 from django.utils import timezone
 
+from apps.connector.models import McpCallLog
 from apps.authapi.ai_service_jwks import (
     build_jwks_document,
     compute_rsa_kid,
@@ -131,12 +132,11 @@ class McpApprovalGatewayTests(TestCase):
 
     @patch('apps.connector.mcp_identity._http_post', side_effect=_delegated_authority_transport_mock)
     @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
-    @patch('apps.connector.mcp_identity.forward_call_log')
     @patch('apps.connector.mcp_approvals.fetch_approval_state', return_value=(None, None))
     @patch('shellui_django.mcp.gateway.requests.post')
     @patch('apps.connector.mcp_approvals.create_approval_request')
     def test_write_tool_under_ask_requires_approval(
-        self, create_approval, post, _state, _log, _mint, *_mocks
+        self, create_approval, post, _state, _mint, *_mocks
     ):
         create_approval.return_value = {'id': 'appr-1', 'status': 'pending'}
         storage_tools = {
@@ -220,12 +220,11 @@ class McpApprovalGatewayTests(TestCase):
     )
     @patch('apps.connector.mcp_identity._http_post', side_effect=_delegated_authority_transport_mock)
     @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
-    @patch('apps.connector.mcp_identity.forward_call_log')
     @patch('shellui_django.mcp.gateway.requests.post')
     @patch('apps.connector.mcp_views.requests.post')
     @patch('apps.connector.mcp_approvals.requests.post')
     def test_personal_grant_version_ai_call_tool_returns_pending_approval(
-        self, identity_post, views_post, gateway_post, _log, _mint, *_mocks
+        self, identity_post, views_post, gateway_post, _mint, *_mocks
     ):
         """Device-login personal token (grant_version, no global fields) can ask for a write."""
 
@@ -368,11 +367,10 @@ class McpApprovalGatewayTests(TestCase):
 
     @patch('apps.connector.mcp_identity._http_post', side_effect=_delegated_authority_transport_mock)
     @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
-    @patch('apps.connector.mcp_identity.forward_call_log')
     @patch('apps.connector.mcp_approvals.fetch_approval_state', return_value=(None, None))
     @patch('shellui_django.mcp.gateway.requests.post')
     @patch('apps.connector.mcp_approvals.create_approval_request')
-    def test_destructive_hides_session_button(self, create_approval, post, _state, _log, _mint, *_mocks):
+    def test_destructive_hides_session_button(self, create_approval, post, _state, _mint, *_mocks):
         create_approval.return_value = {'id': 'appr-2', 'status': 'pending'}
         storage_tools = {
             'jsonrpc': '2.0',
@@ -427,9 +425,8 @@ class McpApprovalGatewayTests(TestCase):
 
     @patch('apps.connector.mcp_identity._http_post', side_effect=_delegated_authority_transport_mock)
     @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
-    @patch('apps.connector.mcp_identity.forward_call_log')
     @patch('shellui_django.mcp.gateway.requests.post')
-    def test_session_grant_skips_non_destructive_reprompt(self, post, _log, _mint, *_mocks):
+    def test_session_grant_skips_non_destructive_reprompt(self, post, _mint, *_mocks):
         storage_tools = {
             'jsonrpc': '2.0',
             'id': 1,
@@ -497,14 +494,12 @@ class McpApprovalGatewayTests(TestCase):
         self.assertEqual(len(forwarded), 1)
 
     @patch('apps.connector.mcp_identity._http_post', side_effect=_delegated_authority_transport_mock)
-    @patch('apps.connector.mcp_views.forward_call_log')
     @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
     @patch('shellui_django.mcp.gateway.requests.post')
     def test_call_log_http200_success_not_pending(
         self,
         post,
         _mint,
-        capture_forward,
         _proto_post,
         _mcp_views_agent_revoked,
         _identity_revocation_ok,
@@ -521,22 +516,19 @@ class McpApprovalGatewayTests(TestCase):
         )
         self.assertEqual(response.status_code, 200, response.content)
         self.assertFalse(response.json()['result'].get('isError', True))
-        self.assertTrue(capture_forward.called)
-        entry = capture_forward.call_args[0][0]
-        self.assertEqual(entry.get('status'), 200)
-        self.assertEqual(entry.get('log_result'), 'success')
-        self.assertFalse(entry.get('is_error', True))
-        self.assertEqual(entry.get('outcome'), 'allowed')
+        rows = list(McpCallLog.objects.filter(company_id=10, tool_name='ai_list_services'))
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].status, 'allowed')
+        self.assertEqual(rows[0].status_code, 200)
+        self.assertEqual(rows[0].service, 'ai')
 
     @patch('apps.connector.mcp_identity._http_post', side_effect=_delegated_authority_transport_mock)
-    @patch('apps.connector.mcp_views.forward_call_log')
     @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
     @patch('shellui_django.mcp.gateway.requests.post')
     def test_call_log_unknown_tool_is_error_not_pending(
         self,
         post,
         _mint,
-        capture_forward,
         _proto_post,
         _mcp_views_agent_revoked,
         _identity_revocation_ok,
@@ -553,12 +545,10 @@ class McpApprovalGatewayTests(TestCase):
         )
         self.assertEqual(response.status_code, 200, response.content)
         self.assertTrue(response.json()['result'].get('isError'))
-        self.assertTrue(capture_forward.called)
-        entry = capture_forward.call_args[0][0]
-        self.assertEqual(entry.get('status'), 200)
-        self.assertEqual(entry.get('log_result'), 'error')
-        self.assertTrue(entry.get('is_error', False))
-        self.assertEqual(entry.get('outcome'), 'failed')
+        rows = list(McpCallLog.objects.filter(company_id=10, tool_name='ai_definitely_missing_tool'))
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].status, 'failed')
+        self.assertEqual(rows[0].status_code, 200)
 
 
 class LogResultFromDecideTests(TestCase):
@@ -946,10 +936,9 @@ class McpDestructiveOverrideTests(TestCase):
 
     @patch('apps.connector.mcp_identity._http_post', side_effect=_delegated_authority_transport_mock)
     @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
-    @patch('apps.connector.mcp_identity.forward_call_log')
     @patch('shellui_django.mcp.gateway.requests.post')
     @patch('apps.connector.mcp_approvals.create_approval_request')
-    def test_mcp_destructive_does_not_bypass_destructive_approval(self, create_approval, post, _log, _mint, *_mocks):
+    def test_mcp_destructive_does_not_bypass_destructive_approval(self, create_approval, post, _mint, *_mocks):
         storage_tools = {
             'jsonrpc': '2.0',
             'id': 1,

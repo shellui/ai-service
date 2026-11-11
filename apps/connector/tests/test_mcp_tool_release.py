@@ -441,10 +441,9 @@ class McpToolReleaseTests(TestCase):
 
     @patch('apps.connector.mcp_approvals.approval_consume_detail', return_value=ConsumeResult(consumed=True, status_code=200))
     @patch('apps.connector.mcp_approvals.approval_state')
-    @patch('apps.connector.mcp_views.forward_call_log')
     @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
     @patch('apps.connector.mcp_views.requests.post')
-    def test_each_tool_call_succeeds(self, post, _mint, _log, approval_state, _consume, *_mocks):
+    def test_each_tool_call_succeeds(self, post, _mint, approval_state, _consume, *_mocks):
         def _approved(payload):
             payload['approval_id'] = 'appr-release'
             return 'approved'
@@ -512,10 +511,9 @@ class McpToolReleaseTests(TestCase):
 
     @patch('apps.connector.mcp_approvals.approval_consume_detail', return_value=ConsumeResult(consumed=True, status_code=200))
     @patch('apps.connector.mcp_approvals.approval_state')
-    @patch('apps.connector.mcp_views.forward_call_log')
     @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
     @patch('apps.connector.mcp_views.requests.post')
-    def test_each_service_accepts_published_upstream_names(self, post, _mint, _log, approval_state, _consume, *_mocks):
+    def test_each_service_accepts_published_upstream_names(self, post, _mint, approval_state, _consume, *_mocks):
         """Upstream tools already named ``identity_create_groups`` publish the same catalog."""
         from apps.connector.mcp_tool_schema import normalize_mcp_tool
         from apps.connector.mcp_views import iter_gateway_remote_exports
