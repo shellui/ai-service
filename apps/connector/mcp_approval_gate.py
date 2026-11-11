@@ -904,23 +904,12 @@ def enforce_tool_call_approval(
                         approval_id=client_approval_id,
                     ),
                 )
-        return GateOutcome(
-            proceed=False,
-            response=_approval_result(
-                req_id,
-                text=copy.expired_text(),
-                meta={'shellui_approval': {'status': 'expired'}},
-            ),
-            log=_log_entry(
-                agent_claims=agent_claims,
-                service=service_id,
-                export_name=export_name,
-                tool=tool,
-                method=method,
-                path=path,
-                log_result='expired',
-            ),
-        )
+        # Executed/timed-out rows still match the binding as ``expired``. Open a fresh
+        # approval so the same tool arguments can be retried after a failed run.
+        state = None
+        approval_payload.pop('approval_id', None)
+        approval_payload.pop('approval_url_field', None)
+        approval_payload.pop('approval_expires_at', None)
     if state == 'denied':
         return GateOutcome(
             proceed=False,
