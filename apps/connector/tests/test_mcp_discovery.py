@@ -535,7 +535,8 @@ class DiscoveryGatewayTests(TestCase):
             content_type='application/json',
             **self._auth(token, session_id=session),
         )
-        self.assertIn('expired', expired.json()['result']['content'][0]['text'].lower())
+        # A stored expired grant without a consumed row opens a fresh approval.
+        self.assertIn('approval pending', expired.json()['result']['content'][0]['text'].lower())
         with patch('apps.connector.mcp_approvals.decide_approval') as decide:
             decide.return_value = Mock(ok=True, status_code=200, audit_status='client_denied', approval_status='denied')
             denied = self.client.post(

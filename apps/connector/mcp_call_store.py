@@ -242,6 +242,32 @@ def _user_id(claims: dict) -> int | None:
     return value
 
 
+def owner_user_id_from_claims(claims: dict | None) -> int | None:
+    """Regional owner from the verified agent JWT claim ``owner_user_id``.
+
+    Identity personal and OAuth agent tokens omit the creating user. This reads
+    only that claim on the verified token. Tool arguments and audit entry fields
+    are not a source.
+    """
+    if not isinstance(claims, dict):
+        return None
+    raw = claims.get('owner_user_id')
+    if isinstance(raw, bool) or isinstance(raw, float):
+        return None
+    if isinstance(raw, str):
+        text = raw.strip()
+        if not text.isdigit():
+            return None
+        raw = text
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return None
+    if value < 1:
+        return None
+    return value
+
+
 def _first_text(*values: object, limit: int) -> str:
     for value in values:
         text = str(value or '').strip()
@@ -290,6 +316,7 @@ def persist_mcp_call(entry: dict, *, arguments: dict | None = None) -> None:
             client_name=_first_text(entry.get('client_name'), limit=120),
             token_kind=token_kind_from_claims(claims)[:32],
             user_id=_user_id(claims),
+            owner_user_id=owner_user_id_from_claims(claims),
             user_email=_first_text(claims.get('email'), entry.get('user_email'), limit=254),
             service=service_for_log(str(entry.get('service') or ''), tool_name),
             tool_name=tool_name,

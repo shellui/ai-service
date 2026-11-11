@@ -258,6 +258,92 @@ Arguments go through `redact_arguments` before insert. Secret-shaped fields are 
 
 Retention is `MCP_CALL_LOG_RETENTION_DAYS` (default 90). `python manage.py prune_mcp_call_logs` deletes older rows.
 
+### Your agent
+
+MCP is in Beta.
+
+`GET /ai/v1/mcp/personal/agents/{agent_id}/call-logs`
+
+Authentication is a bearer app JWT, verified the same way as `GET /ai/v1/mcp/call-logs`. Any authenticated member can call it. The user id and company id come from that JWT. Staff, a company owner, and a company admin see an agent here when that same user owns it. Agent access tokens are refused.
+
+Identity treats a personal agent as owned when `Agent.created_by` is the caller and `Agent.company` is the caller's company (`GET /api/v1/mcp/personal/agents/{id}/activity` in identity-service). ai-service does not store that agent table. Personal and OAuth agent access tokens on identity `develop` omit the creating user's id. The existing `user_id` column is filled from a `user_id` claim those tokens also omit, so it is empty on those rows and cannot prove ownership.
+
+`owner_user_id` is the column recorded from the verified agent JWT claim `owner_user_id` (a positive integer, the regional user the agent acts for, the same id as `Agent.created_by_id`). The gateway reads that claim from the token. A tool argument or other client field is not a source.
+
+A row is attributed to the caller when `owner_user_id` equals the JWT user id and `company_id` equals the JWT company id. Rows with an empty `owner_user_id` are attributed when `user_id` equals the JWT user id. That covers older rows that stored a subject on `user_id`. Rows with both values empty stay off this route. They remain on the company admin list. When the caller has no attributed row for that agent in their company, the response is 404.
+
+The row object matches the company admin list, including redacted `arguments`. The agent id is the path. Filters:
+
+| Parameter | Meaning |
+| --- | --- |
+| `service` | `identity`, `storage`, `hosting`, `email`, `saas`, or `ai` |
+| `tool` | Exact tool name |
+| `status` | `allowed`, `denied`, `waiting_approval`, `failed`, or `error` |
+| `created_after` | Inclusive ISO-8601 datetime |
+| `created_before` | Exclusive ISO-8601 datetime |
+| `limit` | Page size, 1 to 200, default 50 |
+| `offset` | Rows to skip, default 0 |
+
+```json
+{
+  "count": 1,
+  "limit": 50,
+  "offset": 0,
+  "call_logs": [
+    {
+      "id": 1,
+      "company_id": 10,
+      "agent_id": "agent-id",
+      "agent_name": "Example agent",
+      "client_id": "",
+      "client_name": "",
+      "token_kind": "personal",
+      "user_id": null,
+      "user_email": "",
+      "service": "storage",
+      "tool_name": "storage_list_buckets",
+      "wrapper_tool": "",
+      "operation_title": "storage_list_buckets",
+      "access_kind": "read",
+      "outcome": "allowed",
+      "resource_label": "storage_list_buckets",
+      "arguments": {},
+      "status": "allowed",
+      "status_code": 200,
+      "error_code": "",
+      "error_message": "",
+      "duration_ms": 12,
+      "approval_id": "",
+      "approval_channel": "none",
+      "approval_outcome": "",
+      "created_at": "2026-11-11T00:00:00+00:00"
+    }
+  ]
+}
+```
+
+Identity `GET /api/v1/mcp/personal/agents/{id}/activity` returns `{ "agent_id", "activity" }` with at most 200 rows and no offset. This route returns `{ "count", "limit", "offset", "call_logs" }`. Field mapping for a Shellui activity list that switches from identity:
+
+| Identity activity field | This call log field |
+| --- | --- |
+| `activity` | `call_logs` |
+| `agent_id` (response root) | `agent_id` on each row |
+| `timestamp` | `created_at` |
+| `tool` | `tool_name` |
+| `operation_title` | `operation_title` |
+| `access_kind` | `access_kind` |
+| `outcome` | `outcome` |
+| `resource_label` | `resource_label` |
+| `duration_ms` | `duration_ms` |
+| `service` | `service` |
+| `error_code` (omitted when empty) | `error_code` (always present, `""` when empty) |
+| `approval_request_id` (omitted when empty) | `approval_id` (always present, `""` when empty) |
+| `company_name` | `company_id` (numeric). This log has no company name column. |
+| `client_ip` | This log has no client IP column. |
+| arguments omitted | `arguments` (redacted) |
+
+`status`, `status_code`, `error_message`, `wrapper_tool`, `approval_channel`, and `approval_outcome` are on each call log row. Identity's personal activity payload leaves those out.
+
 ### Safe metadata
 
 Approval creates still must not send `arguments` or `arguments_redacted`. A redacted `arguments_summary` string (max 500 characters) is the only argument text Identity accepts, and only on that create.
