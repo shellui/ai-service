@@ -1,0 +1,287 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - develop
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: write
+  pull-requests: read
+
+jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ai
+          POSTGRES_PASSWORD: ai
+          POSTGRES_DB: ai
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ai -d ai"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      SECRET_KEY: ci-only-not-for-production-0123456789abcdef
+      DEBUG: 'true'
+      IDENTITY_JWKS_URL: http://localhost:8000/.well-known/jwks.json
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: '0.12.1'
+          python-version: '3.14'
+          enable-cache: true
+          cache-dependency-glob: 'uv.lock'
+
+      - name: Sync dependencies
+        run: uv sync --frozen --no-dev --group test
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Build landing CSS (Tailwind)
+        run: |
+          npm ci
+          npm run build:css
+          git diff --exit-code static/css/site.css
+
+      - name: Verify lockfile
+        run: uv lock --check
+
+      - name: Django system checks
+        run: uv run python manage.py check
+
+      - name: Run tests
+        run: uv run python manage.py test --verbosity=1
+
+      # Optional repo variable IDENTITY_SERVICE_REF (commit SHA or branch) to test against identity changes not yet on develop.
+      - name: Checkout identity-service (develop)
+        uses: actions/checkout@v4
+        with:
+          repository: shellui/identity-service
+          ref: ${{ vars.IDENTITY_SERVICE_REF || 'develop' }}
+          path: .e2e-identity
+
+      - name: Checkout storage-service (develop)
+        uses: actions/checkout@v4
+        with:
+          repository: shellui/storage-service
+          ref: ${{ vars.STORAGE_SERVICE_REF || 'develop' }}
+          path: .e2e-storage-service
+
+      - name: Checkout hosting-service (develop)
+        uses: actions/checkout@v4
+        with:
+          repository: shellui/hosting-service
+          ref: ${{ vars.HOSTING_SERVICE_REF || 'develop' }}
+          path: .e2e-hosting-service
+
+      - name: Checkout email-service (develop)
+        uses: actions/checkout@v4
+        with:
+          repository: shellui/email-service
+          ref: ${{ vars.EMAIL_SERVICE_REF || 'develop' }}
+          path: .e2e-email-service
+
+      - name: Checkout saas-service (develop)
+        uses: actions/checkout@v4
+        continue-on-error: true
+        with:
+          repository: shellui/saas-service
+          ref: ${{ vars.SAAS_SERVICE_REF || 'develop' }}
+          path: .e2e-saas-service
+
+      - name: MCP tool schema audit (all services)
+        run: uv run python tools/mcp-audit/generate_report.py
+
+  security:
+    name: Security & hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Secret scan (gitleaks)
+        run: |
+          set -euo pipefail
+          version=8.28.0
+          install_dir="${RUNNER_TEMP}/gitleaks"
+          mkdir -p "${install_dir}"
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_linux_x64.tar.gz" \
+            | tar -xz -C "${install_dir}" gitleaks
+          "${install_dir}/gitleaks" detect --source . --verbose --redact --exit-code 1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: '0.12.1'
+          python-version: '3.14'
+          enable-cache: true
+          cache-dependency-glob: 'uv.lock'
+
+      - name: Dependency vulnerabilities (pip-audit)
+        run: |
+          uv export --frozen --no-dev --no-emit-project --no-hashes -o /tmp/requirements.txt
+          uvx pip-audit -r /tmp/requirements.txt
+
+      - name: Repo hygiene
+        run: |
+          set -euo pipefail
+
+          if git ls-files --error-unmatch .env >/dev/null 2>&1; then
+            echo '::error::.env is tracked by git — remove it from the repository'
+            exit 1
+          fi
+          if tracked_db="$(git ls-files '*.sqlite3')"; then
+            if [ -n "$tracked_db" ]; then
+              echo '::error::SQLite database files must not be tracked'
+              printf '%s\n' "$tracked_db"
+              exit 1
+            fi
+          fi
+
+          # Brand spelling (Shellui / shellui only)
+          if git grep -nIE '\bShellUI\b|\bshellUI\b|\bShellUi\b' -- . \
+              ':(exclude).github/workflows/**' \
+              ':(exclude).venv' \
+              ':(exclude)static/vendor/**'; then
+            echo '::error::Use Shellui (product) or shellui (packages); avoid Shell-UI camelCase variants'
+            exit 1
+          fi
+
+          # High-signal secret patterns in tracked text (PEM private keys)
+          if git grep -nIE 'BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY' -- . \
+              ':(exclude).github/workflows/**' \
+              ':(exclude).env.example' \
+              ':(exclude)*.md' \
+              ':(exclude)docs/**'; then
+            echo '::error::Private key material found in tracked files'
+            exit 1
+          fi
+
+  links:
+    name: Markdown links
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Link check (lychee)
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: >-
+            --config .lychee.toml
+            --verbose
+            --no-progress
+            README.md
+            CHANGELOG.md
+            PUBLISH.md
+            docs
+          fail: true
+
+  docs:
+    name: Docs build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Full docs.shellui.com build requires shellui/shellui to register the ai service
+      # in DOCS_SERVICES (same as identity, storage, hosting). Until then, validate sources.
+      - name: Validate handbook sources
+        run: |
+          set -euo pipefail
+          test -f docs/index.md
+          test -f docs/configuration.md
+          test -f docs/mcp.md
+          test -f docs/mcp-device-login.md
+          test -f docs/mcp-e2e-conformance.md
+          test -f docs/getting-started.md
+          test -f docs/sidebars.js
+          node --check docs/sidebars.js
+
+  mcp-e2e:
+    name: MCP client conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout ai-service
+        uses: actions/checkout@v4
+
+      - name: Checkout identity-service (develop)
+        uses: actions/checkout@v4
+        with:
+          repository: shellui/identity-service
+          ref: ${{ vars.IDENTITY_SERVICE_REF || 'develop' }}
+          path: identity-service
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          version: '0.12.1'
+          python-version: '3.14'
+          enable-cache: true
+          cache-dependency-glob: |
+            uv.lock
+            tools/mcp-e2e/uv.lock
+
+      - name: Sync ai-service (signing key helper)
+        run: uv sync --frozen --no-dev
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tools/mcp-e2e/clients/package-lock.json
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Run MCP client conformance
+        env:
+          IDENTITY_SRC: ${{ github.workspace }}/identity-service
+          AI_SRC: ${{ github.workspace }}
+        run: ./tools/mcp-e2e/run.sh
+
+  docker:
+    name: Docker build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: shellui/ai-service:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -1,0 +1,58 @@
+services:
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+
+  ai-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+    image: shellui/ai-service:local
+    container_name: ai-service
+    ports:
+      - "${AI_SERVICE_PORT:-8006}:8000"
+    environment:
+      SECRET_KEY: "${SECRET_KEY:?SECRET_KEY is required. Copy .env.example to .env and set SECRET_KEY}"
+      DEBUG: "${DEBUG:-true}"
+      ALLOWED_HOSTS: "${ALLOWED_HOSTS:-localhost,127.0.0.1}"
+      CSRF_TRUSTED_ORIGINS: "${CSRF_TRUSTED_ORIGINS:-http://localhost:8006,http://127.0.0.1:8006}"
+      POSTGRES_DATABASE_URL: "${POSTGRES_DATABASE_URL:-}"
+      REDIS_URL: "${REDIS_URL:-redis://redis:6379/5}"
+      SQLITE_PATH: "/app/data/db.sqlite3"
+      IDENTITY_SERVICE_URL: "${IDENTITY_SERVICE_URL:-http://host.docker.internal:8001}"
+      IDENTITY_JWKS: "${IDENTITY_JWKS:-}"
+      IDENTITY_JWKS_FILE: "${IDENTITY_JWKS_FILE:-}"
+      IDENTITY_JWKS_URL: "${IDENTITY_JWKS_URL:-http://host.docker.internal:8001/.well-known/jwks.json}"
+      IDENTITY_ISSUER: "${IDENTITY_ISSUER:-http://localhost:8001}"
+      IDENTITY_AUDIENCE: "${IDENTITY_AUDIENCE:-shellui}"
+      AI_SERVICE_SIGNING_KEY: "${AI_SERVICE_SIGNING_KEY:-}"
+      AI_SERVICE_SIGNING_KEY_FILE: "${AI_SERVICE_SIGNING_KEY_FILE:-}"
+      AI_SERVICE_SIGNING_KID: "${AI_SERVICE_SIGNING_KID:-}"
+      AI_SERVICE_ISSUER: "${AI_SERVICE_ISSUER:-http://localhost:8006}"
+      STORAGE_SERVICE_URL: "${STORAGE_SERVICE_URL:-http://host.docker.internal:8002}"
+      HOSTING_SERVICE_URL: "${HOSTING_SERVICE_URL:-http://host.docker.internal:8003}"
+      EMAIL_SERVICE_URL: "${EMAIL_SERVICE_URL:-http://host.docker.internal:8004}"
+      EMAIL_SERVICE_ALLOW_PRIVATE: "${EMAIL_SERVICE_ALLOW_PRIVATE:-true}"
+      EMAIL_SERVICE_API_KEY: "${EMAIL_SERVICE_API_KEY:-}"
+      SAAS_SERVICE_URL: "${SAAS_SERVICE_URL:-http://host.docker.internal:8005}"
+      MCP_GATEWAY_TOOLS_CACHE_TTL_SECONDS: "${MCP_GATEWAY_TOOLS_CACHE_TTL_SECONDS:-30}"
+      MCP_GATEWAY_DOWNSTREAM_TIMEOUT_SECONDS: "${MCP_GATEWAY_DOWNSTREAM_TIMEOUT_SECONDS:-5}"
+      SECURE_SSL_REDIRECT: "${SECURE_SSL_REDIRECT:-false}"
+      SESSION_COOKIE_SECURE: "${SESSION_COOKIE_SECURE:-false}"
+      CSRF_COOKIE_SECURE: "${CSRF_COOKIE_SECURE:-false}"
+      CORS_ALLOW_ALL_ORIGINS: "${CORS_ALLOW_ALL_ORIGINS:-true}"
+      CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-}"
+      SENTRY_DSN: "${SENTRY_DSN:-}"
+      SENTRY_ENVIRONMENT: "${SENTRY_ENVIRONMENT:-}"
+      SENTRY_RELEASE: "${SENTRY_RELEASE:-}"
+      SENTRY_TRACES_SAMPLE_RATE: "${SENTRY_TRACES_SAMPLE_RATE:-0}"
+    depends_on:
+      - redis
+    volumes:
+      - .:/app
+      - ai-service-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  ai-service-data:
