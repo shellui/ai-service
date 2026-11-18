@@ -239,6 +239,23 @@ class McpCallLogListView(APIView):
 
     permission_classes = [IsMcpCallLogReader]
 
+    def get_authenticators(self):
+        from django.conf import settings
+
+        if getattr(settings, 'AI_SERVICE_MODE', 'region') == 'global':
+            from apps.global_mcp.auth import GlobalMcpAccessAuthentication
+
+            return [GlobalMcpAccessAuthentication()]
+        return super().get_authenticators()
+
+    def get_permissions(self):
+        from django.conf import settings
+        from rest_framework.permissions import IsAuthenticated
+
+        if getattr(settings, 'AI_SERVICE_MODE', 'region') == 'global':
+            return [IsAuthenticated()]
+        return super().get_permissions()
+
     @extend_schema(
         tags=['mcp-admin'],
         operation_id='ai_v1_mcp_call_logs_list',
@@ -273,6 +290,10 @@ class McpCallLogListView(APIView):
         },
     )
     def get(self, request):
+        from django.conf import settings
+
+        if getattr(settings, 'AI_SERVICE_MODE', 'region') == 'global':
+            return self._global_owner_logs(request)
         user = request.user
         company_id = getattr(user, 'company_id', None)
         try:
@@ -286,6 +307,31 @@ class McpCallLogListView(APIView):
         if err is not None:
             return err
         return _page(McpCallLog.objects.filter(company_id=company_id), filters)
+
+    def _global_owner_logs(self, request):
+        """Global mode: the signed-in Shellui account sees its own global rows."""
+        owner = str(getattr(request.user, 'sub', '') or '')
+        if not owner:
+            return Response({'error': 'Forbidden'}, status=403)
+        filters, err = _parse_page_filters(request.query_params, include_agent=True)
+        if err is not None:
+            return err
+        rows = McpCallLog.objects.filter(plane=McpCallLog.PLANE_GLOBAL, owner_sub=owner)
+        page = _page(rows, filters)
+        if page.status_code != 200:
+            return page
+        for item in page.data.get('call_logs') or []:
+            match = McpCallLog.objects.filter(pk=item.get('id')).first()
+            if match is None:
+                continue
+            item['plane'] = match.plane
+            if match.correlation_id:
+                item['correlation_id'] = str(match.correlation_id)
+            if match.regional_company_id:
+                item['regional_company_id'] = match.regional_company_id
+            if match.region:
+                item['region'] = match.region
+        return page
 
 
 class PersonalAgentCallLogListView(APIView):

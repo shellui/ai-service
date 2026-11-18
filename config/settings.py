@@ -117,6 +117,15 @@ if not _secret_key:
 SECRET_KEY = _secret_key
 
 DEBUG = os.getenv('DEBUG', 'false').strip().lower() in {'1', 'true', 'yes', 'on'}
+
+# One image. region keeps /c/<company_id>/mcp. global serves /mcp and is the MCP
+# authorization server. Mixed regional and global settings are refused in config/checks.py.
+_ai_service_mode = os.getenv('AI_SERVICE_MODE', 'region').strip().lower() or 'region'
+if _ai_service_mode not in {'region', 'global'}:
+    raise ImproperlyConfigured(
+        f"AI_SERVICE_MODE must be 'region' or 'global'. Got: {_ai_service_mode!r}"
+    )
+AI_SERVICE_MODE = _ai_service_mode
 # One-time web bootstrap token for creating the first superuser when DEBUG=false.
 # When unset, use `manage.py createsuperuser` instead of the public form at `/`.
 SETUP_TOKEN = os.getenv('SETUP_TOKEN', '').strip()
@@ -168,6 +177,7 @@ INSTALLED_APPS = [
     'config.apps.ConfigConfig',
     'apps.authapi',
     'apps.connector',
+    'apps.global_mcp',
     'apps.keys',
 ]
 
@@ -473,6 +483,63 @@ AI_SERVICE_SIGNING_KEY = (
     else None
 )
 
+# Global mode (AI_SERVICE_MODE=global). Empty in region mode.
+GLOBAL_IDENTITY_URL = os.getenv('GLOBAL_IDENTITY_URL', '').strip().rstrip('/')
+GLOBAL_IDENTITY_INTERNAL_URL = os.getenv('GLOBAL_IDENTITY_INTERNAL_URL', '').strip().rstrip('/') or GLOBAL_IDENTITY_URL
+GLOBAL_IDENTITY_ISSUER = os.getenv('GLOBAL_IDENTITY_ISSUER', '').strip().rstrip('/')
+def _strip_wrapped_quotes(raw: str) -> str:
+    """Drop one pair of matching quotes. Compose env files often wrap JSON that way."""
+    value = (raw or '').strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+        return value[1:-1].strip()
+    return value
+
+
+GLOBAL_IDENTITY_JWKS_DOCUMENT = None
+_global_identity_jwks_raw = _strip_wrapped_quotes(os.getenv('GLOBAL_IDENTITY_JWKS', ''))
+if _global_identity_jwks_raw:
+    GLOBAL_IDENTITY_JWKS_DOCUMENT = _parse_jwks_document(_global_identity_jwks_raw, source='GLOBAL_IDENTITY_JWKS')
+GLOBAL_IDENTITY_JWKS_URL = os.getenv('GLOBAL_IDENTITY_JWKS_URL', '').strip().rstrip('/')
+if not GLOBAL_IDENTITY_JWKS_URL and GLOBAL_IDENTITY_URL:
+    GLOBAL_IDENTITY_JWKS_URL = f'{GLOBAL_IDENTITY_URL}/.well-known/jwks.json'
+GLOBAL_OIDC_CLIENT_ID = os.getenv('GLOBAL_OIDC_CLIENT_ID', '').strip()
+GLOBAL_OIDC_CLIENT_SECRET = os.getenv('GLOBAL_OIDC_CLIENT_SECRET', '').strip()
+GLOBAL_OIDC_REDIRECT_URI = os.getenv('GLOBAL_OIDC_REDIRECT_URI', '').strip()
+SAAS_SERVICE_INTERNAL_URL = os.getenv('SAAS_SERVICE_INTERNAL_URL', '').strip().rstrip('/')
+SAAS_API_AUDIENCE = os.getenv('SAAS_API_AUDIENCE', '').strip().rstrip('/')
+GLOBAL_MCP_ACCESS_TOKEN_TTL_SECONDS = max(60, _env_int('GLOBAL_MCP_ACCESS_TOKEN_TTL_SECONDS', 3600))
+GLOBAL_MCP_REFRESH_TOKEN_TTL_SECONDS = max(3600, _env_int('GLOBAL_MCP_REFRESH_TOKEN_TTL_SECONDS', 30 * 24 * 3600))
+GLOBAL_AGENT_ACCESS_TOKEN_AUDIENCE = os.getenv('GLOBAL_AGENT_ACCESS_TOKEN_AUDIENCE', 'shellui-agents').strip() or 'shellui-agents'
+MCP_APPROVAL_SESSION_TTL_SECONDS = max(30, min(_env_int('MCP_APPROVAL_SESSION_TTL_SECONDS', 60), 60))
+MCP_SETUP_APPROVAL_SESSION_TTL_SECONDS = max(600, min(_env_int('MCP_SETUP_APPROVAL_SESSION_TTL_SECONDS', 900), 900))
+MCP_DYNAMIC_CLIENT_REGISTRATION = _env_bool('MCP_DYNAMIC_CLIENT_REGISTRATION', True)
+GLOBAL_COMPANY_WAIT_SECONDS = max(1, _env_int('GLOBAL_COMPANY_WAIT_SECONDS', 60))
+GLOBAL_COMPANY_POLL_SECONDS = max(0.05, _env_float('GLOBAL_COMPANY_POLL_SECONDS', 2))
+# True when this process was given regional identity material. Used by the mixed-mode check.
+REGION_IDENTITY_CONFIGURED = any(
+    os.getenv(name, '').strip()
+    for name in (
+        'IDENTITY_JWKS',
+        'IDENTITY_JWKS_FILE',
+        'IDENTITY_JWKS_URL',
+        'IDENTITY_SERVICE_URL',
+        'IDENTITY_ISSUER',
+        'IDENTITY_AUDIENCE',
+        'STORAGE_SERVICE_URL',
+        'HOSTING_SERVICE_URL',
+        'EMAIL_SERVICE_API_KEY',
+    )
+)
+GLOBAL_CONTROL_CONFIGURED = any(
+    os.getenv(name, '').strip()
+    for name in (
+        'GLOBAL_IDENTITY_URL',
+        'GLOBAL_OIDC_CLIENT_ID',
+        'GLOBAL_OIDC_CLIENT_SECRET',
+        'SAAS_API_AUDIENCE',
+    )
+)
+
 # API auth is Bearer JWT (not cookies). Multi-tenant shells call APIs from
 # unknown browser origins, so permissive CORS is intentional when credentials are off
 # (Supabase-style). Token delivery stays strict via identity OAuth redirect allowlist.
@@ -569,7 +636,58 @@ if EMAIL_SERVICE_API_KEY:
             f'Got: {EMAIL_SERVICE_URL!r}'
         )
 
-if not DEBUG:
+if not DEBUG and AI_SERVICE_MODE == 'global':
+    _production_config_errors = []
+    if not GLOBAL_IDENTITY_URL:
+        _production_config_errors.append('GLOBAL_IDENTITY_URL is required when AI_SERVICE_MODE=global and DEBUG=false.')
+    if not GLOBAL_IDENTITY_ISSUER:
+        _production_config_errors.append('GLOBAL_IDENTITY_ISSUER is required when AI_SERVICE_MODE=global and DEBUG=false.')
+    if GLOBAL_IDENTITY_JWKS_DOCUMENT is None and not GLOBAL_IDENTITY_JWKS_URL:
+        _production_config_errors.append(
+            'GLOBAL_IDENTITY_JWKS or GLOBAL_IDENTITY_JWKS_URL is required when AI_SERVICE_MODE=global and DEBUG=false.'
+        )
+    if not GLOBAL_OIDC_CLIENT_ID or not GLOBAL_OIDC_CLIENT_SECRET:
+        _production_config_errors.append(
+            'GLOBAL_OIDC_CLIENT_ID and GLOBAL_OIDC_CLIENT_SECRET are required when AI_SERVICE_MODE=global and DEBUG=false.'
+        )
+    if not GLOBAL_OIDC_REDIRECT_URI:
+        _production_config_errors.append(
+            'GLOBAL_OIDC_REDIRECT_URI is required when AI_SERVICE_MODE=global and DEBUG=false.'
+        )
+    if not SAAS_SERVICE_URL:
+        _production_config_errors.append('SAAS_SERVICE_URL is required when AI_SERVICE_MODE=global and DEBUG=false.')
+    if not SAAS_API_AUDIENCE:
+        _production_config_errors.append('SAAS_API_AUDIENCE is required when AI_SERVICE_MODE=global and DEBUG=false.')
+    if not _ai_signing_pem:
+        _production_config_errors.append(
+            'AI_SERVICE_SIGNING_KEY or AI_SERVICE_SIGNING_KEY_FILE is required when DEBUG=false. '
+            'Run: python manage.py generate_signing_key'
+        )
+    if not AI_SERVICE_SIGNING_KID:
+        _production_config_errors.append(
+            'AI_SERVICE_SIGNING_KID is required when DEBUG=false (set to the kid from generate_signing_key).'
+        )
+    if not AI_SERVICE_ISSUER:
+        _production_config_errors.append(
+            'AI_SERVICE_ISSUER is required when DEBUG=false (this service public https origin).'
+        )
+    if (
+        len(SECRET_KEY) < 50
+        or len(set(SECRET_KEY)) < 5
+        or SECRET_KEY.startswith('django-insecure-')
+    ):
+        _production_config_errors.append(
+            'SECRET_KEY is shorter than 50 characters or a placeholder when DEBUG=false. '
+            'Generate one with: python manage.py generate_env'
+        )
+    if REGION_IDENTITY_CONFIGURED:
+        _production_config_errors.append(
+            'Regional identity settings (IDENTITY_JWKS, IDENTITY_SERVICE_URL, STORAGE_SERVICE_URL, and the rest) '
+            'must be unset when AI_SERVICE_MODE=global.'
+        )
+    if _production_config_errors:
+        raise ImproperlyConfigured('\n'.join(_production_config_errors))
+elif not DEBUG:
     _production_config_errors = []
     if not IDENTITY_ISSUER:
         _production_config_errors.append(

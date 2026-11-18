@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Shellui</title>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'css/site.css' %}" />
+  </head>
+  <body class="min-h-full bg-background text-foreground">
+    <main class="mx-auto max-w-lg px-6 py-16">
+      <h1 class="text-2xl font-semibold">Shellui</h1>
+      <p class="mt-4 text-sm">{{ message }}</p>
+      <p class="mt-4 text-sm"><a class="underline" href="{{ docs_url }}">Docs</a></p>
+    </main>
+  </body>
+</html>

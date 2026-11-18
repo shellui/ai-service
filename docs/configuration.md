@@ -54,7 +54,7 @@ Identity verifies delegation requests with `AI_SERVICE_JWKS` / `AI_SERVICE_JWKS_
 | `HOSTING_SERVICE_URL` | empty |
 | `EMAIL_SERVICE_URL` | `https://email.shellui.com` |
 | `EMAIL_SERVICE_API_KEY` | empty |
-| `SAAS_SERVICE_URL` | empty |
+| `SAAS_SERVICE_URL` | empty. Ignored when `AI_SERVICE_MODE=region`. Required for global mode. |
 | `STORAGE_SERVICE_PUBLIC_URL` | same as `STORAGE_SERVICE_URL` |
 | `HOSTING_SERVICE_PUBLIC_URL` | same as `HOSTING_SERVICE_URL` |
 | `EMAIL_SERVICE_PUBLIC_URL` | same as `EMAIL_SERVICE_URL` |
@@ -72,6 +72,42 @@ The gateway calls each service at `{*_SERVICE_URL}/mcp`, and asks identity for a
 | `JWT_ALGORITHMS` | `RS256` |
 | `JWT_HS256_FALLBACK_SECRET` | empty |
 | `ALLOW_JWT_HS256_FALLBACK` | `false` |
+
+## Mode
+
+`AI_SERVICE_MODE` is `region` (default) or `global`. One image, one codebase, chosen at boot. Region mode serves `/c/<company_id>/mcp` and does not serve the global authorization server. Global mode serves `https://ai.shellui.com/mcp` (no company in the path) and does not serve `/c/<company_id>/mcp`.
+
+`config/checks.py` refuses a mix. Global mode must not set `IDENTITY_JWKS`, `IDENTITY_JWKS_FILE`, `IDENTITY_JWKS_URL`, `IDENTITY_SERVICE_URL`, `IDENTITY_ISSUER`, `IDENTITY_AUDIENCE`, `STORAGE_SERVICE_URL`, `HOSTING_SERVICE_URL`, or `EMAIL_SERVICE_API_KEY`. Region mode must not set `GLOBAL_IDENTITY_URL`, `GLOBAL_OIDC_CLIENT_ID`, `GLOBAL_OIDC_CLIENT_SECRET`, or `SAAS_API_AUDIENCE`.
+
+### Global mode
+
+Required when `DEBUG=false` and `AI_SERVICE_MODE=global`: `GLOBAL_IDENTITY_URL`, `GLOBAL_IDENTITY_ISSUER`, `GLOBAL_IDENTITY_JWKS` or `GLOBAL_IDENTITY_JWKS_URL`, `GLOBAL_OIDC_CLIENT_ID`, `GLOBAL_OIDC_CLIENT_SECRET`, `GLOBAL_OIDC_REDIRECT_URI`, `SAAS_SERVICE_URL`, `SAAS_API_AUDIENCE`, plus the shared signing key and `AI_SERVICE_ISSUER`. Regional identity settings are not required and must be unset.
+
+| Variable | Default |
+| -------- | ------- |
+| `AI_SERVICE_MODE` | `region` |
+| `GLOBAL_IDENTITY_URL` | empty. Public identity-global origin. The browser is sent to `{url}/oauth/authorize`. |
+| `GLOBAL_IDENTITY_INTERNAL_URL` | `GLOBAL_IDENTITY_URL`. Token and userinfo calls. |
+| `GLOBAL_IDENTITY_ISSUER` | empty |
+| `GLOBAL_IDENTITY_JWKS` | empty. Pinned identity-global JWKS JSON. One pair of wrapping quotes is ignored, so a Compose env file can quote the document. The dev stack copies host `GLOBAL_JWKS` into this name. |
+| `GLOBAL_IDENTITY_JWKS_URL` | `{GLOBAL_IDENTITY_URL}/.well-known/jwks.json` when the URL is set |
+| `GLOBAL_OIDC_CLIENT_ID` | empty |
+| `GLOBAL_OIDC_CLIENT_SECRET` | empty |
+| `GLOBAL_OIDC_REDIRECT_URI` | empty. Production value `https://ai.shellui.com/oauth/mcp/signin/complete` |
+| `SAAS_SERVICE_INTERNAL_URL` | empty. Falls back to `SAAS_SERVICE_URL` for server-side REST. |
+| `SAAS_API_AUDIENCE` | empty. `aud` on saas API tokens, typically `https://saas.shellui.com/api` |
+| `GLOBAL_MCP_ACCESS_TOKEN_TTL_SECONDS` | `3600` |
+| `GLOBAL_MCP_REFRESH_TOKEN_TTL_SECONDS` | `2592000` (30 days, rotating) |
+| `GLOBAL_AGENT_ACCESS_TOKEN_AUDIENCE` | `shellui-agents` when unset. The dev stack sets `shellui_global_agent_dev` so ai-global, saas, and regional identity share one `aud`. |
+| `MCP_APPROVAL_SESSION_TTL_SECONDS` | `60` |
+| `MCP_SETUP_APPROVAL_SESSION_TTL_SECONDS` | `900` |
+| `MCP_DYNAMIC_CLIENT_REGISTRATION` | `true` |
+| `GLOBAL_COMPANY_WAIT_SECONDS` | `60` |
+| `GLOBAL_COMPANY_POLL_SECONDS` | `2` |
+
+Shared by both modes: `DEBUG`, `SECRET_KEY`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `AI_PUBLIC_URL`, `AI_SERVICE_ISSUER`, `AI_SERVICE_SIGNING_KEY` (or `AI_SERVICE_SIGNING_KEY_FILE`), `AI_SERVICE_SIGNING_KID`, `REDIS_URL`, `POSTGRES_DATABASE_URL`, `MCP_TOOLS_LIST_MODE`.
+
+Global MCP access tokens use `aud` `{AI_PUBLIC_URL}/mcp`. SaaS API tokens use `aud` `SAAS_API_AUDIENCE` and `token_type` `saas_api`. Subject tokens for regional exchange use `aud` `GLOBAL_AGENT_ACCESS_TOKEN_AUDIENCE` (`shellui-agents`), `token_type` `agent_access`, and `mcp_authority` `global_delegated`. All three are signed with `AI_SERVICE_SIGNING_KEY`. The public key is `GET /.well-known/jwks.json`.
 
 ## Docker Compose
 
