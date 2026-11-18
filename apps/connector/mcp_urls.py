@@ -12,7 +12,10 @@ from urllib.parse import urlsplit
 _COMPANY_PATH = re.compile(r'^/c/[1-9][0-9]{0,18}/mcp$')
 _LOOPBACK_HOSTS = frozenset({'127.0.0.1', 'localhost', '::1'})
 _CGNAT_SHARED = ipaddress.ip_network('100.64.0.0/10')
-PLAIN_MCP_MESSAGE = 'Connect to the per-company MCP URL: /c/<company_id>/mcp.'
+PLAIN_MCP_MESSAGE = (
+    'Connect to the per-company MCP URL: /c/<company_id>/mcp. '
+    'Shellui account? Use https://ai.shellui.com/mcp.'
+)
 
 
 def _http_dev_host_allowed(host: str | None) -> bool:

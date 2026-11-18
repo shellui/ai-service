@@ -13,7 +13,12 @@ SAAS_OFFERED_VALUE = '1'
 
 
 def saas_tools_forwarded() -> bool:
-    """True when this gateway exposes downstream SaaS MCP tools."""
+    """True when this gateway exposes downstream SaaS MCP tools.
+
+    Region mode ignores ``SAAS_SERVICE_URL``. SaaS tools are served by global ``/mcp``.
+    """
+    if getattr(settings, 'AI_SERVICE_MODE', 'region') != 'global':
+        return False
     return bool(str(getattr(settings, 'SAAS_SERVICE_URL', '') or '').strip())
 
 

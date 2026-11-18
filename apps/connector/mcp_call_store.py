@@ -218,6 +218,31 @@ def resource_label_for_log(entry: dict, tool_name: str) -> str:
     return (tool_name or '')[:255]
 
 
+def parse_correlation_id(value: object):
+    """UUID from a global caller. Invalid values are dropped. Never used for auth."""
+    import uuid
+
+    if value is None or value == '':
+        return None
+    try:
+        return uuid.UUID(str(value).strip())
+    except (ValueError, AttributeError, TypeError):
+        return None
+
+
+def correlation_from_request(request, claims: dict | None) -> str:
+    """Store X-Shellui-Correlation-Id only for a global_delegated caller."""
+    if request is None or not is_global_delegated_claims(claims):
+        return ''
+    raw = ''
+    headers = getattr(request, 'headers', None)
+    if headers is not None:
+        raw = headers.get('X-Shellui-Correlation-Id') or headers.get('X-Shellui-Correlation-ID') or ''
+    if not raw:
+        raw = request.META.get('HTTP_X_SHELLUI_CORRELATION_ID', '')
+    return str(raw).strip()
+
+
 def global_ids_from_claims(claims: dict | None) -> tuple[str, str]:
     if not isinstance(claims, dict):
         return '', ''
@@ -327,6 +352,7 @@ def persist_mcp_call(entry: dict, *, arguments: dict | None = None) -> None:
             resource_label=resource_label_for_log(entry, tool_name),
             global_agent_id=global_agent_id,
             global_company_id=global_company_id,
+            correlation_id=parse_correlation_id(entry.get('correlation_id')),
             arguments_redacted=redact_arguments_for_log(raw_arguments),
             status=status,
             status_code=status_code,

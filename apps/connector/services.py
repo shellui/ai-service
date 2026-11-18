@@ -38,9 +38,11 @@ def list_mcp_services() -> list[dict[str, str]]:
     email = _origin(getattr(settings, 'EMAIL_SERVICE_URL', ''))
     if email and getattr(settings, 'EMAIL_SERVICE_API_KEY', ''):
         items.append(_item('email', 'Email', email, getattr(settings, 'EMAIL_SERVICE_PUBLIC_URL', '') or ''))
-    saas = _origin(getattr(settings, 'SAAS_SERVICE_URL', ''))
-    if saas:
-        items.append(_item('saas', 'SaaS', saas, getattr(settings, 'SAAS_SERVICE_PUBLIC_URL', '') or ''))
+    # D4: saas tools are served by AI_SERVICE_MODE=global. Region mode ignores SAAS_SERVICE_URL.
+    if getattr(settings, 'AI_SERVICE_MODE', 'region') == 'global':
+        saas = _origin(getattr(settings, 'SAAS_SERVICE_URL', ''))
+        if saas:
+            items.append(_item('saas', 'SaaS', saas, getattr(settings, 'SAAS_SERVICE_PUBLIC_URL', '') or ''))
     return items
 
 

@@ -28,7 +28,20 @@ class McpCallLog(models.Model):
         (CHANNEL_NONE, 'None'),
     )
 
-    company_id = models.PositiveIntegerField()
+    PLANE_REGION = 'region'
+    PLANE_GLOBAL = 'global'
+    PLANES = (
+        (PLANE_REGION, 'Region'),
+        (PLANE_GLOBAL, 'Global'),
+    )
+
+    # Null on the global plane, where the call is not inside one regional company.
+    company_id = models.PositiveIntegerField(null=True, blank=True)
+    plane = models.CharField(max_length=16, choices=PLANES, default=PLANE_REGION)
+    owner_sub = models.CharField(max_length=255, blank=True, default='')
+    correlation_id = models.UUIDField(null=True, blank=True, db_index=True)
+    regional_company_id = models.CharField(max_length=64, blank=True, default='')
+    region = models.CharField(max_length=32, blank=True, default='')
     agent_id = models.CharField(max_length=128, blank=True, default='')
     agent_name = models.CharField(max_length=200, blank=True, default='')
     client_id = models.CharField(max_length=128, blank=True, default='')
@@ -65,6 +78,7 @@ class McpCallLog(models.Model):
             models.Index(fields=['company_id', 'created_at'], name='mcpcall_co_created_idx'),
             models.Index(fields=['company_id', 'agent_id'], name='mcpcall_co_agent_idx'),
             models.Index(fields=['company_id', 'agent_id', 'owner_user_id'], name='mcpcall_co_ag_owner_idx'),
+            models.Index(fields=['plane', 'owner_sub', 'created_at'], name='mcpcall_plane_owner_idx'),
         ]
 
     def __str__(self) -> str:
