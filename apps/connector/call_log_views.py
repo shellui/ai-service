@@ -315,8 +315,7 @@ class PersonalAgentCallLogListView(APIView):
             'the response is 404. '
             'Filters: service, tool (tool name), status, created_after (inclusive), '
             'created_before (exclusive). limit defaults to 50 and cannot exceed 200. '
-            'offset defaults to 0. Arguments are the redacted copy stored at insert. '
-            'MCP is in Beta.'
+            'offset defaults to 0. Arguments are the redacted copy stored at insert.'
         ),
         parameters=[
             OpenApiParameter(

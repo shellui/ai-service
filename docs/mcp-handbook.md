@@ -4,12 +4,6 @@ title: MCP gateway backend handbook
 
 # MCP gateway backend handbook
 
-:::note
-
-MCP is in Beta. Tool names and behavior may still change.
-
-:::
-
 Backend reference for **`POST /c/<company_id>/mcp`** in ai-service. For the shorter overview see [mcp.md](./mcp.md); for conformance runs see [mcp-e2e-conformance.md](./mcp-e2e-conformance.md).
 
 ## Endpoint and OAuth
