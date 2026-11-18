@@ -5,8 +5,6 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
-
 <!---
 ## [Unreleased] - yyyy-mm-dd
 
@@ -53,6 +51,7 @@ See for sample https://raw.githubusercontent.com/favoloso/conventional-changelog
 ### 📚 Documentation
 
 - MCP handbooks document the published tool names and the discovery list.
+- Publish a Docker Hub overview for `shellui/ai-service` with the release image.
 
 ### 🐛 Bug Fixes
 
