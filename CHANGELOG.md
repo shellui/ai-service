@@ -6,8 +6,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
 <!---
-## [Unreleased] - yyyy-mm-dd
-
 ### ✨ Feature - for new features
 ### 🛠 Improvements - for general improvements
 ### 🚨 Changed - for changes in existing functionality
@@ -20,6 +18,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 See for sample https://raw.githubusercontent.com/favoloso/conventional-changelog-emoji/master/CHANGELOG.md
 -->
+
+## [0.2.0] - 2026-11-18
+
+### ✨ Feature
+
+- `AI_SERVICE_MODE=global` serves MCP at `/mcp` with no company in the path. `region` stays the default and still serves `/c/<company_id>/mcp`.
+- Global mode is an OAuth authorization server: discovery, dynamic client registration, PKCE, server-rendered consent, and rotating refresh tokens (30 days).
+- Global sign-in uses identity-global. The browser is sent to `{GLOBAL_IDENTITY_URL}/oauth/authorize`, and the code is redeemed at `{GLOBAL_IDENTITY_INTERNAL_URL}/oauth/token`.
+- Global mode loads SaaS tools from OpenAPI `x-mcp` and calls them over REST. Reads follow the grant read level. Writes ask in chat.
+- `ai_list_companies` and `ai_wait_for_company` list projects and wait for provisioning. `ai_company_search_tools`, `ai_company_describe_tool`, and `ai_call_company_tool` forward to that project's regional gateway.
+- `ai_grant_company_access` lets an owner grant one project. A new or wider grant opens an approval link. Narrowing the grant, or `ai_revoke_company_access`, bumps `binding_version` and calls saas to fan out the revoke.
+- A regional approval comes back as the regional link, or the same form. The form answer is posted to the company gateway with `X-Shellui-Correlation-Id`.
+- Call logs record `plane` (`global` or `region`), `owner_sub`, and `correlation_id`. Global rows may omit `company_id`. The regional gateway stores `X-Shellui-Correlation-Id` when the caller token is global delegated.
+
+### 🚨 Changed
+
+- Breaking: region mode ignores `SAAS_SERVICE_URL` and no longer forwards SaaS tools. OAuth metadata on the region gateway no longer includes `saas_offered`.
+- Breaking: boot checks refuse mixed settings. Region mode must leave `GLOBAL_IDENTITY_URL`, `GLOBAL_OIDC_CLIENT_ID`, `GLOBAL_OIDC_CLIENT_SECRET`, and `SAAS_API_AUDIENCE` unset. Global mode must leave `IDENTITY_JWKS`, `IDENTITY_JWKS_FILE`, `IDENTITY_JWKS_URL`, `IDENTITY_SERVICE_URL`, `IDENTITY_ISSUER`, `IDENTITY_AUDIENCE`, `STORAGE_SERVICE_URL`, `HOSTING_SERVICE_URL`, and `EMAIL_SERVICE_API_KEY` unset.
+- Breaking: with `DEBUG=false`, global mode requires `GLOBAL_IDENTITY_URL`, `GLOBAL_IDENTITY_ISSUER`, `GLOBAL_IDENTITY_JWKS` or `GLOBAL_IDENTITY_JWKS_URL`, `GLOBAL_OIDC_CLIENT_ID`, `GLOBAL_OIDC_CLIENT_SECRET`, `GLOBAL_OIDC_REDIRECT_URI`, `SAAS_SERVICE_URL`, and `SAAS_API_AUDIENCE`, plus `AI_SERVICE_SIGNING_KEY` (or `AI_SERVICE_SIGNING_KEY_FILE`), `AI_SERVICE_SIGNING_KID`, and `AI_SERVICE_ISSUER`. Region URLs come from saas `GET /regions`.
+- Dependabot opens version-update pull requests against `develop`.
+
+### 🐛 Bug Fixes
+
+- Docker Hub overview updates sign in with `DOCKERHUB_DESCRIPTION_USERNAME` and `DOCKERHUB_DESCRIPTION_TOKEN`. Use a personal access token with Read, Write, and Delete, from a user with Admin on `shellui/ai-service`. Image push still uses `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`. Publish skips the overview step when those secrets are empty, so a missing token does not fail the release.
+
+### 🔒 Security
+
+- Staff accounts cannot authorize a global MCP agent. Accept the Shellui terms before connecting an agent.
+- A regional access token sent to global `/mcp` is rejected. The error names the regional company MCP URL.
+- Global MCP refuses project deletion. Destructive calls that are allowed use an approval link, not a form.
+- Global access tokens, saas API tokens, and subject tokens for regional exchange are signed with `AI_SERVICE_SIGNING_KEY`. The public key stays at `GET /.well-known/jwks.json`. Refresh tokens rotate.
+
+### 📚 Documentation
+
+- The Docker Hub overview and the configuration reference describe region mode and global mode, including the dev-stack environment names for the global container.
 
 ## [0.1.0] - 2026-11-18
 

@@ -51,7 +51,7 @@ Required Docker Hub repository: **`shellui/ai-service`** on Docker Hub under the
 ### Manual publish (fallback)
 
 ```bash
-VERSION=0.1.0
+VERSION=0.2.0
 IMAGE=shellui/ai-service
 docker buildx build --platform linux/amd64,linux/arm64 \
   -t "${IMAGE}:${VERSION}" -t "${IMAGE}:latest" --push .
@@ -72,7 +72,7 @@ docker run -d --name ai-service -p 8003:8000 \
   -e AI_SERVICE_ISSUER='https://ai.shellui.com' \
   -e CSRF_TRUSTED_ORIGINS='https://ai.shellui.com' \
   -e STORAGE_SERVICE_URL='https://storage.shellui.com' \
-  shellui/ai-service:0.1.0
+  shellui/ai-service:0.2.0
 ```
 
 Generate signing material before deploy:
