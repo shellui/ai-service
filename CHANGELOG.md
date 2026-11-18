@@ -21,12 +21,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 See for sample https://raw.githubusercontent.com/favoloso/conventional-changelog-emoji/master/CHANGELOG.md
 -->
 
-## [Unreleased]
-
-### 📚 Documentation
-
-- Publish a Docker Hub overview for `shellui/ai-service` with the release image.
-
 ## [0.1.0] - 2026-11-18
 
 ### ✨ Feature
@@ -57,6 +51,7 @@ See for sample https://raw.githubusercontent.com/favoloso/conventional-changelog
 ### 📚 Documentation
 
 - MCP handbooks document the published tool names and the discovery list.
+- Publish a Docker Hub overview for `shellui/ai-service` with the release image.
 
 ### 🐛 Bug Fixes
 
