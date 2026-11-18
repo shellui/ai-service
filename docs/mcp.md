@@ -4,12 +4,6 @@ title: MCP gateway handbook
 
 # MCP gateway handbook
 
-:::note
-
-MCP is in Beta. Tool names and behavior may still change.
-
-:::
-
 This document describes how the **ai-service MCP gateway** behaves in this repository: URLs, tokens, approvals, session grants, tool naming, and what gets sent to Identity for activity. It is the operational reference for gateway code in `apps/connector/mcp_*.py`, not a status log for other projects.
 
 Longer backend-oriented examples and request field lists: [mcp-handbook.md](./mcp-handbook.md).
@@ -259,8 +253,6 @@ Arguments go through `redact_arguments` before insert. Secret-shaped fields are 
 Retention is `MCP_CALL_LOG_RETENTION_DAYS` (default 90). `python manage.py prune_mcp_call_logs` deletes older rows.
 
 ### Your agent
-
-MCP is in Beta.
 
 `GET /ai/v1/mcp/personal/agents/{agent_id}/call-logs`
 
