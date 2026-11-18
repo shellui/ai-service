@@ -17,7 +17,8 @@ class ServiceDiscoveryTests(SimpleTestCase):
         ids = {item['id'] for item in services}
         self.assertIn('identity', ids)
         self.assertIn('storage', ids)
-        self.assertIn('saas', ids)
+        # Region mode ignores SAAS_SERVICE_URL. Global /mcp serves saas tools.
+        self.assertNotIn('saas', ids)
         self.assertNotIn('email', ids)
         urls = configured_service_urls()
         self.assertEqual(urls['storage'], 'https://storage.test/mcp')

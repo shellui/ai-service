@@ -139,6 +139,11 @@ def _record_mcp_call_inner(entry: dict) -> None:
     client_name = _client_name_for_log(request)
     if client_name and not entry.get('client_name'):
         entry['client_name'] = client_name
+    from apps.connector.mcp_call_store import correlation_from_request
+
+    correlation = correlation_from_request(request, claims)
+    if correlation:
+        entry['correlation_id'] = correlation
     status_code = int(entry.get('status') or 0)
     is_error = entry.pop('is_error', None)
     log_result = entry.pop('log_result', None)
@@ -199,6 +204,8 @@ def _record_mcp_call_inner(entry: dict) -> None:
         audit['approval_channel'] = entry.get('approval_channel')
     if entry.get('approval_outcome'):
         audit['approval_outcome'] = entry.get('approval_outcome')
+    if entry.get('correlation_id'):
+        audit['correlation_id'] = entry.get('correlation_id')
     entry.clear()
     entry.update(audit)
     entry.pop('arguments', None)

@@ -1,6 +1,10 @@
 # Run the Shellui MCP gateway
 
-ai-service is the per-company Model Context Protocol (MCP) gateway in Shellui. A client calls `POST /c/<company_id>/mcp` for one company. The gateway calls tools on identity, storage, hosting, email, and SaaS. Destructive tool calls require approval before they run.
+ai-service is the Model Context Protocol (MCP) gateway in Shellui. One image runs in region mode or global mode. `AI_SERVICE_MODE` chooses the plane at boot. The default is `region`.
+
+Region mode serves `POST /c/<company_id>/mcp` for one company. The gateway calls tools on identity, storage, hosting, and email. SaaS tools are not on this plane. Destructive tool calls require approval before they run.
+
+Global mode serves `POST /mcp` with no company in the path. Run it as a second container. It does not call regional identity, storage, hosting, or email.
 
 ## What the image contains
 
@@ -17,7 +21,7 @@ The entrypoint starts as root, prepares `/app/data`, then runs gunicorn as `appu
 
 ## Run a container
 
-Set the required variables, then start `shellui/ai-service:latest`. `SECRET_KEY` must be at least 50 characters. `AI_SERVICE_SIGNING_KEY` must be an RSA private key in PEM form. Replace the placeholder hosts and secrets before you start the server.
+The commands below start region mode. Set the required variables, then start `shellui/ai-service:latest`. `SECRET_KEY` must be at least 50 characters. `AI_SERVICE_SIGNING_KEY` must be an RSA private key in PEM form. Replace the placeholder hosts and secrets before you start the server.
 
 This command prints a fresh `SECRET_KEY`, a signing key, and the other required names. It does not start the server. Copy the secret and the signing key into the next command, and store the output in a secret manager:
 
@@ -79,9 +83,64 @@ volumes:
   ai-service-data:
 ```
 
+## Region mode (default)
+
+`docker-compose.yml` in the repository root runs one ai-service container as a region gateway. It serves `/c/<company_id>/mcp`.
+
+| Variable | Compose default |
+| -------- | --------------- |
+| `AI_SERVICE_MODE` | `region` |
+| `IDENTITY_SERVICE_URL` | `http://host.docker.internal:8001` |
+| `IDENTITY_JWKS_URL` | `http://host.docker.internal:8001/.well-known/jwks.json` |
+| `IDENTITY_ISSUER` | `http://localhost:8001` |
+| `IDENTITY_AUDIENCE` | `shellui` |
+| `STORAGE_SERVICE_URL` | `http://host.docker.internal:8002` |
+| `HOSTING_SERVICE_URL` | `http://host.docker.internal:8003` |
+| `EMAIL_SERVICE_URL` | `http://host.docker.internal:8004` |
+| `SAAS_SERVICE_URL` | passed through if set, and ignored. SaaS tools are not on the region gateway. |
+| `REDIS_URL` | `redis://redis:6379/5` |
+| `AI_SERVICE_PORT` | `8006` |
+
+Do not set `GLOBAL_IDENTITY_URL`, `GLOBAL_OIDC_CLIENT_ID`, `GLOBAL_OIDC_CLIENT_SECRET`, or `SAAS_API_AUDIENCE` on this container. `config/checks.py` refuses that mix.
+
+## Global mode
+
+Run a second container from the same image. Do not point it at regional identity, storage, hosting, or email.
+
+With `DEBUG=false`, global mode requires `GLOBAL_IDENTITY_URL`, `GLOBAL_IDENTITY_ISSUER`, `GLOBAL_IDENTITY_JWKS` or `GLOBAL_IDENTITY_JWKS_URL`, `GLOBAL_OIDC_CLIENT_ID`, `GLOBAL_OIDC_CLIENT_SECRET`, `GLOBAL_OIDC_REDIRECT_URI`, `SAAS_SERVICE_URL`, and `SAAS_API_AUDIENCE`, plus the shared signing key and `AI_SERVICE_ISSUER`. Leave `IDENTITY_JWKS`, `IDENTITY_JWKS_FILE`, `IDENTITY_JWKS_URL`, `IDENTITY_SERVICE_URL`, `IDENTITY_ISSUER`, `IDENTITY_AUDIENCE`, `STORAGE_SERVICE_URL`, `HOSTING_SERVICE_URL`, and `EMAIL_SERVICE_API_KEY` unset.
+
+The Shellui dev stack (`shellui/shellui` `dev/docker-compose.yml`, service `ai-global` on port 8008) passes these process env names. Host file names on the left are mapped by Compose. This service reads the process names on the right.
+
+| Host file (`dev/.env.local`) | Process env inside `ai-global` |
+| ---------------------------- | ------------------------------ |
+| `AI_GLOBAL_SECRET_KEY` | `SECRET_KEY` |
+| `AI_GLOBAL_REDIS_URL` (`redis://redis:6379/7`) | `REDIS_URL` |
+| `AI_GLOBAL_POSTGRES_DATABASE_URL` (database `ai_global`) | `POSTGRES_DATABASE_URL` |
+| `AI_GLOBAL_SERVICE_SIGNING_KEY` | `AI_SERVICE_SIGNING_KEY` |
+| `AI_GLOBAL_SERVICE_SIGNING_KID` | `AI_SERVICE_SIGNING_KID` |
+| `PUBLIC_AI_GLOBAL_URL` | `AI_SERVICE_ISSUER` and `AI_PUBLIC_URL` |
+| `PUBLIC_IDENTITY_GLOBAL_URL` | `GLOBAL_IDENTITY_URL` and `GLOBAL_IDENTITY_ISSUER` |
+| `http://identity-global:8000` | `GLOBAL_IDENTITY_INTERNAL_URL` |
+| `GLOBAL_JWKS` (identity-global public JWKS) | `GLOBAL_IDENTITY_JWKS` |
+| `GLOBAL_OIDC_CLIENT_ID` | `GLOBAL_OIDC_CLIENT_ID` |
+| `GLOBAL_OIDC_CLIENT_SECRET` | `GLOBAL_OIDC_CLIENT_SECRET` |
+| `{PUBLIC_AI_GLOBAL_URL}/oauth/mcp/signin/complete` | `GLOBAL_OIDC_REDIRECT_URI` |
+| `PUBLIC_SAAS_URL` | `SAAS_SERVICE_URL` |
+| `http://saas:8000` | `SAAS_SERVICE_INTERNAL_URL` |
+| `SAAS_API_AUDIENCE` (`${PUBLIC_SAAS_URL}/api`) | `SAAS_API_AUDIENCE` |
+| `GLOBAL_AGENT_ACCESS_TOKEN_AUDIENCE` | `GLOBAL_AGENT_ACCESS_TOKEN_AUDIENCE` |
+
+`AI_SERVICE_MODE` is the literal `global`. `AI_GLOBAL_JWKS` is not read here. Identity and saas pin that document. This process publishes the same key at `GET /.well-known/jwks.json` from `AI_SERVICE_SIGNING_KEY` and `AI_SERVICE_SIGNING_KID`.
+
+`GLOBAL_AGENT_ACCESS_TOKEN_AUDIENCE` defaults to `shellui-agents` when the variable is empty. The dev stack sets `shellui_global_agent_dev`, and regional identity and saas use that same value. Production can keep `shellui-agents`.
+
+`GLOBAL_OIDC_CLIENT_ID` is the second confidential client in identity-global `IDENTITY_GLOBAL_OIDC_CLIENTS` (also `OIDC_CLIENTS` on that process). The browser is sent to `{GLOBAL_IDENTITY_URL}/oauth/authorize` with no `prompt=none`. The code is redeemed at `{GLOBAL_IDENTITY_INTERNAL_URL}/oauth/token`.
+
+The region service `ai` on `:8006` does not set `SAAS_SERVICE_URL`. This repository's compose file stays a single region container unless you override `AI_SERVICE_MODE`.
+
 ## Required environment variables
 
-Set these for a production container. `config/env_registry.py` marks each name required. When `DEBUG` is `false`, startup also requires a JSON Web Key Set (JWKS) document, file, or URL.
+Set these for a production region container. `config/env_registry.py` marks each name required. When `DEBUG` is `false`, startup also requires a JSON Web Key Set (JWKS) document, file, or URL.
 
 | Variable | What to set |
 | --- | --- |
@@ -105,8 +164,8 @@ Optional settings and downstream URLs are in the [configuration reference](https
 
 `.github/workflows/publish.yml` pushes these tags for a stable release:
 
-- **`X.Y.Z`**: semver without the leading `v` (`v0.1.0` becomes `0.1.0`)
-- **`X.Y`**: major and minor (`0.1`)
+- **`X.Y.Z`**: semver without the leading `v` (`v0.2.0` becomes `0.2.0`)
+- **`X.Y`**: major and minor (`0.2`)
 - **`latest`**: this tag is the highest stable semver
 
 A pre-release does not move `latest`. Commands on this page use `latest`.

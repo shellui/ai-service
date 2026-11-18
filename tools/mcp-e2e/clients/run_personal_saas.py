@@ -28,15 +28,22 @@ def _fail(msg: str) -> None:
 
 
 def check_saas_metadata() -> None:
+    """Region mode does not offer SaaS tools. Set MCP_E2E_EXPECT_SAAS_OFFERED=1 to require the old hint."""
+    expect = os.environ.get('MCP_E2E_EXPECT_SAAS_OFFERED', '0') == '1'
     params = fetch_authorize_query_params(MCP_URL)
-    if os.environ.get('MCP_E2E_EXPECT_SAAS_OFFERED', '1') == '1':
-        if params.get('saas_offered') != '1':
-            _fail(f'expected saas_offered=1 in {SHELLUI_MCP_AUTHORIZE_QUERY_KEY}, got {params!r}')
+    offered = params.get('saas_offered') == '1'
+    if expect and not offered:
+        _fail(f'expected saas_offered=1 in {SHELLUI_MCP_AUTHORIZE_QUERY_KEY}, got {params!r}')
+    if not expect and offered:
+        _fail(f'region mode must not set saas_offered, got {params!r}')
     meta = requests.get(f'{AI_ORIGIN}/.well-known/oauth-protected-resource/c/1/mcp', timeout=10)
     meta.raise_for_status()
     ext = meta.json().get(SHELLUI_MCP_AUTHORIZE_QUERY_KEY) or {}
-    if ext.get('saas_offered') != '1':
+    meta_offered = ext.get('saas_offered') == '1'
+    if expect and not meta_offered:
         _fail(f'protected resource metadata missing saas_offered hint: {ext!r}')
+    if not expect and meta_offered:
+        _fail(f'region mode metadata must not offer saas tools: {ext!r}')
 
 
 def mint_personal_token() -> str:
