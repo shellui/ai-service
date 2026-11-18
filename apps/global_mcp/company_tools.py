@@ -293,7 +293,17 @@ def call_regional(url: str, token: str, tool: str, arguments: dict, *, correlati
     )
     content_type = (response.headers.get('Content-Type') or '').lower()
     if 'text/event-stream' in content_type:
-        return {'relay': parse_sse_relay(response.text), 'status': response.status_code}
+        relay = parse_sse_relay(response.text)
+        return {
+            'relay': relay,
+            'status': response.status_code,
+            '_relay_call': {
+                'url': url,
+                'token': token,
+                'session_id': response.headers.get('Mcp-Session-Id') or '',
+                'correlation_id': correlation_id,
+            },
+        }
     try:
         payload = response.json()
     except ValueError:
@@ -302,6 +312,40 @@ def call_regional(url: str, token: str, tool: str, arguments: dict, *, correlati
     if not isinstance(result, dict):
         result = payload if isinstance(payload, dict) else {'error': 'Empty regional response.'}
     return {'result': result, 'status': response.status_code}
+
+
+def relay_elicitation_answer(relay_call: dict, result: dict | None) -> dict:
+    """Post the client's elicitation answer back to the regional gateway."""
+    if not isinstance(relay_call, dict) or not relay_call.get('url') or not relay_call.get('token'):
+        return {'error': 'The regional approval session is gone.'}
+    answer = result if isinstance(result, dict) else {}
+    rpc = answer if answer.get('jsonrpc') else {
+        'jsonrpc': '2.0',
+        'id': answer.get('id') or 'elicit',
+        'result': answer.get('result', answer),
+    }
+    headers = {
+        'Authorization': f"Bearer {relay_call['token']}",
+        'Content-Type': 'application/json',
+        'Accept': 'application/json, text/event-stream',
+        CORRELATION_HEADER: str(relay_call.get('correlation_id') or ''),
+    }
+    session_id = str(relay_call.get('session_id') or '')
+    if session_id:
+        headers['Mcp-Session-Id'] = session_id
+    response = requests.post(
+        str(relay_call['url']),
+        json=rpc,
+        headers=headers,
+        timeout=float(getattr(settings, 'MCP_GATEWAY_DOWNSTREAM_TIMEOUT_SECONDS', 15) or 15),
+    )
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = parse_sse_relay(response.text).get('result') or {'error': 'The regional gateway did not return JSON.'}
+    if isinstance(payload, dict) and isinstance(payload.get('result'), dict):
+        return payload['result']
+    return payload if isinstance(payload, dict) else {'error': 'Empty regional response.'}
 
 
 def parse_sse_relay(body: str) -> dict:

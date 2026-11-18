@@ -392,6 +392,7 @@ def _builtin(request, agent, name, arguments, req_id, correlation, started):
     except Exception as exc:
         _log(agent, name, arguments, 'error', correlation, started, error_message=str(exc))
         return JsonResponse(_rpc_result(req_id, _tool_error(str(exc) or 'The call failed.')))
+    relay_call = payload.pop('_relay_call', None) if isinstance(payload, dict) else None
     relay = payload.get('relay') if isinstance(payload, dict) else None
     if isinstance(relay, dict) and isinstance(relay.get('elicitation'), dict):
         elicitation = relay['elicitation']
@@ -420,7 +421,12 @@ def _builtin(request, agent, name, arguments, req_id, correlation, started):
         if request_accepts_sse(request):
 
             def on_decision(result):
-                return {'result': _tool_text({'elicitation_result': result, 'relayed': True})}
+                from apps.global_mcp.company_tools import relay_elicitation_answer
+
+                followed = relay_elicitation_answer(relay_call or {}, result if isinstance(result, dict) else None)
+                if isinstance(followed, dict) and followed.get('error') and 'content' not in followed:
+                    return {'result': _tool_error(str(followed.get('error')))}
+                return {'result': _tool_text(followed)}
 
             return form_elicitation_response(
                 session_id=str(request.headers.get('Mcp-Session-Id') or ''),

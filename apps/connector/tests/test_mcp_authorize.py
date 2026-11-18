@@ -26,9 +26,8 @@ class McpOAuthMetadataTests(TestCase):
         self.assertNotIn('device_authorization_endpoint', body)
 
     @override_settings(SAAS_SERVICE_URL='https://saas.test', SAAS_SERVICE_PUBLIC_URL='https://saas.test')
-    def test_saas_offered_hint_when_saas_forwarded(self):
+    def test_region_mode_does_not_offer_saas_tools(self):
         response = self.client.get('/.well-known/oauth-protected-resource/c/1/mcp')
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        ext = body.get(SHELLUI_MCP_AUTHORIZE_QUERY_KEY) or {}
-        self.assertEqual(ext.get('saas_offered'), '1')
+        self.assertNotIn(SHELLUI_MCP_AUTHORIZE_QUERY_KEY, body)
