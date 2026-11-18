@@ -51,6 +51,7 @@ See for sample https://raw.githubusercontent.com/favoloso/conventional-changelog
 ### 📚 Documentation
 
 - MCP handbooks document the published tool names and the discovery list.
+- Publish a Docker Hub overview for `shellui/ai-service` with the release image.
 
 ### 🐛 Bug Fixes
 
