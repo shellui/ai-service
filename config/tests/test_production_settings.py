@@ -175,6 +175,50 @@ class ProductionSettingsValidationTests(unittest.TestCase):
         output = _output(result)
         self.assertIn('AI_SERVICE_SIGNING_KEY', output)
 
+    def _global_production_env(self, **extra: str) -> dict[str, str]:
+        identity = _production_identity_env()
+        env = {
+            'DEBUG': 'false',
+            'SECRET_KEY': LONG_SECRET_KEY,
+            'AI_SERVICE_MODE': 'global',
+            'GLOBAL_IDENTITY_URL': 'https://id.shellui.com',
+            'GLOBAL_IDENTITY_ISSUER': 'https://id.shellui.com',
+            'GLOBAL_IDENTITY_JWKS': '{"keys":[{"kty":"RSA","kid":"test","n":"x","e":"AQAB"}]}',
+            'GLOBAL_OIDC_CLIENT_ID': 'ai-global',
+            'GLOBAL_OIDC_CLIENT_SECRET': 'secret',
+            'GLOBAL_OIDC_REDIRECT_URI': 'https://ai.shellui.com/oauth/mcp/signin/complete',
+            'SAAS_SERVICE_URL': 'https://saas.shellui.com',
+            'SAAS_API_AUDIENCE': 'https://saas.shellui.com/api',
+            'AI_SERVICE_SIGNING_KEY': identity['AI_SERVICE_SIGNING_KEY'],
+            'AI_SERVICE_SIGNING_KID': identity['AI_SERVICE_SIGNING_KID'],
+            'AI_SERVICE_ISSUER': 'https://ai.shellui.com',
+            'CSRF_TRUSTED_ORIGINS': 'https://ai.shellui.com',
+            'IDENTITY_JWKS': '',
+            'IDENTITY_JWKS_FILE': '',
+            'IDENTITY_JWKS_URL': '',
+            'IDENTITY_SERVICE_URL': '',
+            'IDENTITY_ISSUER': '',
+            'IDENTITY_AUDIENCE': '',
+            'STORAGE_SERVICE_URL': '',
+            'HOSTING_SERVICE_URL': '',
+            'EMAIL_SERVICE_API_KEY': '',
+            'REGIONAL_EXCHANGE_ALLOWED_HOSTS': '',
+        }
+        env.update(extra)
+        return env
+
+    def test_global_production_requires_exchange_allowlist(self):
+        result = _settings_check(self._global_production_env())
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(
+            'REGIONAL_EXCHANGE_ALLOWED_HOSTS is required when AI_SERVICE_MODE=global and DEBUG=false.',
+            result.stderr,
+        )
+
+    def test_global_production_starts_with_exchange_allowlist(self):
+        result = _settings_check(self._global_production_env(REGIONAL_EXCHANGE_ALLOWED_HOSTS='.shellui.com'))
+        self.assertEqual(result.returncode, 0, msg=_output(result))
+
     def test_production_starts_with_matching_iss_aud(self):
         result = _settings_check(
             {

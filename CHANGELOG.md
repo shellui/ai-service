@@ -19,6 +19,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 See for sample https://raw.githubusercontent.com/favoloso/conventional-changelog-emoji/master/CHANGELOG.md
 -->
 
+## [Unreleased]
+
+### 🚨 Changed
+
+- Global mode sends a regional subject token only to hosts in `REGIONAL_EXCHANGE_ALLOWED_HOSTS`. The default is empty, so no host is called until the list is set. With `DEBUG=false` the URL must be `https`. A suffix (`.shellui.com` or `*.shellui.com`) matches that domain and its subdomains. Token exchange does not follow redirects.
+- SaaS tool path parameters are percent-encoded. A tool call whose URL leaves `SAAS_SERVICE_URL` or the OpenAPI path template is refused.
+- The form at `/` requires `SETUP_TOKEN` when `DEBUG=true`, the same as when `DEBUG=false`. Leave `SETUP_TOKEN` empty and use `manage.py createsuperuser` for local setup.
+- Published images build the Dockerfile `production` stage (`DEBUG=false`). The `dev` stage is local only and is not published. Root Compose tags that stage `ai-service:local`.
+
 ## [0.2.0] - 2026-11-18
 
 ### ✨ Feature

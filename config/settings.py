@@ -126,8 +126,8 @@ if _ai_service_mode not in {'region', 'global'}:
         f"AI_SERVICE_MODE must be 'region' or 'global'. Got: {_ai_service_mode!r}"
     )
 AI_SERVICE_MODE = _ai_service_mode
-# One-time web bootstrap token for creating the first superuser when DEBUG=false.
-# When unset, use `manage.py createsuperuser` instead of the public form at `/`.
+# One-time web bootstrap token for the first superuser form at `/`.
+# Required even when DEBUG is true. When unset, use `manage.py createsuperuser`.
 SETUP_TOKEN = os.getenv('SETUP_TOKEN', '').strip()
 LOG_LEVEL = os.getenv('LOG_LEVEL', 'DEBUG' if DEBUG else 'INFO').strip().upper() or (
     'DEBUG' if DEBUG else 'INFO'
@@ -515,6 +515,10 @@ MCP_SETUP_APPROVAL_SESSION_TTL_SECONDS = max(600, min(_env_int('MCP_SETUP_APPROV
 MCP_DYNAMIC_CLIENT_REGISTRATION = _env_bool('MCP_DYNAMIC_CLIENT_REGISTRATION', True)
 GLOBAL_COMPANY_WAIT_SECONDS = max(1, _env_int('GLOBAL_COMPANY_WAIT_SECONDS', 60))
 GLOBAL_COMPANY_POLL_SECONDS = max(0.05, _env_float('GLOBAL_COMPANY_POLL_SECONDS', 2))
+# Hosts that may receive a regional subject token. Exact host (id.ch.shellui.com),
+# host:port (localhost:8001), or a suffix (.shellui.com, *.shellui.com).
+# https only when DEBUG is false. Empty allows no hosts.
+REGIONAL_EXCHANGE_ALLOWED_HOSTS = _env_csv('REGIONAL_EXCHANGE_ALLOWED_HOSTS', ())
 # True when this process was given regional identity material. Used by the mixed-mode check.
 REGION_IDENTITY_CONFIGURED = any(
     os.getenv(name, '').strip()
@@ -658,6 +662,10 @@ if not DEBUG and AI_SERVICE_MODE == 'global':
         _production_config_errors.append('SAAS_SERVICE_URL is required when AI_SERVICE_MODE=global and DEBUG=false.')
     if not SAAS_API_AUDIENCE:
         _production_config_errors.append('SAAS_API_AUDIENCE is required when AI_SERVICE_MODE=global and DEBUG=false.')
+    if not REGIONAL_EXCHANGE_ALLOWED_HOSTS:
+        _production_config_errors.append(
+            'REGIONAL_EXCHANGE_ALLOWED_HOSTS is required when AI_SERVICE_MODE=global and DEBUG=false.'
+        )
     if not _ai_signing_pem:
         _production_config_errors.append(
             'AI_SERVICE_SIGNING_KEY or AI_SERVICE_SIGNING_KEY_FILE is required when DEBUG=false. '

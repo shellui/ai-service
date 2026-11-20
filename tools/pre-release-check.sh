@@ -230,7 +230,17 @@ fi
 command -v docker >/dev/null 2>&1 || fail 'docker is required for image checks (or pass --skip-docker)'
 
 log "Building image ${IMAGE_TAG}"
-docker build -t "${IMAGE_TAG}" .
+docker build --target production -t "${IMAGE_TAG}" .
+
+log 'Verifying the image is the production stage'
+stage="$(docker inspect --format '{{index .Config.Labels "com.shellui.image-stage"}}' "${IMAGE_TAG}")"
+debug_env="$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "${IMAGE_TAG}" | awk -F= '$1=="DEBUG"{print $2}' | tail -n1)"
+if [ "${stage}" != "production" ]; then
+  fail "image ${IMAGE_TAG} is stage '${stage:-unset}', not production"
+fi
+if [ "${debug_env}" != "false" ]; then
+  fail "image ${IMAGE_TAG} has DEBUG=${debug_env:-unset}; the published image must keep DEBUG=false"
+fi
 
 log 'Verifying .env is absent from the image'
 docker run --rm --entrypoint sh "${IMAGE_TAG}" \

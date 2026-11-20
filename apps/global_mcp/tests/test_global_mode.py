@@ -44,6 +44,7 @@ GLOBAL = dict(
     SAAS_SERVICE_URL='http://saas.test',
     SAAS_SERVICE_INTERNAL_URL='http://saas.test',
     SAAS_API_AUDIENCE='http://saas.test/api',
+    REGIONAL_EXCHANGE_ALLOWED_HOSTS=['ai.region', 'id.region'],
     GLOBAL_MCP_ACCESS_TOKEN_TTL_SECONDS=3600,
     GLOBAL_MCP_REFRESH_TOKEN_TTL_SECONDS=2592000,
     MCP_TOOLS_LIST_MODE='discovery',
@@ -344,7 +345,7 @@ class GlobalToolTests(TestCase):
             'role': 'owner',
             'regional_company_id': '42',
             'limits_version': 3,
-            'region': {'code': 'ch', 'ai_url': 'http://ai.region', 'identity_url': 'http://id.region'},
+            'region': {'code': 'ch', 'ai_url': 'https://ai.region', 'identity_url': 'https://id.region'},
         }
         with patch('apps.global_mcp.mcp_views.call_saas_tool', return_value=(201, created)):
             second = self._call('saas_create_companies', {'name': 'North', 'region': 'ch'})
@@ -364,13 +365,13 @@ class GlobalToolTests(TestCase):
             'regional_company_id': '42',
             'limits_version': 1,
             'status': 'active',
-            'region': {'code': 'ch', 'ai_url': 'http://ai.region', 'identity_url': 'http://id.region'},
+            'region': {'code': 'ch', 'ai_url': 'https://ai.region', 'identity_url': 'https://id.region'},
         }
         maybe_setup_grant(self.agent, company)
         self.agent.setup_company_id = company_id
         self.agent.save(update_fields=['setup_company_id'])
 
-        def fake_post(url, json=None, headers=None, timeout=None):
+        def fake_post(url, json=None, headers=None, timeout=None, **_kwargs):
             class Response:
                 status_code = 200
                 headers = {'Content-Type': 'application/json'}

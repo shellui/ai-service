@@ -50,11 +50,11 @@ Set these on the **`ai`** container (shellui `dev/.env.local.example` may prefix
 | `SESSION_COOKIE_SECURE` | `false` | Local HTTP. |
 | `CSRF_COOKIE_SECURE` | `false` | Local HTTP. |
 
-Optional tuning (defaults in [Configuration](./configuration.md)): `MCP_GATEWAY_*`, `JWKS_*`, `CORS_*`, `LOG_LEVEL`, `JWT_HS256_FALLBACK_SECRET` (dev only).
+Optional tuning (defaults in [Configuration](./configuration.md)): `MCP_GATEWAY_*`, `JWKS_*`, `CORS_*`, `LOG_LEVEL`, `JWT_HS256_FALLBACK_SECRET` (dev only). Global mode also needs `REGIONAL_EXCHANGE_ALLOWED_HOSTS` before it will exchange a regional subject token. With `DEBUG=true`, `http` URLs on that list are accepted. The form at `/` needs `SETUP_TOKEN` even when `DEBUG=true`.
 
 ## This repo only
 
-To run ai-service with its root `docker-compose.yml` (Redis plus bind-mounted source):
+To run ai-service with its root `docker-compose.yml` (Redis plus bind-mounted source, `dev` stage, tag `ai-service:local`):
 
 ```bash
 cp .env.example .env
