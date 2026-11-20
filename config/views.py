@@ -60,8 +60,7 @@ def _provided_setup_token(request):
 
 
 def _bootstrap_allowed(request):
-    if settings.DEBUG:
-        return True
+    # SETUP_TOKEN is required even when DEBUG is true.
     setup_token = settings.SETUP_TOKEN
     if not setup_token:
         return False

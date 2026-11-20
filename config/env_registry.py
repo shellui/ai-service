@@ -91,6 +91,11 @@ OPTIONAL = (
     Var('MCP_DYNAMIC_CLIENT_REGISTRATION', 'true', 'POST /oauth/mcp/register'),
     Var('GLOBAL_COMPANY_WAIT_SECONDS', '60', 'ai_wait_for_company bound'),
     Var('GLOBAL_COMPANY_POLL_SECONDS', '2', 'ai_wait_for_company poll interval'),
+    Var(
+        'REGIONAL_EXCHANGE_ALLOWED_HOSTS',
+        '',
+        'Regional exchange hosts: exact host, host:port, .suffix, or *.suffix. https only when DEBUG=false. Empty allows none.',
+    ),
     Var('MCP_GATEWAY_TOOLS_CACHE_TTL_SECONDS', '30', 'Aggregated MCP gateway'),
     Var('MCP_TOOLS_LIST_MODE', 'discovery', 'tools/list default: discovery or all'),
     Var('MCP_GATEWAY_DOWNSTREAM_TIMEOUT_SECONDS', '5'),

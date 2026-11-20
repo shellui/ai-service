@@ -8,7 +8,8 @@ services:
       context: .
       dockerfile: Dockerfile
       target: dev
-    image: shellui/ai-service:local
+    # Local dev stage only. Releases publish the production stage as shellui/ai-service.
+    image: ai-service:local
     container_name: ai-service
     ports:
       - "${AI_SERVICE_PORT:-8006}:8000"
@@ -37,6 +38,7 @@ services:
       EMAIL_SERVICE_ALLOW_PRIVATE: "${EMAIL_SERVICE_ALLOW_PRIVATE:-true}"
       EMAIL_SERVICE_API_KEY: "${EMAIL_SERVICE_API_KEY:-}"
       SAAS_SERVICE_URL: "${SAAS_SERVICE_URL:-http://host.docker.internal:8005}"
+      REGIONAL_EXCHANGE_ALLOWED_HOSTS: "${REGIONAL_EXCHANGE_ALLOWED_HOSTS:-}"
       MCP_GATEWAY_TOOLS_CACHE_TTL_SECONDS: "${MCP_GATEWAY_TOOLS_CACHE_TTL_SECONDS:-30}"
       MCP_GATEWAY_DOWNSTREAM_TIMEOUT_SECONDS: "${MCP_GATEWAY_DOWNSTREAM_TIMEOUT_SECONDS:-5}"
       SECURE_SSL_REDIRECT: "${SECURE_SSL_REDIRECT:-false}"

@@ -79,7 +79,8 @@ services:
       context: ${AI_SRC:-../..}
       dockerfile: Dockerfile
       target: dev
-    image: shellui/ai-service:mcp-e2e
+    # Local conformance image. Not the published production image.
+    image: ai-service:mcp-e2e
     environment:
       SECRET_KEY: ${E2E_AI_SECRET_KEY}
       DEBUG: 'true'
