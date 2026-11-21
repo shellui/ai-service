@@ -652,6 +652,29 @@ class GlobalToolTests(TestCase):
         self.assertEqual(body['status'], 'active')
         self.assertFalse(body['timed_out'])
 
+    def test_approved_saas_token_carries_delegated_grant(self):
+        from apps.global_mcp.tokens import issue_saas_api_token
+
+        _token, claims = issue_saas_api_token(self.agent, delegated_action='saas_get_me')
+        grant = claims['mcp_gateway_delegated']
+        self.assertEqual(grant['action'], 'saas_get_me')
+        self.assertLessEqual(int(grant['exp']) - int(claims['iat']), 60)
+        self.assertGreater(int(grant['exp']), int(claims['iat']))
+
+    def test_revocation_hook_error_is_forbidden(self):
+        with patch(
+            'apps.global_mcp.mcp_views.global_agent_revocation_check',
+            side_effect=RuntimeError('down'),
+        ):
+            response = self.client.post(
+                '/mcp',
+                data=json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'}),
+                content_type='application/json',
+                HTTP_AUTHORIZATION=f'Bearer {self.token}',
+            )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()['error'], 'revocation_unavailable')
+
 
 class RegionUnchangedTests(TestCase):
     def test_plain_mcp_points_shellui_accounts_at_the_global_url(self):

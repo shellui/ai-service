@@ -9,8 +9,11 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import secrets
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from django.core.cache import cache
 from django.http import HttpRequest, HttpResponse, JsonResponse
@@ -345,7 +348,15 @@ def _gateway_precheck(
     company_id_int = strict_numeric_company_id(agent_claims.get('company_id'))
     if company_id_int is None:
         return JsonResponse({'error': 'unauthorized'}, status=401)
-    if server.identity_revocation_check and server.identity_revocation_check(agent_id, company_id_int):
+    checker = getattr(server, 'identity_revocation_check', None)
+    if checker is None:
+        return JsonResponse({'error': 'revocation_unavailable'}, status=403)
+    try:
+        revoked = bool(checker(agent_id, company_id_int))
+    except Exception:
+        logger.warning('MCP revocation check failed agent_id=%s', agent_id)
+        return JsonResponse({'error': 'revocation_unavailable'}, status=403)
+    if revoked:
         return JsonResponse({'error': 'agent_revoked'}, status=403)
     if not McpServer._service_allowed(agent_claims, server.service_name):
         return JsonResponse({'error': 'forbidden'}, status=403)

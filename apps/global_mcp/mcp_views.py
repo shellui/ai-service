@@ -121,22 +121,46 @@ def _looks_regional(token: str) -> bool:
     return False
 
 
+def global_agent_revocation_check(agent_id: str, company_id: int | None = None) -> bool:
+    """True when this global agent is paused or revoked. An unknown id is not a revocation."""
+    del company_id
+    agent = GlobalAgent.objects.filter(pk=str(agent_id or '')).first()
+    if agent is None:
+        return False
+    return not agent.is_active
+
+
 def authenticate(request: HttpRequest) -> tuple[GlobalAgent, dict] | JsonResponse:
     header = request.headers.get('Authorization', '')
     if not header.lower().startswith('bearer '):
         return _unauthorized(request, 'Bearer token required.', token_sent=False)
     raw = header.split(' ', 1)[1].strip()
+    audience = mcp_resource(request)
+    token_issuer = issuer() or None
+    if not audience or not token_issuer:
+        return JsonResponse({'error': 'revocation_unavailable'}, status=403)
     try:
-        claims = decode_rs256(raw, audience=mcp_resource(request), issuer=issuer() or None)
+        claims = decode_rs256(raw, audience=audience, issuer=token_issuer)
     except jwt.PyJWTError:
         if _looks_regional(raw):
             return _unauthorized(request, REGION_ONLY_MESSAGE)
         return _unauthorized(request, 'The access token is not valid.')
     if claims.get('token_type') != TOKEN_MCP_ACCESS:
         return _unauthorized(request, 'The access token is not valid.')
-    agent = GlobalAgent.objects.filter(pk=str(claims.get('agent_id') or '')).first()
-    if agent is None or not agent.is_active or agent.owner_sub != str(claims.get('sub') or ''):
+    agent_id = str(claims.get('agent_id') or '')
+    try:
+        revoked = global_agent_revocation_check(agent_id)
+    except Exception:
+        return JsonResponse({'error': 'revocation_unavailable'}, status=403)
+    if revoked:
+        return JsonResponse({'error': 'agent_revoked'}, status=403)
+    agent = GlobalAgent.objects.filter(pk=agent_id).first()
+    if agent is None or agent.owner_sub != str(claims.get('sub') or ''):
         return _unauthorized(request, 'The access token is not valid.')
+    from shellui_django.mcp.server import VerifiedTokenUser
+
+    request.user = VerifiedTokenUser(agent_id)
+    request.auth = claims
     return agent, claims
 
 
@@ -293,7 +317,7 @@ def _execute_saas(agent, tool, arguments, req_id, correlation, started, *, appro
     from apps.global_mcp.tokens import issue_saas_api_token
 
     name = str(tool.get('name') or '')
-    token, _claims = issue_saas_api_token(agent)
+    token, _claims = issue_saas_api_token(agent, delegated_action=name)
     try:
         status, payload = call_saas_tool(tool, arguments, token=token)
     except Exception as exc:
