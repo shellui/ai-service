@@ -11,6 +11,7 @@ import requests
 
 from apps.global_mcp.approvals import approval_url
 from apps.global_mcp.exchange import ExchangeError, regional_access_token
+from apps.global_mcp.exchange_allowlist import ExchangeHostRejected, require_exchange_url
 from apps.global_mcp.grants import (
     active_grant,
     is_narrowing,
@@ -231,6 +232,11 @@ def forward_company_tool(
     regional_id = str(company.get('regional_company_id') or '').strip()
     if not ai_url or not identity_url or not regional_id.isdigit():
         return {'error': 'This project does not have a regional AI URL yet.'}
+    try:
+        ai_url = require_exchange_url(ai_url).rstrip('/')
+        identity_url = require_exchange_url(identity_url).rstrip('/')
+    except ExchangeHostRejected:
+        return {'error': 'Region URL is not an allowed exchange host.'}
     resource = f'{ai_url}/c/{int(regional_id)}/mcp'
     setup = None
     if (
@@ -273,8 +279,17 @@ def forward_company_tool(
     )
 
 
+def _regional_post(url: str, **kwargs):
+    try:
+        target = require_exchange_url(url)
+    except ExchangeHostRejected:
+        return None
+    kwargs['allow_redirects'] = False
+    return requests.post(target, **kwargs)
+
+
 def call_regional(url: str, token: str, tool: str, arguments: dict, *, correlation_id: str) -> dict:
-    response = requests.post(
+    response = _regional_post(
         url,
         json={
             'jsonrpc': '2.0',
@@ -291,6 +306,8 @@ def call_regional(url: str, token: str, tool: str, arguments: dict, *, correlati
         },
         timeout=float(getattr(settings, 'MCP_GATEWAY_DOWNSTREAM_TIMEOUT_SECONDS', 15) or 15),
     )
+    if response is None:
+        return {'error': 'Region URL is not an allowed exchange host.'}
     content_type = (response.headers.get('Content-Type') or '').lower()
     if 'text/event-stream' in content_type:
         relay = parse_sse_relay(response.text)
@@ -333,12 +350,14 @@ def relay_elicitation_answer(relay_call: dict, result: dict | None) -> dict:
     session_id = str(relay_call.get('session_id') or '')
     if session_id:
         headers['Mcp-Session-Id'] = session_id
-    response = requests.post(
+    response = _regional_post(
         str(relay_call['url']),
         json=rpc,
         headers=headers,
         timeout=float(getattr(settings, 'MCP_GATEWAY_DOWNSTREAM_TIMEOUT_SECONDS', 15) or 15),
     )
+    if response is None:
+        return {'error': 'Region URL is not an allowed exchange host.'}
     try:
         payload = response.json()
     except ValueError:

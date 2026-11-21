@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone as dt_timezone
 from django.conf import settings
 from django.utils import timezone
 
+from apps.connector.downstream_tokens import gateway_delegated_grant
 from apps.global_mcp.models import GlobalAgent, GlobalAgentTokenAudit
 from apps.global_mcp.resources import issuer, mcp_resource, saas_audience
 from apps.global_mcp.signing import encode_rs256
@@ -51,7 +52,12 @@ def issue_mcp_access_token(agent: GlobalAgent) -> tuple[str, dict]:
     return token, claims
 
 
-def issue_saas_api_token(agent: GlobalAgent, *, purpose: str = '') -> tuple[str, dict]:
+def issue_saas_api_token(
+    agent: GlobalAgent,
+    *,
+    purpose: str = '',
+    delegated_action: str = '',
+) -> tuple[str, dict]:
     claims = _base(
         agent,
         audience=saas_audience(),
@@ -62,6 +68,9 @@ def issue_saas_api_token(agent: GlobalAgent, *, purpose: str = '') -> tuple[str,
     claims['scope'] = 'saas'
     if purpose:
         claims['purpose'] = purpose
+    action = str(delegated_action or '').strip()
+    if action:
+        claims['mcp_gateway_delegated'] = gateway_delegated_grant(action)
     token = encode_rs256(claims)
     _audit(agent, GlobalAgentTokenAudit.EVENT_SAAS, claims)
     return token, claims

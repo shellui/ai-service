@@ -44,6 +44,7 @@ GLOBAL = dict(
     SAAS_SERVICE_URL='http://saas.test',
     SAAS_SERVICE_INTERNAL_URL='http://saas.test',
     SAAS_API_AUDIENCE='http://saas.test/api',
+    REGIONAL_EXCHANGE_ALLOWED_HOSTS=['ai.region', 'id.region'],
     GLOBAL_MCP_ACCESS_TOKEN_TTL_SECONDS=3600,
     GLOBAL_MCP_REFRESH_TOKEN_TTL_SECONDS=2592000,
     MCP_TOOLS_LIST_MODE='discovery',
@@ -344,7 +345,7 @@ class GlobalToolTests(TestCase):
             'role': 'owner',
             'regional_company_id': '42',
             'limits_version': 3,
-            'region': {'code': 'ch', 'ai_url': 'http://ai.region', 'identity_url': 'http://id.region'},
+            'region': {'code': 'ch', 'ai_url': 'https://ai.region', 'identity_url': 'https://id.region'},
         }
         with patch('apps.global_mcp.mcp_views.call_saas_tool', return_value=(201, created)):
             second = self._call('saas_create_companies', {'name': 'North', 'region': 'ch'})
@@ -364,13 +365,13 @@ class GlobalToolTests(TestCase):
             'regional_company_id': '42',
             'limits_version': 1,
             'status': 'active',
-            'region': {'code': 'ch', 'ai_url': 'http://ai.region', 'identity_url': 'http://id.region'},
+            'region': {'code': 'ch', 'ai_url': 'https://ai.region', 'identity_url': 'https://id.region'},
         }
         maybe_setup_grant(self.agent, company)
         self.agent.setup_company_id = company_id
         self.agent.save(update_fields=['setup_company_id'])
 
-        def fake_post(url, json=None, headers=None, timeout=None):
+        def fake_post(url, json=None, headers=None, timeout=None, **_kwargs):
             class Response:
                 status_code = 200
                 headers = {'Content-Type': 'application/json'}
@@ -477,6 +478,29 @@ class GlobalToolTests(TestCase):
         body = json.loads(result.json()['result']['content'][0]['text'])
         self.assertEqual(body['status'], 'active')
         self.assertFalse(body['timed_out'])
+
+    def test_approved_saas_token_carries_delegated_grant(self):
+        from apps.global_mcp.tokens import issue_saas_api_token
+
+        _token, claims = issue_saas_api_token(self.agent, delegated_action='saas_get_me')
+        grant = claims['mcp_gateway_delegated']
+        self.assertEqual(grant['action'], 'saas_get_me')
+        self.assertLessEqual(int(grant['exp']) - int(claims['iat']), 60)
+        self.assertGreater(int(grant['exp']), int(claims['iat']))
+
+    def test_revocation_hook_error_is_forbidden(self):
+        with patch(
+            'apps.global_mcp.mcp_views.global_agent_revocation_check',
+            side_effect=RuntimeError('down'),
+        ):
+            response = self.client.post(
+                '/mcp',
+                data=json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'}),
+                content_type='application/json',
+                HTTP_AUTHORIZATION=f'Bearer {self.token}',
+            )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()['error'], 'revocation_unavailable')
 
 
 class RegionUnchangedTests(TestCase):

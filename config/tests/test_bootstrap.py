@@ -15,20 +15,35 @@ VALID_POST = {
 
 @override_settings(ALLOWED_HOSTS=['testserver'])
 class BootstrapDebugTests(TestCase):
-    """DEBUG=true allows public bootstrap (local dev / CI default)."""
+    """DEBUG=true still requires SETUP_TOKEN before the form creates a superuser."""
 
     def setUp(self):
         self.client = Client()
 
     @override_settings(DEBUG=True, SETUP_TOKEN='')
-    def test_get_shows_form_when_no_users(self):
+    def test_get_hides_form_without_token(self):
         response = self.client.get('/')
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Create superuser')
+        self.assertNotContains(response, 'Create superuser')
+        self.assertContains(response, 'createsuperuser')
 
     @override_settings(DEBUG=True, SETUP_TOKEN='')
-    def test_post_creates_superuser_and_locks_form(self):
+    def test_post_returns_403_without_token(self):
         response = self.client.post('/', VALID_POST)
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(User.objects.exists())
+
+    @override_settings(DEBUG=True, SETUP_TOKEN='secret-setup-token')
+    def test_post_returns_403_with_wrong_token(self):
+        data = {**VALID_POST, 'setup_token': 'wrong-token'}
+        response = self.client.post('/', data)
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(User.objects.exists())
+
+    @override_settings(DEBUG=True, SETUP_TOKEN='secret-setup-token')
+    def test_post_creates_superuser_with_token(self):
+        data = {**VALID_POST, 'setup_token': 'secret-setup-token'}
+        response = self.client.post('/', data)
         self.assertRedirects(response, '/?setup=done', fetch_redirect_response=False)
         user = User.objects.get(username='admin')
         self.assertTrue(user.is_superuser)
@@ -37,17 +52,18 @@ class BootstrapDebugTests(TestCase):
         response = self.client.get('/')
         self.assertNotContains(response, 'Create superuser')
 
-    @override_settings(DEBUG=True, SETUP_TOKEN='')
+    @override_settings(DEBUG=True, SETUP_TOKEN='secret-setup-token')
     def test_post_with_existing_user_redirects_without_creating(self):
         User.objects.create_superuser(username='existing', email='', password='long-enough-passphrase')
         before = User.objects.count()
-        response = self.client.post('/', VALID_POST)
+        data = {**VALID_POST, 'setup_token': 'secret-setup-token'}
+        response = self.client.post('/', data)
         self.assertRedirects(response, '/', fetch_redirect_response=False)
         self.assertEqual(User.objects.count(), before)
 
-    @override_settings(DEBUG=True, SETUP_TOKEN='')
+    @override_settings(DEBUG=True, SETUP_TOKEN='secret-setup-token')
     def test_password_mismatch_shows_error(self):
-        data = {**VALID_POST, 'password_confirm': 'different-passphrase'}
+        data = {**VALID_POST, 'password_confirm': 'different-passphrase', 'setup_token': 'secret-setup-token'}
         response = self.client.post('/', data)
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Passwords do not match.')

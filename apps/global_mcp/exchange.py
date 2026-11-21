@@ -8,6 +8,7 @@ from typing import Any
 import requests
 from django.core.cache import cache
 
+from apps.global_mcp.exchange_allowlist import ExchangeHostRejected, require_exchange_url
 from apps.global_mcp.models import GlobalAgent
 from apps.global_mcp.tokens import issue_subject_token
 
@@ -40,6 +41,11 @@ def regional_access_token(
     destructive: bool,
     setup: dict | None = None,
 ) -> str:
+    try:
+        identity = require_exchange_url(identity_url).rstrip('/')
+        require_exchange_url(resource)
+    except ExchangeHostRejected as exc:
+        raise ExchangeError('invalid_target', str(exc)) from exc
     company_id = str(company.get('id') or '')
     key = _cache_key(str(agent.id), company_id, services)
     cached = cache.get(key)
@@ -61,7 +67,7 @@ def regional_access_token(
     # The subject token is used once, on this request, and is not stored.
     regional_id = str(company.get('regional_company_id') or '').strip()
     response = requests.post(
-        f"{identity_url.rstrip('/')}/oauth/mcp/token",
+        f'{identity}/oauth/mcp/token',
         json={
             'grant_type': GRANT_TYPE,
             'subject_token': subject,
@@ -72,12 +78,13 @@ def regional_access_token(
             'services': services,
         },
         timeout=10,
+        allow_redirects=False,
     )
     try:
         payload: Any = response.json()
     except ValueError as exc:
         raise ExchangeError('invalid_grant', 'Region identity did not return JSON.') from exc
-    if response.status_code >= 400 or not isinstance(payload, dict) or not payload.get('access_token'):
+    if response.status_code >= 300 or not isinstance(payload, dict) or not payload.get('access_token'):
         description = ''
         if isinstance(payload, dict):
             description = str(payload.get('error_description') or payload.get('error') or '')

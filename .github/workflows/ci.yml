@@ -281,6 +281,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          target: production
           push: false
           tags: shellui/ai-service:ci
           cache-from: type=gha
