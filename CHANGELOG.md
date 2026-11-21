@@ -27,6 +27,7 @@ See for sample https://raw.githubusercontent.com/favoloso/conventional-changelog
 - SaaS tool path parameters are percent-encoded. A tool call whose URL leaves `SAAS_SERVICE_URL` or the OpenAPI path template is refused.
 - The form at `/` requires `SETUP_TOKEN` when `DEBUG=true`, the same as when `DEBUG=false`. Leave `SETUP_TOKEN` empty and use `manage.py createsuperuser` for local setup.
 - Published images build the Dockerfile `production` stage (`DEBUG=false`). The `dev` stage is local only and is not published. Root Compose tags that stage `ai-service:local`.
+- `shellui-django[mcp]` is `0.6.0`. The gateway verifies the bearer token itself. Downstream calls for a tool the gateway already allowed send `mcp_gateway_delegated` as `{"action": "<tool name>", "exp": <unix seconds>}` on the bearer token, with `exp` 60 seconds ahead. Identity JWKS URLs must be `https` unless `DEBUG=true`, and redirects are not followed.
 
 ## [0.2.0] - 2026-11-18
 
