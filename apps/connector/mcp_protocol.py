@@ -16,6 +16,8 @@ from django.core.cache import cache
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from shellui_django.mcp.gateway import AggregatingMcpServer
 
+from config.telemetry import annotate_mcp_span
+
 from apps.connector.mcp_call_log import begin_mcp_tool_call_timer, reset_mcp_tool_call_timer
 from apps.connector.mcp_call_store import begin_gateway_tool_call
 from apps.connector.mcp_company_id import strict_numeric_company_id
@@ -43,7 +45,7 @@ SUPPORTED_PROTOCOL_VERSIONS: tuple[str, ...] = (
 )
 
 MCP_SERVER_NAME = 'shellui-ai-mcp-gateway'
-MCP_SERVER_VERSION = '0.2.0'
+MCP_SERVER_VERSION = '0.3.0'
 MCP_SESSION_CACHE_PREFIX = 'mcp_gateway:session:'
 MCP_SESSION_TTL_SECONDS = 86400
 MCP_TOOLS_PAGE_SIZE = 200
@@ -393,6 +395,14 @@ def handle_mcp_gateway_request(
         return JsonResponse({'error': 'unauthorized'}, status=401)
     company_id = int(cid)
     agent_id = str(agent_claims['agent_id'])
+    raw_tool = params.get('name') if method == 'tools/call' else ''
+    annotate_mcp_span(
+        method=method if isinstance(method, str) else '',
+        tool_name=raw_tool if isinstance(raw_tool, str) else '',
+        company_id=company_id,
+        user_id=agent_claims.get('user_id'),
+        agent_id=agent_id,
+    )
 
     protocol_error = _validate_protocol_version_header(request, req_id)
     if protocol_error is not None and method != 'initialize':

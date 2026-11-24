@@ -17,7 +17,6 @@ class StoragePrincipal:
     is_staff: bool = False
     is_company_owner: bool = False
     is_company_admin: bool = False
-    access_global_metrics: bool = False
     claims: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -102,6 +101,5 @@ def principal_from_claims(claims: dict[str, Any]) -> StoragePrincipal:
         is_staff=bool(user_metadata.get('is_staff', False)) or _claim_flag(claims.get('is_staff')),
         is_company_owner=bool(user_metadata.get('is_company_owner', False)) or _claim_flag(claims.get('is_company_owner')),
         is_company_admin=company_admin_from_claims(claims, user_metadata),
-        access_global_metrics=bool(claims.get('pat_agm', False)),
         claims=claims,
     )

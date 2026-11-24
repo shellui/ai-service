@@ -6,7 +6,9 @@ Shellui AI service: single MCP connector for all Shellui services.
 - **OAuth metadata:** `GET /.well-known/oauth-protected-resource/c/<company_id>/mcp` (authorization server is identity-service's issuer). Unauthenticated MCP requests send `WWW-Authenticate` with that URL. Headless clients use OAuth device login; see [docs/mcp-device-login.md](docs/mcp-device-login.md).
 - **Health:** `GET /ai/v1/health` and `GET /health/live`.
 
-Python 3.14, Django 6, `shellui-django[mcp]==0.3.0`. See [docs/](docs/) and [PUBLISH.md](PUBLISH.md).
+Python 3.14, Django 6, `shellui-django[mcp,otel]==0.7.0`. See [docs/](docs/) and [PUBLISH.md](PUBLISH.md).
+
+OpenTelemetry export stays off until `OTEL_EXPORTER_OTLP_ENDPOINT` is set. See [Configuration](docs/configuration.md).
 
 **Identity alignment:** delegated authority and approvals follow **identity-service `develop`** (PR **#135**). Tool-call logs are stored in ai-service (`GET /ai/v1/mcp/call-logs`). See [docs/mcp.md](docs/mcp.md).
 
