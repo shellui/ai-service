@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 See for sample https://raw.githubusercontent.com/favoloso/conventional-changelog-emoji/master/CHANGELOG.md
 -->
 
-## [Unreleased]
+## [0.3.0] - 2026-11-24
 
 ### ✨ Feature
 
