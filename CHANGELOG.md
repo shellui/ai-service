@@ -19,6 +19,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 See for sample https://raw.githubusercontent.com/favoloso/conventional-changelog-emoji/master/CHANGELOG.md
 -->
 
+## [Unreleased]
+
+### ✨ Feature
+
+- OpenTelemetry traces and metrics through `shellui-django[mcp,otel]==0.7.0`. Export stays off until `OTEL_EXPORTER_OTLP_ENDPOINT` is set. `service.name` defaults to `ai-service`, and `service.version` is the package version. The resource attribute `shellui.mode` is `region` or `global`.
+- An MCP request records `mcp.method.name` and, for `tools/call`, `mcp.tool.name`. Tool arguments and results are not span attributes. Outbound `requests` calls, including the downstream gateway hop and identity downstream-token minting, continue the trace with W3C `traceparent`.
+- Logs include `trace_id` and `span_id` next to the existing request id (`X-Request-ID`).
+
+### 🚨 Changed
+
+- Breaking: removed the unused `prometheus-client` dependency. `GET /metrics` and `GET /metrics/all` are not served (404). This service had no Prometheus metrics to port, and JSON stats routes were not part of this API.
+- `pat_agm` is no longer copied onto the request principal as `access_global_metrics`. The claim only existed for Prometheus global metrics, and this service never authorized a route with it. No database column is dropped.
+
+### 📚 Documentation
+
+- Document `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_SERVICE_NAME`, and `OTEL_RESOURCE_ATTRIBUTES` (`deployment.environment`, `cloud.region`).
+
 ## [0.2.0] - 2026-11-18
 
 ### ✨ Feature

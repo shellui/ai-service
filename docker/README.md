@@ -170,6 +170,18 @@ Optional settings and downstream URLs are in the [configuration reference](https
 
 A pre-release does not move `latest`. Commands on this page use `latest`.
 
+## OpenTelemetry
+
+Export stays off until these variables are set. `shellui.mode` on the resource is `region` or `global`.
+
+| Variable | Role |
+| -------- | ---- |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP HTTP endpoint. Empty leaves telemetry off. |
+| `OTEL_EXPORTER_OTLP_HEADERS` | Exporter headers, such as SigNoz basic auth. |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` |
+| `OTEL_SERVICE_NAME` | Defaults to `ai-service`. |
+| `OTEL_RESOURCE_ATTRIBUTES` | Example: `deployment.environment=production,cloud.region=eu` |
+
 ## Health check
 
 The image requests `GET /health/live` on port 8000 every 30s. The response body is `ok`. The check does not query the database or Redis. `GET /ai/v1/health` returns JSON with `status`, `service`, and `version`.

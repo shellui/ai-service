@@ -11,6 +11,8 @@ from django.conf import settings
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
+from config.telemetry import annotate_mcp_span
+
 from apps.connector.mcp_discovery import (
     describe_payload,
     discovery_tool_definitions,
@@ -154,6 +156,13 @@ def global_mcp_endpoint(request: HttpRequest):
     method = str(body.get('method') or '')
     req_id = body.get('id')
     params = body.get('params') if isinstance(body.get('params'), dict) else {}
+    raw_tool = params.get('name') if method == 'tools/call' else ''
+    annotate_mcp_span(
+        method=method,
+        tool_name=raw_tool if isinstance(raw_tool, str) else '',
+        user_id=agent.owner_sub,
+        agent_id=str(agent.id),
+    )
     if req_id is None and method.startswith('notifications/'):
         return HttpResponse(status=202)
     if method == 'initialize':
