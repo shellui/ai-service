@@ -9,8 +9,12 @@ https://docs.djangoproject.com/en/6.0/howto/deployment/asgi/
 
 import os
 
-from django.core.asgi import get_asgi_application
-
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+
+from config.telemetry import setup_service_telemetry  # noqa: E402
+
+setup_service_telemetry()
+
+from django.core.asgi import get_asgi_application  # noqa: E402
 
 application = get_asgi_application()

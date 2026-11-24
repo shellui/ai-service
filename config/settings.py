@@ -746,8 +746,11 @@ LOGGING = {
     },
     'formatters': {
         'console': {
-            'format': '{asctime} {levelname} [{name}] [req={request_id}] {message}',
-            'style': '{',
+            '()': 'shellui_django.telemetry.TraceContextFormatter',
+            'format': (
+                '%(asctime)s %(levelname)s [%(name)s] [req=%(request_id)s] '
+                'trace_id=%(trace_id)s span_id=%(span_id)s %(message)s'
+            ),
             'datefmt': '%Y-%m-%d %H:%M:%S',
         },
     },

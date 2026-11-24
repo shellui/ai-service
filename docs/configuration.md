@@ -109,6 +109,26 @@ Shared by both modes: `DEBUG`, `SECRET_KEY`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIG
 
 Global MCP access tokens use `aud` `{AI_PUBLIC_URL}/mcp`. SaaS API tokens use `aud` `SAAS_API_AUDIENCE` and `token_type` `saas_api`. Subject tokens for regional exchange use `aud` `GLOBAL_AGENT_ACCESS_TOKEN_AUDIENCE` (`shellui-agents`), `token_type` `agent_access`, and `mcp_authority` `global_delegated`. All three are signed with `AI_SERVICE_SIGNING_KEY`. The public key is `GET /.well-known/jwks.json`.
 
+## OpenTelemetry
+
+Export stays off until `OTEL_EXPORTER_OTLP_ENDPOINT` is set. With an endpoint, the process sends traces and metrics over OTLP HTTP using protobuf. `OTEL_SDK_DISABLED=true` leaves export off even when an endpoint is set. Do not wrap the process with `opentelemetry-instrument`. Gunicorn `gthread` workers are fork-safe.
+
+WSGI (`config.wsgi`) and ASGI (`config.asgi`) call setup before serving. This service has no Celery app and no long-running management command.
+
+| Variable | Default |
+| -------- | ------- |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | empty. Example: `https://signoz.example:4318` |
+| `OTEL_EXPORTER_OTLP_HEADERS` | empty. Exporter headers, including SigNoz basic auth (`Authorization=Basic%20...`). |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` |
+| `OTEL_SERVICE_NAME` | `ai-service` |
+| `OTEL_RESOURCE_ATTRIBUTES` | empty. Set `deployment.environment` and `cloud.region` here, for example `deployment.environment=production,cloud.region=eu`. |
+
+The process adds `shellui.mode` (`region` or `global`, from `AI_SERVICE_MODE`) unless `OTEL_RESOURCE_ATTRIBUTES` already sets that key. `service.version` is the package version. `SENTRY_ENVIRONMENT` is sent as `deployment.environment` when `OTEL_RESOURCE_ATTRIBUTES` does not set it.
+
+Logs include `trace_id` and `span_id` next to the existing request id. An MCP span records `mcp.method.name` and, for `tools/call`, `mcp.tool.name`. Arguments and results stay off the span. Downstream `requests` calls carry W3C `traceparent`, including the gateway hop and identity token minting.
+
+`GET /metrics` and `GET /metrics/all` are not served.
+
 ## Docker Compose
 
 | Variable | Default |
