@@ -1,21 +1,26 @@
-"""Redirect URI validation for MCP OAuth. Ported from saas-service."""
+"""Redirect URI validation for global MCP OAuth.
+
+Rules, aligned with identity-service ``apps/agents/oauth_redirect.py`` for loopback:
+- https on any host, or http on a loopback host (127.0.0.1, localhost, ::1) on any port.
+  Loopback is always allowed (RFC 8252 native and CLI clients). There is no toggle.
+- a private-use app scheme with a host (for example ``cursor://...``) stays allowed;
+- no javascript:, data:, file: and similar schemes;
+- no fragment and no user info;
+- authorize and token compare the value to the registered list exactly.
+"""
 
 from __future__ import annotations
 
 import unicodedata
 from urllib.parse import urlsplit
 
-from django.conf import settings
 from django.http import HttpRequest
 
 MAX_MCP_REDIRECT_URIS = 16
+MAX_MCP_REDIRECT_URI_LENGTH = 500
 
 _UNSAFE_SCHEMES = frozenset({'javascript', 'data', 'vbscript', 'file', 'blob', 'about'})
 _LOOPBACK_HOSTS = frozenset({'localhost', '127.0.0.1', '::1'})
-
-
-def _loopback_allowed() -> bool:
-    return bool(getattr(settings, 'OAUTH_ALLOW_LOOPBACK_REDIRECTS', settings.DEBUG))
 
 
 def _is_ignorable(char: str) -> bool:
@@ -27,34 +32,33 @@ def _strip_whitespace_and_controls(value: str) -> str:
 
 
 def _is_loopback(parts) -> bool:
-    host = (parts.hostname or '').lower()
-    if host in _LOOPBACK_HOSTS:
-        return True
-    netloc = (parts.netloc or '').lower()
-    return netloc == '[::1]' or netloc.startswith('[::1]:')
+    return (parts.hostname or '').lower() in _LOOPBACK_HOSTS
 
 
-def validate_mcp_redirect_uri(request: HttpRequest, raw: str) -> tuple[str | None, str | None]:
+def validate_mcp_redirect_uri(request: HttpRequest | None, raw: str) -> tuple[str | None, str | None]:
+    del request
     uri = _strip_whitespace_and_controls(raw or '')
     if not uri:
         return None, 'redirect_uri is required.'
-    parts = urlsplit(uri)
+    if len(uri) > MAX_MCP_REDIRECT_URI_LENGTH:
+        return None, 'redirect_uri is too long.'
+    if '#' in uri:
+        return None, 'redirect_uri must not include a fragment.'
+    try:
+        parts = urlsplit(uri)
+        parts.port
+    except ValueError:
+        return None, 'redirect_uri is invalid.'
     scheme = (parts.scheme or '').lower()
     if scheme in _UNSAFE_SCHEMES:
         return None, 'redirect_uri is invalid.'
     if not scheme or not parts.netloc:
         return None, 'redirect_uri must be absolute.'
-    if scheme in {'http', 'https'}:
-        if _is_loopback(parts):
-            if not _loopback_allowed():
-                return None, 'Loopback redirect URIs are not allowed.'
-            return uri, None
-        if scheme == 'http':
-            return None, 'http redirect URIs are only allowed for loopback hosts.'
-        return uri, None
-    if parts.netloc:
-        return uri, None
-    return None, 'redirect_uri is invalid.'
+    if parts.username is not None or parts.password is not None or '@' in parts.netloc:
+        return None, 'redirect_uri is invalid.'
+    if scheme == 'http' and not _is_loopback(parts):
+        return None, 'http redirect URIs are only allowed for loopback hosts.'
+    return uri, None
 
 
 def normalize_mcp_redirect_uris(request: HttpRequest, uris: list) -> tuple[list[str] | None, str | None]:
