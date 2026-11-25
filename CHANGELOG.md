@@ -19,6 +19,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 See for sample https://raw.githubusercontent.com/favoloso/conventional-changelog-emoji/master/CHANGELOG.md
 -->
 
+## [0.3.1] - 2026-11-25
+
+### ✨ Feature
+
+- Global MCP supports the OAuth 2.0 device authorization grant (RFC 8628). `POST /oauth/mcp/device/code` returns a device code, a user code (`XXXX-XXXX`), `verification_uri` (`/oauth/mcp/device`) and `verification_uri_complete`. The code lives 10 minutes, the poll interval starts at 5 seconds, and `slow_down` adds 5 seconds. Device codes and user codes are stored as hashes and work once. Sign-in uses identity-global, and approval creates the agent through the same consent as the browser flow.
+- Authorization server metadata lists `device_authorization_endpoint` and the `urn:ietf:params:oauth:grant-type:device_code` grant.
+- Dynamic client registration accepts a device-only client with no `redirect_uris` when `grant_types` has the device grant and not `authorization_code`.
+
+### 🐛 Bug Fixes
+
+- Global MCP client registration accepts loopback redirect URIs (`http://127.0.0.1`, `http://localhost`, `http://[::1]`, any port) in every environment, as Identity does. Before, it returned `400 invalid_redirect_uris` unless `DEBUG` was on, which blocked Cursor, Hermes, the MCP Inspector and the Python SDK. The unused `OAUTH_ALLOW_LOOPBACK_REDIRECTS` lookup is removed.
+- `GET /mcp` without a token returns 401 with `WWW-Authenticate` instead of 405, like the regional gateway. The challenge includes `scope="mcp"` and leaves out the error code when no token was sent (RFC 6750 section 3.1).
+
+### 🔒 Security
+
+- Redirect URIs with a fragment or user info are refused.
+- The consent page shows the client name exactly as registered, warns that Shellui does not verify it, and lists the access requested.
+- Device code requests and code entry are rate limited per client IP.
+
+### 📚 Documentation
+
+- `docs/mcp-device-login.md` has a section for device login on global MCP.
+
 ## [0.3.0] - 2026-11-24
 
 ### ✨ Feature

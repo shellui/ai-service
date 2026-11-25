@@ -11,7 +11,7 @@ import requests
 from django.conf import settings
 from django.utils import timezone
 
-from apps.global_mcp.models import McpAuthorizationRequest, OidcTransaction
+from apps.global_mcp.models import McpAuthorizationRequest, McpDeviceAuthorization, OidcTransaction
 from apps.global_mcp.pkce import new_verifier, s256_challenge
 
 
@@ -38,8 +38,17 @@ def redirect_uri() -> str:
     return f'{base}/oauth/mcp/signin/complete'
 
 
-def begin(authorization: McpAuthorizationRequest) -> str:
-    """Return the identity-global authorize URL. No prompt=none: the login page must render."""
+def begin(
+    authorization: McpAuthorizationRequest | None = None,
+    *,
+    device: McpDeviceAuthorization | None = None,
+) -> str:
+    """Return the identity-global authorize URL. No prompt=none: the login page must render.
+
+    The transaction belongs to a browser authorize request or to a device login.
+    """
+    if (authorization is None) == (device is None):
+        raise ValueError('Pass an authorize request or a device login.')
     verifier = new_verifier()
     state = secrets.token_urlsafe(24)
     nonce = secrets.token_urlsafe(18)
@@ -48,6 +57,7 @@ def begin(authorization: McpAuthorizationRequest) -> str:
         nonce=nonce,
         code_verifier=verifier,
         authorization_request=authorization,
+        device_authorization=device,
         expires_at=timezone.now() + timedelta(minutes=10),
     )
     query = urlencode(

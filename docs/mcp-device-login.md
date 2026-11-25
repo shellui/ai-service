@@ -92,3 +92,48 @@ curl -sS -X POST "$MCP_URL" \
 ```
 
 Keep that token in the client. Do not paste it into chat. A static personal token, if you still use one, stays an advanced fallback outside this flow.
+
+## Global MCP (Shellui account)
+
+The global endpoint `https://ai.shellui.com/mcp` has no company in the path. ai-service in global mode is its own authorization server. Sign-in goes through identity-global, and consent is on ai-service.
+
+1. Any method on `/mcp` without a token (`GET`, `POST` or `DELETE`) returns **401** and:
+
+```http
+WWW-Authenticate: Bearer realm="shellui", resource_metadata="https://ai.shellui.com/.well-known/oauth-protected-resource", scope="mcp"
+```
+
+A request with a token that does not verify gets the same header plus `error="invalid_token"`.
+
+2. `GET https://ai.shellui.com/.well-known/oauth-authorization-server` lists `device_authorization_endpoint` (`/oauth/mcp/device/code`) and `urn:ietf:params:oauth:grant-type:device_code` in `grant_types_supported`.
+
+3. Register. Browser clients send loopback redirect URIs: `http://127.0.0.1`, `http://localhost` or `http://[::1]` on any port are accepted in every environment, as on Identity. A client that only uses device login can send `"grant_types": ["urn:ietf:params:oauth:grant-type:device_code"]` and no `redirect_uris`.
+
+```bash
+export AI=https://ai.shellui.com
+
+curl -sS -X POST "$AI/oauth/mcp/register" \
+  -H 'Content-Type: application/json' \
+  -d '{"client_name":"my-cli","grant_types":["urn:ietf:params:oauth:grant-type:device_code","refresh_token"]}'
+
+curl -sS -X POST "$AI/oauth/mcp/device/code" \
+  --data-urlencode "client_id=${CLIENT_ID}" \
+  --data-urlencode "scope=mcp"
+```
+
+The response has `device_code`, `user_code` (`XXXX-XXXX`), `verification_uri` (`$AI/oauth/mcp/device`), `verification_uri_complete`, `expires_in` (600) and `interval` (5).
+
+4. The person opens the link, signs in with their Shellui account, and sees the consent page. It shows the client name exactly as registered, a warning that the client chose that name itself, and the access requested. Staff accounts and accounts that have not accepted the terms are refused.
+
+5. Poll the token endpoint with the device code. Errors follow RFC 8628: `authorization_pending`, `slow_down` (the interval grows by 5 seconds each time), `access_denied`, `expired_token`. A device code works once. A second exchange returns `invalid_grant`.
+
+```bash
+curl -sS -X POST "$AI/oauth/mcp/token" \
+  --data-urlencode "grant_type=urn:ietf:params:oauth:grant-type:device_code" \
+  --data-urlencode "device_code=${DEVICE_CODE}" \
+  --data-urlencode "client_id=${CLIENT_ID}"
+```
+
+Success returns `access_token` (audience `https://ai.shellui.com/mcp`, scope `mcp`) and a rotating `refresh_token`, the same as the browser flow.
+
+Rate limits per client IP: 30 device code requests per hour and 30 code entries per 10 minutes on the verification page.
