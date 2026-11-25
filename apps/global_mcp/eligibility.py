@@ -34,6 +34,10 @@ def staff_refused(profile: dict | None, claims: dict | None = None) -> bool:
 
 
 def terms_accepted(profile: dict | None, claims: dict | None = None) -> bool:
+    """Accept when a terms claim is truthy, or when the IdP does not emit any terms claim.
+
+    Refuse only when a terms claim is present and falsy.
+    """
     blobs: list[dict] = []
     if isinstance(profile, dict):
         blobs.append(profile)
@@ -43,8 +47,11 @@ def terms_accepted(profile: dict | None, claims: dict | None = None) -> bool:
             meta = claims.get(key)
             if isinstance(meta, dict):
                 blobs.append(meta)
+    saw_key = False
     for blob in blobs:
         for key in _TERMS_KEYS:
-            if _truthy(blob.get(key)):
-                return True
-    return False
+            if key in blob:
+                saw_key = True
+                if _truthy(blob.get(key)):
+                    return True
+    return not saw_key

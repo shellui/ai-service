@@ -200,16 +200,16 @@ def device_verify(request: HttpRequest):
     row = _pending_for_session(request)
     if row is None:
         if request.method == 'POST':
-            return _message(request, 'This device login is no longer pending. Start again from your agent.', status=400)
+            return _message(request, 'This device login is no longer pending. Start again from your agent.', status=400, title='Device login expired')
         return _code_page(request)
     user = request.session.get(_SESSION_USER)
     if not isinstance(user, dict) or not user.get('sub'):
         if request.method == 'POST':
-            return _message(request, 'Sign in again to connect this agent.', status=400)
+            return _message(request, 'Sign in again to connect this agent.', status=400, title='Sign in again')
         try:
             return HttpResponseRedirect(oidc.begin(device=row))
         except Exception:
-            return _message(request, 'Sign-in is not available right now. Try again later.', status=503)
+            return _message(request, 'Sign-in is not available right now. Try again later.', status=503, title='Sign-in unavailable')
     if request.method == 'GET':
         return render(
             request,
@@ -217,24 +217,24 @@ def device_verify(request: HttpRequest):
             consent_context(row.client, user, hidden_name='device', hidden_value=row.id),
         )
     if str(request.POST.get('device') or '') != str(row.id):
-        return _message(request, 'This device login does not match your session. Start again from your agent.', status=400)
+        return _message(request, 'This device login does not match your session. Start again from your agent.', status=400, title='Session mismatch')
     decision = request.POST.get('decision') or ''
     with transaction.atomic():
         locked = McpDeviceAuthorization.objects.select_for_update().select_related('client').get(pk=row.pk)
         if locked.status != McpDeviceAuthorization.STATUS_PENDING or _expire_if_due(locked):
-            return _message(request, 'This device login is no longer pending. Start again from your agent.', status=400)
+            return _message(request, 'This device login is no longer pending. Start again from your agent.', status=400, title='Device login expired')
         locked.owner_sub = user['sub']
         locked.decided_at = timezone.now()
         if decision != 'allow':
             locked.status = McpDeviceAuthorization.STATUS_DENIED
             locked.save(update_fields=['status', 'owner_sub', 'decided_at'])
             request.session.pop(_SESSION_DEVICE, None)
-            return _message(request, 'Access denied. Your agent will not connect.', status=200)
+            return _message(request, 'Access denied. Your agent will not connect.', status=200, title='Access denied')
         locked.agent = create_agent_from_consent(request, locked.client, user)
         locked.status = McpDeviceAuthorization.STATUS_APPROVED
         locked.save(update_fields=['status', 'owner_sub', 'decided_at', 'agent'])
     request.session.pop(_SESSION_DEVICE, None)
-    return _message(request, 'Approved. Return to your agent. It connects on its next check.', status=200)
+    return _message(request, 'Approved. Return to your agent. It connects on its next check.', status=200, title='Agent approved')
 
 
 def _error(code: str, status: int = 400, description: str = '') -> JsonResponse:
