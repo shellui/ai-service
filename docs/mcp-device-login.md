@@ -138,6 +138,19 @@ Success returns `access_token` (audience `https://ai.shellui.com/mcp`, scope `mc
 
 Rate limits per client IP: 30 device code requests per hour and 30 code entries per 10 minutes on the verification page.
 
+### Project access
+
+Project tools (identity, storage, hosting, email) live on each project. Call `ai_list_companies`, then `ai_company_search_tools`, `ai_company_describe_tool` or `ai_call_company_tool` with the project `company_id`. `ai_search_tools` on the global endpoint only lists account tools, and its response carries a `project_tools` hint that says so.
+
+The first project call opens access to a project the signed-in account belongs to, with no approval page:
+
+- Membership is read from saas-service on every project call, with a saas token minted for the connection's own account. The client only sends `company_id`. A project of another account returns "Project was not found."
+- The automatic grant is `ask`: read and write tools run, destructive tools still return an approval link. `allow_destructive` is always off on an automatic grant, and a `read_only` connection stays `read_only`.
+- Region identity checks the membership again during the token exchange, refuses staff accounts, and caps the agent at the person's own rights in that project. Each regional token is bound to one project and one binding version.
+- `ai_grant_company_access` narrows access at once (for example `access_mode: read_only`). Fields left out keep the current grant. Only an owner can widen, through an approval link.
+- `ai_revoke_company_access` revokes access to one project. A revoked project is not granted again automatically; an owner grants it again with an approval link.
+- Removing the person from the project in saas-service stops access on the next call.
+
 ## Active connections on the dashboard
 
 The signed-in Shellui account lists and revokes its global MCP agents (device grants and browser OAuth grants) with an identity-global access token (`aud` is `GLOBAL_IDENTITY_AUDIENCE`, typically `shellui`). Results are limited to that account's subject. A token for another account cannot list or revoke these rows.
@@ -148,3 +161,5 @@ POST /ai/v1/mcp/global/agents/{agent_id}/revoke
 ```
 
 The response uses the same agent object as identity-service personal agents (`id`, `kind`, `name`, `access_mode`, `read_level`, `is_active`, `revoked_at`, `oauth_client_id`).
+
+Each connection covers every project it has opened, including the automatic grants above. Revoking the connection also revokes all of its project grants and asks saas-service to push the revoke to each region.

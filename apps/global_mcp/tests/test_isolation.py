@@ -19,7 +19,7 @@ from django.utils import timezone
 
 from apps.authapi.ai_service_jwks import build_jwks_document
 from apps.global_mcp.company_tools import company_rows, region_urls
-from apps.global_mcp.grants import maybe_setup_grant
+from apps.global_mcp.grants import GlobalAgentCompanyGrant, maybe_setup_grant
 from apps.global_mcp.models import GlobalAgent, McpOAuthClient
 from apps.global_mcp.tests.test_global_mode import GLOBAL, _PRIVATE, _PUBLIC, _SIGNING
 from apps.global_mcp.tokens import issue_mcp_access_token, issue_saas_api_token
@@ -353,3 +353,194 @@ class GlobalAgentConnectionIsolationTests(TestCase):
     def test_unauthenticated_list_is_401(self):
         response = self.client.get('/ai/v1/mcp/global/agents')
         self.assertEqual(response.status_code, 401)
+
+
+@override_settings(**SETTINGS)
+class AutoCompanyAccessTests(TestCase):
+    """Projects the owner belongs to are granted on first use, checked on saas every call."""
+
+    def setUp(self):
+        from django.core.cache import cache
+
+        from apps.global_mcp.openapi_tools import store_schema
+
+        cache.clear()
+        store_schema({})
+        self.alpha = _company('Alpha')
+        self.bravo = _company('Bravo', region='eu')
+        self.alpha['role'] = 'staff'
+        self.directory = {'user-a': [self.alpha], 'user-b': [self.bravo]}
+        client = McpOAuthClient.objects.create(client_id='hermes', client_name='Hermes')
+        self.agent_a = GlobalAgent.objects.create(
+            name='Agent A',
+            owner_sub='user-a',
+            owner_email='a@example.com',
+            oauth_client=client,
+            access_mode=GlobalAgent.ACCESS_FULL,
+            allow_destructive_without_asking=True,
+            read_level=GlobalAgent.READ_SAFE,
+            services_allowed=['saas'],
+        )
+        self.token_a, _ = issue_mcp_access_token(self.agent_a)
+        self.exchanges: list[dict] = []
+        self.regional_calls: list[tuple[str, str]] = []
+        self.regional_body = {'result': {'content': [{'type': 'text', 'text': 'ok'}], 'isError': False}}
+
+    def _saas(self, method, path, token=None, **_kwargs):
+        sub = CrossUserIsolationTests._decode_saas(self, token)['sub']
+        rows = self.directory.get(sub, [])
+        prefix = '/api/v1/companies/'
+        if method.upper() == 'GET' and path.startswith(prefix):
+            company_id = path[len(prefix) :].split('/', 1)[0]
+            for row in rows:
+                if row['id'] == company_id:
+                    return 200, row
+        return 404, {'detail': 'Company not found.'}
+
+    def _post(self, url, json=None, headers=None, timeout=None):
+        test = self
+
+        class Response:
+            status_code = 200
+            headers = {'Content-Type': 'application/json'}
+            text = ''
+
+            def json(self):
+                if str(url).endswith('/oauth/mcp/token'):
+                    test.exchanges.append(json_body)
+                    return {'access_token': f"regional-{json_body['company_id']}", 'expires_in': 300}
+                test.regional_calls.append((str(url), headers['Authorization']))
+                return test.regional_body
+
+        json_body = json
+        return Response()
+
+    def _call(self, name, arguments):
+        with patch('apps.global_mcp.company_tools.request_json', side_effect=self._saas), patch(
+            'apps.global_mcp.company_tools.requests.post', side_effect=self._post
+        ), patch('apps.global_mcp.grants.request_json', return_value=(202, {})):
+            response = CrossUserIsolationTests._call(self, self.token_a, name, arguments)
+        return response.json()['result']
+
+    def _subject(self, index=-1) -> dict:
+        return jwt.decode(
+            self.exchanges[index]['subject_token'],
+            _PUBLIC,
+            algorithms=['RS256'],
+            audience='shellui-agents',
+            issuer='http://ai.test',
+        )
+
+    def test_member_gets_read_write_on_first_use_without_approval(self):
+        result = self._call('ai_company_search_tools', {'company_id': self.alpha['id'], 'query': 'list users'})
+        self.assertFalse(result.get('isError'), result)
+        self.assertNotIn('approval_url', result['content'][0]['text'])
+        grant = GlobalAgentCompanyGrant.objects.get(agent=self.agent_a, global_company_id=self.alpha['id'])
+        self.assertEqual(grant.max_access_mode, GlobalAgent.ACCESS_ASK)
+        self.assertFalse(grant.max_destructive)
+        subject = self._subject()
+        self.assertEqual(subject['sub'], 'user-a')
+        self.assertEqual(subject['mcp_access'], 'ask')
+        self.assertIs(subject['mcp_destructive'], False)
+        self.assertEqual(self.exchanges[-1]['company_id'], 42)
+
+    def test_non_member_cannot_auto_grant_another_users_project(self):
+        for name in ('ai_company_search_tools', 'ai_call_company_tool', 'ai_company_describe_tool'):
+            with self.subTest(name=name):
+                arguments = {
+                    'company_id': self.bravo['id'],
+                    'query': 'users',
+                    'tool': 'identity_list_users',
+                    'names': ['identity_list_users'],
+                    'role': 'owner',
+                    'owner_sub': 'user-b',
+                }
+                result = self._call(name, {k: v for k, v in arguments.items() if k != 'query' or name.endswith('search_tools')})
+                self.assertTrue(result.get('isError'), result)
+                self.assertIn('Project was not found', result['content'][0]['text'])
+        self.assertFalse(GlobalAgentCompanyGrant.objects.filter(global_company_id=self.bravo['id']).exists())
+        self.assertEqual(self.exchanges, [])
+        self.assertEqual(self.regional_calls, [])
+
+    def test_member_without_a_role_is_refused(self):
+        self.alpha['role'] = ''
+        result = self._call('ai_call_company_tool', {'company_id': self.alpha['id'], 'tool': 'identity_list_users'})
+        self.assertTrue(result.get('isError'), result)
+        self.assertIn('not a member', result['content'][0]['text'])
+        self.assertFalse(GlobalAgentCompanyGrant.objects.exists())
+
+    def test_removed_member_loses_access(self):
+        self._call('ai_call_company_tool', {'company_id': self.alpha['id'], 'tool': 'identity_list_users'})
+        self.assertEqual(len(self.regional_calls), 1)
+        self.directory['user-a'] = []
+        result = self._call('ai_call_company_tool', {'company_id': self.alpha['id'], 'tool': 'identity_list_users'})
+        self.assertTrue(result.get('isError'), result)
+        self.assertIn('Project was not found', result['content'][0]['text'])
+        self.assertEqual(len(self.regional_calls), 1)
+
+    def test_revoked_connection_loses_access_and_revokes_grants(self):
+        self._call('ai_call_company_tool', {'company_id': self.alpha['id'], 'tool': 'identity_list_users'})
+        session = identity_access_token(sub='user-a', email='a@example.com')
+        with patch('apps.global_mcp.grants.request_json', return_value=(202, {})) as fanout:
+            revoked = self.client.post(
+                f'/ai/v1/mcp/global/agents/{self.agent_a.id}/revoke', HTTP_AUTHORIZATION=f'Bearer {session}'
+            )
+        self.assertEqual(revoked.status_code, 200, revoked.content)
+        self.assertEqual(fanout.call_args.args[1], '/api/v1/internal/ai-global/revoke')
+        self.assertFalse(GlobalAgentCompanyGrant.objects.filter(revoked_at__isnull=True).exists())
+        with patch('apps.global_mcp.company_tools.requests.post', side_effect=self._post):
+            response = CrossUserIsolationTests._call(
+                self, self.token_a, 'ai_call_company_tool', {'company_id': self.alpha['id'], 'tool': 'identity_list_users'}
+            )
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(len(self.regional_calls), 1)
+
+    def test_revoked_project_grant_is_not_restored_automatically(self):
+        self._call('ai_call_company_tool', {'company_id': self.alpha['id'], 'tool': 'identity_list_users'})
+        self.assertFalse(self._call('ai_revoke_company_access', {'company_id': self.alpha['id']}).get('isError'))
+        result = self._call('ai_call_company_tool', {'company_id': self.alpha['id'], 'tool': 'identity_list_users'})
+        self.assertTrue(result.get('isError'), result)
+        self.assertIn('revoked', result['content'][0]['text'])
+        self.assertEqual(len(self.regional_calls), 1)
+
+    def test_destructive_tools_still_ask(self):
+        self.regional_body = {
+            'result': {
+                'content': [{'type': 'text', 'text': 'Approval required.'}],
+                'approval_url': 'http://id.region/oauth/mcp/approval/x',
+                'isError': False,
+            }
+        }
+        result = self._call('ai_call_company_tool', {'company_id': self.alpha['id'], 'tool': 'identity_delete_users'})
+        body = json.loads(result['content'][0]['text'])
+        self.assertEqual(body['result']['approval_url'], 'http://id.region/oauth/mcp/approval/x')
+        self.assertIs(self._subject()['mcp_destructive'], False)
+
+    def test_regional_token_for_one_company_is_not_used_for_another(self):
+        second = _company('Alpha Two')
+        second['regional_company_id'] = '43'
+        self.directory['user-a'].append(second)
+        self._call('ai_call_company_tool', {'company_id': self.alpha['id'], 'tool': 'identity_list_users'})
+        self._call('ai_call_company_tool', {'company_id': second['id'], 'tool': 'identity_list_users'})
+        self.assertEqual([row['company_id'] for row in self.exchanges], [42, 43])
+        self.assertEqual(self._subject(0)['global_company_id'], self.alpha['id'])
+        self.assertEqual(self._subject(1)['global_company_id'], second['id'])
+        self.assertEqual(
+            self.regional_calls,
+            [('http://ai.region/c/42/mcp', 'Bearer regional-42'), ('http://ai.region/c/43/mcp', 'Bearer regional-43')],
+        )
+
+    def test_explicit_read_only_grant_is_kept_and_members_can_narrow(self):
+        self._call('ai_call_company_tool', {'company_id': self.alpha['id'], 'tool': 'identity_list_users'})
+        narrowed = self._call('ai_grant_company_access', {'company_id': self.alpha['id'], 'access_mode': 'read_only'})
+        self.assertIn('narrowed', narrowed['content'][0]['text'])
+        self._call('ai_call_company_tool', {'company_id': self.alpha['id'], 'tool': 'identity_list_users'})
+        self.assertEqual(self._subject()['mcp_access'], 'read_only')
+        widened = self._call('ai_grant_company_access', {'company_id': self.alpha['id'], 'access_mode': 'full'})
+        self.assertTrue(widened.get('isError'), widened)
+        self.assertIn('Only an owner', widened['content'][0]['text'])
+
+    def test_global_search_points_to_project_tools(self):
+        result = self._call('ai_search_tools', {'query': 'list users'})
+        payload = json.loads(result['content'][0]['text'])
+        self.assertIn('ai_company_search_tools', payload['project_tools'])
