@@ -509,6 +509,15 @@ GLOBAL_OIDC_CLIENT_SECRET = os.getenv('GLOBAL_OIDC_CLIENT_SECRET', '').strip()
 GLOBAL_OIDC_REDIRECT_URI = os.getenv('GLOBAL_OIDC_REDIRECT_URI', '').strip()
 SAAS_SERVICE_INTERNAL_URL = os.getenv('SAAS_SERVICE_INTERNAL_URL', '').strip().rstrip('/')
 SAAS_API_AUDIENCE = os.getenv('SAAS_API_AUDIENCE', '').strip().rstrip('/')
+# Server-side calls to a region, public origin to internal origin. Example:
+# https://id.eu.shellui.com=http://identity-eu:8000,https://ai.eu.shellui.com=http://ai-eu:8000
+GLOBAL_REGION_INTERNAL_URLS = {
+    public.strip().rstrip('/'): internal.strip().rstrip('/')
+    for public, _sep, internal in (
+        item.partition('=') for item in os.getenv('GLOBAL_REGION_INTERNAL_URLS', '').split(',') if '=' in item
+    )
+    if public.strip() and internal.strip()
+}
 GLOBAL_MCP_ACCESS_TOKEN_TTL_SECONDS = max(60, _env_int('GLOBAL_MCP_ACCESS_TOKEN_TTL_SECONDS', 3600))
 GLOBAL_MCP_REFRESH_TOKEN_TTL_SECONDS = max(3600, _env_int('GLOBAL_MCP_REFRESH_TOKEN_TTL_SECONDS', 30 * 24 * 3600))
 GLOBAL_AGENT_ACCESS_TOKEN_AUDIENCE = os.getenv('GLOBAL_AGENT_ACCESS_TOKEN_AUDIENCE', 'shellui-agents').strip() or 'shellui-agents'

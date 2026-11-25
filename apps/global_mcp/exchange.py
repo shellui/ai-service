@@ -9,6 +9,7 @@ import requests
 from django.core.cache import cache
 
 from apps.global_mcp.models import GlobalAgent
+from apps.global_mcp.resources import region_internal
 from apps.global_mcp.tokens import issue_subject_token
 
 GRANT_TYPE = 'urn:ietf:params:oauth:grant-type:token-exchange'
@@ -62,7 +63,7 @@ def regional_access_token(
     # The subject token is used once, on this request, and is not stored.
     regional_id = str(company.get('regional_company_id') or '').strip()
     response = requests.post(
-        f"{identity_url.rstrip('/')}/oauth/mcp/token",
+        region_internal(f"{identity_url.rstrip('/')}/oauth/mcp/token"),
         json={
             'grant_type': GRANT_TYPE,
             'subject_token': subject,
