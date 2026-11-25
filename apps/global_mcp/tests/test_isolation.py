@@ -362,7 +362,10 @@ class AutoCompanyAccessTests(TestCase):
     def setUp(self):
         from django.core.cache import cache
 
+        from apps.global_mcp.openapi_tools import store_schema
+
         cache.clear()
+        store_schema({})
         self.alpha = _company('Alpha')
         self.bravo = _company('Bravo', region='eu')
         self.alpha['role'] = 'staff'
