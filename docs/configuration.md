@@ -88,6 +88,7 @@ Required when `DEBUG=false` and `AI_SERVICE_MODE=global`: `GLOBAL_IDENTITY_URL`,
 | `AI_SERVICE_MODE` | `region` |
 | `GLOBAL_IDENTITY_URL` | empty. Public identity-global origin. The browser is sent to `{url}/oauth/authorize`. |
 | `GLOBAL_IDENTITY_INTERNAL_URL` | `GLOBAL_IDENTITY_URL`. Token and userinfo calls. |
+| `GLOBAL_REGION_INTERNAL_URLS` | empty. Comma list of `public=internal` origins for server-side calls to regions (token exchange and regional MCP), for example `https://id.eu.shellui.com=http://identity-eu:8000,https://ai.eu.shellui.com=http://ai-eu:8000`. The MCP `resource` and token audiences keep the public URL. |
 | `GLOBAL_IDENTITY_ISSUER` | empty |
 | `GLOBAL_IDENTITY_AUDIENCE` | `shellui`. `aud` of identity-global access tokens used by the dashboard connections API (identity-global `JWT_AUDIENCE`). |
 | `GLOBAL_IDENTITY_JWKS` | empty. Pinned identity-global JWKS JSON. One pair of wrapping quotes is ignored, so a Compose env file can quote the document. The dev stack copies host `GLOBAL_JWKS` into this name. |

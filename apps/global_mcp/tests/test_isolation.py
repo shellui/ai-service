@@ -407,7 +407,7 @@ class AutoCompanyAccessTests(TestCase):
 
             def json(self):
                 if str(url).endswith('/oauth/mcp/token'):
-                    test.exchanges.append(json_body)
+                    test.exchanges.append({**json_body, '_url': str(url)})
                     return {'access_token': f"regional-{json_body['company_id']}", 'expires_in': 300}
                 test.regional_calls.append((str(url), headers['Authorization']))
                 return test.regional_body
@@ -544,3 +544,11 @@ class AutoCompanyAccessTests(TestCase):
         result = self._call('ai_search_tools', {'query': 'list users'})
         payload = json.loads(result['content'][0]['text'])
         self.assertIn('ai_company_search_tools', payload['project_tools'])
+
+    def test_internal_region_urls_keep_the_public_resource(self):
+        internal = {'http://id.region': 'http://identity-eu:8000', 'http://ai.region': 'http://ai-eu:8000'}
+        with self.settings(GLOBAL_REGION_INTERNAL_URLS=internal):
+            self._call('ai_call_company_tool', {'company_id': self.alpha['id'], 'tool': 'identity_list_users'})
+        self.assertEqual(self.exchanges[-1]['_url'], 'http://identity-eu:8000/oauth/mcp/token')
+        self.assertEqual(self.exchanges[-1]['resource'], 'http://ai.region/c/42/mcp')
+        self.assertEqual(self.regional_calls, [('http://ai-eu:8000/c/42/mcp', 'Bearer regional-42')])
