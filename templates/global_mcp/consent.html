@@ -15,10 +15,25 @@
         Reads follow the level you choose. Changes ask you first, unless you choose full access.
         Destructive actions still open a link for you to approve.
       </p>
+      <div class="mt-6 rounded border px-4 py-3 text-sm" role="alert">
+        <p class="font-semibold">Only continue if you started this from {{ client_name }}.</p>
+        <p class="mt-1 text-muted-foreground">
+          The client chose the name "{{ client_name }}" itself. Shellui does not verify it.
+          If someone sent you this link or code, choose Deny.
+        </p>
+      </div>
+      <div class="mt-6 text-sm">
+        <p class="font-semibold">Access requested</p>
+        <ul class="mt-1 list-disc pl-5 text-muted-foreground">
+          <li>Scope: mcp, the Shellui MCP endpoint at {{ resource }}</li>
+          <li>Acts as {{ email }} on the tools of your Shellui account</li>
+          <li>Reads, changes and destructive actions follow the choices below</li>
+        </ul>
+      </div>
       <p class="mt-3 text-sm">{{ region_message }} <a class="underline" href="{{ docs_url }}">Docs</a></p>
       <form method="post" class="mt-8 space-y-4">
         {% csrf_token %}
-        <input type="hidden" name="request" value="{{ request_id }}" />
+        <input type="hidden" name="{{ hidden_name }}" value="{{ hidden_value }}" />
         <label class="block text-sm">
           Agent name
           <input class="mt-1 w-full rounded border px-3 py-2" name="agent_name" value="{{ client_name }}" maxlength="255" />

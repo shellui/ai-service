@@ -85,7 +85,7 @@ class TelemetryTests(SimpleTestCase):
 
         resource = trace.get_tracer_provider().resource.attributes
         self.assertEqual(resource['service.name'], 'ai-service')
-        self.assertEqual(resource['service.version'], '0.3.0')
+        self.assertEqual(resource['service.version'], '0.3.1')
         self.assertEqual(resource['shellui.mode'], 'region')
         self.assertEqual(resource['deployment.environment'], 'test')
 

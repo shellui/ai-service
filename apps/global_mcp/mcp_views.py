@@ -66,19 +66,20 @@ def _execution_catalog() -> list[dict]:
 
 def _www(request: HttpRequest, *, description: str = '') -> str:
     metadata = f'{issuer() or request.build_absolute_uri("/").rstrip("/")}/.well-known/oauth-protected-resource'
-    parts = ['Bearer realm="shellui"', f'resource_metadata="{metadata}"']
+    parts = ['Bearer realm="shellui"', f'resource_metadata="{metadata}"', 'scope="mcp"']
     if description:
         parts.append('error="invalid_token"')
         parts.append(f'error_description="{description}"')
     return ', '.join(parts)
 
 
-def _unauthorized(request: HttpRequest, description: str) -> JsonResponse:
+def _unauthorized(request: HttpRequest, description: str, *, token_sent: bool = True) -> JsonResponse:
     response = JsonResponse(
         {'error': 'invalid_token', 'error_description': description},
         status=401,
     )
-    response['WWW-Authenticate'] = _www(request, description=description)
+    # RFC 6750 section 3.1: no error code in the challenge when no token was sent.
+    response['WWW-Authenticate'] = _www(request, description=description if token_sent else '')
     return response
 
 
@@ -103,7 +104,7 @@ def _looks_regional(token: str) -> bool:
 def authenticate(request: HttpRequest) -> tuple[GlobalAgent, dict] | JsonResponse:
     header = request.headers.get('Authorization', '')
     if not header.lower().startswith('bearer '):
-        return _unauthorized(request, 'Bearer token required.')
+        return _unauthorized(request, 'Bearer token required.', token_sent=False)
     raw = header.split(' ', 1)[1].strip()
     try:
         claims = decode_rs256(raw, audience=mcp_resource(request), issuer=issuer() or None)
@@ -134,18 +135,17 @@ def _tool_error(text: str) -> dict:
 
 @csrf_exempt
 def global_mcp_endpoint(request: HttpRequest):
+    # Every method without a valid token gets 401 and the challenge, like regional.
+    # Clients such as Hermes probe with GET and read WWW-Authenticate first.
+    authed = authenticate(request)
+    if isinstance(authed, JsonResponse):
+        return authed
     if request.method == 'DELETE':
-        authed = authenticate(request)
-        if isinstance(authed, JsonResponse):
-            return authed
         return HttpResponse(status=204)
     if request.method != 'POST':
         response = JsonResponse({'error': 'method_not_allowed'}, status=405)
         response['Allow'] = 'POST, DELETE'
         return response
-    authed = authenticate(request)
-    if isinstance(authed, JsonResponse):
-        return authed
     agent, claims = authed
     try:
         body = json.loads(request.body.decode('utf-8') or '{}')

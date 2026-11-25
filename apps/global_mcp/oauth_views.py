@@ -33,8 +33,11 @@ from apps.global_mcp.resources import issuer, mcp_resource
 from apps.global_mcp.saas_client import fetch_me
 from apps.global_mcp.tokens import issue_mcp_access_token
 
+DEVICE_CODE_GRANT = 'urn:ietf:params:oauth:grant-type:device_code'
+
 _SESSION_USER = 'global_mcp_user'
 _SESSION_REQUEST = 'global_mcp_request'
+_SESSION_DEVICE = 'global_mcp_device'
 
 
 def _oauth_ready() -> bool:
@@ -53,7 +56,8 @@ def authorization_server_metadata(request: HttpRequest):
             'registration_endpoint': f'{base}/oauth/mcp/register',
             'jwks_uri': f'{base}/.well-known/jwks.json',
             'response_types_supported': ['code'],
-            'grant_types_supported': ['authorization_code', 'refresh_token'],
+            'device_authorization_endpoint': f'{base}/oauth/mcp/device/code',
+            'grant_types_supported': ['authorization_code', 'refresh_token', DEVICE_CODE_GRANT],
             'code_challenge_methods_supported': ['S256'],
             'token_endpoint_auth_methods_supported': ['none'],
             'scopes_supported': ['mcp'],
@@ -99,9 +103,25 @@ def mcp_register(request: HttpRequest):
         body = json.loads(request.body.decode('utf-8') or '{}')
     except json.JSONDecodeError:
         return JsonResponse({'error': 'invalid_json'}, status=400)
-    redirect_uris, error = normalize_mcp_redirect_uris(request, body.get('redirect_uris') or [])
-    if error or not redirect_uris:
-        return JsonResponse({'error': error or 'invalid_redirect_uris'}, status=400)
+    if not isinstance(body, dict):
+        return JsonResponse({'error': 'invalid_client_metadata'}, status=400)
+    requested_grants = body.get('grant_types')
+    device_only = (
+        isinstance(requested_grants, list)
+        and DEVICE_CODE_GRANT in requested_grants
+        and 'authorization_code' not in requested_grants
+    )
+    raw_uris = body.get('redirect_uris') or []
+    if device_only and not raw_uris:
+        # A headless client that only uses device login has no redirect URI.
+        redirect_uris, error = [], None
+    else:
+        redirect_uris, error = normalize_mcp_redirect_uris(request, raw_uris)
+        if error or not redirect_uris:
+            return JsonResponse({'error': error or 'invalid_redirect_uris'}, status=400)
+    grant_types = ['authorization_code', 'refresh_token', DEVICE_CODE_GRANT]
+    if device_only and not redirect_uris:
+        grant_types = [DEVICE_CODE_GRANT, 'refresh_token']
     client_id = secrets.token_urlsafe(24)
     McpOAuthClient.objects.create(
         client_id=client_id,
@@ -113,8 +133,8 @@ def mcp_register(request: HttpRequest):
             'client_id': client_id,
             'client_name': body.get('client_name') or '',
             'redirect_uris': redirect_uris,
-            'grant_types': ['authorization_code', 'refresh_token'],
-            'response_types': ['code'],
+            'grant_types': grant_types,
+            'response_types': ['code'] if redirect_uris else [],
             'token_endpoint_auth_method': 'none',
         },
         status=201,
@@ -201,6 +221,9 @@ def signin_complete(request: HttpRequest):
         'claims': {key: value for key, value in claims.items() if key != 'access_token'},
         'profile': profile.raw,
     }
+    if row.device_authorization_id:
+        request.session[_SESSION_DEVICE] = str(row.device_authorization_id)
+        return HttpResponseRedirect('/oauth/mcp/device')
     request.session[_SESSION_REQUEST] = str(row.authorization_request_id)
     return HttpResponseRedirect(f'/oauth/mcp/consent?request={row.authorization_request_id}')
 
@@ -226,19 +249,32 @@ def mcp_consent(request: HttpRequest):
         return render(
             request,
             'global_mcp/consent.html',
-            {
-                'client_name': pending.client.client_name or 'MCP client',
-                'request_id': pending.id,
-                'email': user.get('email') or '',
-                'docs_url': DOCS_URL,
-                'region_message': REGION_ONLY_MESSAGE,
-            },
+            consent_context(pending.client, user, hidden_name='request', hidden_value=pending.id),
         )
     if (request.POST.get('decision') or '') != 'allow':
         pending.consumed_at = timezone.now()
         pending.save(update_fields=['consumed_at'])
         return _redirect_error(pending.redirect_uri, 'access_denied', pending.state)
-    name = (request.POST.get('agent_name') or pending.client.client_name or 'MCP agent')[:255]
+    agent = create_agent_from_consent(request, pending.client, user)
+    return _issue_code(pending, agent, user)
+
+
+def consent_context(client: McpOAuthClient, user: dict, *, hidden_name: str, hidden_value) -> dict:
+    """Shared consent page context for browser and device login."""
+    return {
+        'client_name': client.client_name or 'MCP client',
+        'hidden_name': hidden_name,
+        'hidden_value': hidden_value,
+        'request_id': hidden_value if hidden_name == 'request' else '',
+        'email': user.get('email') or '',
+        'docs_url': DOCS_URL,
+        'region_message': REGION_ONLY_MESSAGE,
+        'resource': mcp_resource(),
+    }
+
+
+def create_agent_from_consent(request: HttpRequest, client: McpOAuthClient, user: dict) -> GlobalAgent:
+    name = (request.POST.get('agent_name') or client.client_name or 'MCP agent')[:255]
     access = request.POST.get('access_mode') or GlobalAgent.ACCESS_ASK
     if access not in {GlobalAgent.ACCESS_READ_ONLY, GlobalAgent.ACCESS_ASK, GlobalAgent.ACCESS_FULL}:
         access = GlobalAgent.ACCESS_ASK
@@ -246,12 +282,12 @@ def mcp_consent(request: HttpRequest):
     if read_level not in {GlobalAgent.READ_SAFE, GlobalAgent.READ_SENSITIVE}:
         read_level = GlobalAgent.READ_SAFE
     destructive = request.POST.get('allow_destructive') in {'1', 'on', 'true'}
-    agent = GlobalAgent.objects.create(
+    return GlobalAgent.objects.create(
         name=name,
         owner_sub=user['sub'],
         owner_email=user.get('email') or '',
         owner_name=user.get('name') or '',
-        oauth_client=pending.client,
+        oauth_client=client,
         access_mode=access,
         read_level=read_level,
         allow_destructive_without_asking=destructive,
@@ -259,7 +295,6 @@ def mcp_consent(request: HttpRequest):
         setup_flow=True,
         setup_expires_at=timezone.now() + timedelta(minutes=12),
     )
-    return _issue_code(pending, agent, user)
 
 
 def _issue_code(pending: McpAuthorizationRequest, agent: GlobalAgent, user: dict) -> HttpResponseRedirect:
@@ -336,6 +371,10 @@ def mcp_token(request: HttpRequest):
     grant = str(body.get('grant_type') or '')
     if grant == 'refresh_token':
         return _refresh(body)
+    if grant == DEVICE_CODE_GRANT:
+        from apps.global_mcp.device import device_token
+
+        return device_token(body)
     if grant != 'authorization_code':
         return JsonResponse({'error': 'unsupported_grant_type'}, status=400)
     client = McpOAuthClient.objects.filter(client_id=str(body.get('client_id') or '').strip()).first()

@@ -88,8 +88,46 @@ class OidcTransaction(models.Model):
     state = models.CharField(max_length=128, unique=True, db_index=True)
     nonce = models.CharField(max_length=128)
     code_verifier = models.CharField(max_length=128)
-    authorization_request = models.ForeignKey(McpAuthorizationRequest, on_delete=models.CASCADE)
+    # One of the two is set: a browser authorize request, or a device login.
+    authorization_request = models.ForeignKey(
+        McpAuthorizationRequest, on_delete=models.CASCADE, null=True, blank=True
+    )
+    device_authorization = models.ForeignKey(
+        'McpDeviceAuthorization', on_delete=models.CASCADE, null=True, blank=True
+    )
     expires_at = models.DateTimeField()
+    consumed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class McpDeviceAuthorization(models.Model):
+    """RFC 8628 device login. The device code and the user code are stored as hashes only."""
+
+    STATUS_PENDING = 'pending'
+    STATUS_APPROVED = 'approved'
+    STATUS_DENIED = 'denied'
+    STATUS_CONSUMED = 'consumed'
+    STATUS_EXPIRED = 'expired'
+    STATUS_CHOICES = [
+        (STATUS_PENDING, 'Pending'),
+        (STATUS_APPROVED, 'Approved'),
+        (STATUS_DENIED, 'Denied'),
+        (STATUS_CONSUMED, 'Consumed'),
+        (STATUS_EXPIRED, 'Expired'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    client = models.ForeignKey(McpOAuthClient, on_delete=models.CASCADE)
+    device_code_hash = models.CharField(max_length=64, unique=True)
+    user_code_hash = models.CharField(max_length=64, unique=True)
+    scope = models.CharField(max_length=200, blank=True, default='mcp')
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    poll_interval = models.PositiveIntegerField(default=5)
+    last_poll_at = models.DateTimeField(null=True, blank=True)
+    agent = models.ForeignKey(GlobalAgent, on_delete=models.SET_NULL, null=True, blank=True)
+    owner_sub = models.CharField(max_length=255, blank=True)
+    expires_at = models.DateTimeField(db_index=True)
+    decided_at = models.DateTimeField(null=True, blank=True)
     consumed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -188,12 +226,14 @@ class GlobalMcpApprovalSessionGrant(models.Model):
 class GlobalAgentTokenAudit(models.Model):
     EVENT_ACCESS_MINT = 'access_mint'
     EVENT_CODE_EXCHANGE = 'authorization_code_exchange'
+    EVENT_DEVICE_EXCHANGE = 'device_code_exchange'
     EVENT_REFRESH = 'refresh'
     EVENT_SUBJECT = 'subject_token'
     EVENT_SAAS = 'saas_api_token'
     EVENT_CHOICES = [
         (EVENT_ACCESS_MINT, 'MCP access token'),
         (EVENT_CODE_EXCHANGE, 'Authorization code exchange'),
+        (EVENT_DEVICE_EXCHANGE, 'Device code exchange'),
         (EVENT_REFRESH, 'Refresh'),
         (EVENT_SUBJECT, 'Regional subject token'),
         (EVENT_SAAS, 'SaaS API token'),
