@@ -22,6 +22,7 @@ from apps.global_mcp.grants import (
     revoke_grant,
 )
 from apps.global_mcp.models import GlobalAgent, GlobalMcpApprovalRequest
+from apps.global_mcp.resources import region_internal
 from apps.global_mcp.saas_client import SaasError, request_json
 from apps.global_mcp.tokens import issue_saas_api_token
 from django.conf import settings
@@ -299,7 +300,7 @@ def forward_company_tool(
 
 def call_regional(url: str, token: str, tool: str, arguments: dict, *, correlation_id: str) -> dict:
     response = requests.post(
-        url,
+        region_internal(url),
         json={
             'jsonrpc': '2.0',
             'id': 1,
@@ -358,7 +359,7 @@ def relay_elicitation_answer(relay_call: dict, result: dict | None) -> dict:
     if session_id:
         headers['Mcp-Session-Id'] = session_id
     response = requests.post(
-        str(relay_call['url']),
+        region_internal(str(relay_call['url'])),
         json=rpc,
         headers=headers,
         timeout=float(getattr(settings, 'MCP_GATEWAY_DOWNSTREAM_TIMEOUT_SECONDS', 15) or 15),

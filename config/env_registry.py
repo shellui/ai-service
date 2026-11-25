@@ -73,6 +73,7 @@ OPTIONAL = (
     Var('AI_PUBLIC_URL', '', 'Public origin of this gateway. Region MCP URL is /c/<company_id>/mcp. Global MCP URL is /mcp.'),
     Var('GLOBAL_IDENTITY_URL', '', 'identity-global public origin for the OIDC login page'),
     Var('GLOBAL_IDENTITY_INTERNAL_URL', '', 'identity-global origin for the token and userinfo calls. Defaults to GLOBAL_IDENTITY_URL'),
+    Var('GLOBAL_REGION_INTERNAL_URLS', '', 'Comma list of public=internal origins for server-side region calls'),
     Var('GLOBAL_IDENTITY_ISSUER', '', 'iss of identity-global tokens'),
     Var('GLOBAL_IDENTITY_AUDIENCE', 'shellui', 'aud of identity-global access tokens (dashboard JWT_AUDIENCE)'),
     Var('GLOBAL_IDENTITY_JWKS', '', 'Pinned identity-global JWKS JSON'),

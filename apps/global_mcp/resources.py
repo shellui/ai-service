@@ -35,3 +35,13 @@ def saas_audience() -> str:
         return explicit
     public = str(getattr(settings, 'SAAS_SERVICE_URL', '') or '').rstrip('/')
     return f'{public}/api' if public else ''
+
+
+def region_internal(url: str) -> str:
+    """Same URL on the internal origin when GLOBAL_REGION_INTERNAL_URLS maps its public origin."""
+    from urllib.parse import urlsplit
+
+    parts = urlsplit(url)
+    origin = f'{parts.scheme}://{parts.netloc}'
+    internal = (getattr(settings, 'GLOBAL_REGION_INTERNAL_URLS', None) or {}).get(origin)
+    return internal + url[len(origin):] if internal else url
