@@ -19,6 +19,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 See for sample https://raw.githubusercontent.com/favoloso/conventional-changelog-emoji/master/CHANGELOG.md
 -->
 
+## [0.3.3] - 2026-11-25
+
+### 🐛 Bug Fixes
+
+- `ai_list_companies` accepts the JSON array returned by saas-service `GET /api/v1/companies` (and the `results` or `companies` wrappers). A 200 list was previously treated as a failure and surfaced as "Could not list projects."
+- Company region parsing reads the saas `CompanySerializer` `region` string (for example `ch`) as well as a nested `{code, ai_url}` object, so project lists and grants keep the region code and AI URL.
+- The empty `ai_search_tools` hint in global mode points at `ai_list_companies` instead of `ai_list_services`, which is not in the global tools list.
+
+### ✨ Feature
+
+- Dashboard connections API: `GET /ai/v1/mcp/global/agents` and `POST /ai/v1/mcp/global/agents/{id}/revoke`. Authenticated with the signed-in identity-global access JWT. Results and revoke are scoped to that subject only.
+
+### 🔒 Security
+
+- Added isolation tests with two users and two companies. MCP access tokens, saas API JWTs, and identity-global session JWTs use real RS256 shapes. User B cannot list user A's projects, grants, or connections, cannot call, describe, grant, or revoke tools on user A's company, and cannot revoke user A's agent. A token bound to one company fails on another.
+
 ## [0.3.2] - 2026-11-25
 
 ### 🐛 Bug Fixes

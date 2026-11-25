@@ -89,6 +89,7 @@ Required when `DEBUG=false` and `AI_SERVICE_MODE=global`: `GLOBAL_IDENTITY_URL`,
 | `GLOBAL_IDENTITY_URL` | empty. Public identity-global origin. The browser is sent to `{url}/oauth/authorize`. |
 | `GLOBAL_IDENTITY_INTERNAL_URL` | `GLOBAL_IDENTITY_URL`. Token and userinfo calls. |
 | `GLOBAL_IDENTITY_ISSUER` | empty |
+| `GLOBAL_IDENTITY_AUDIENCE` | `shellui`. `aud` of identity-global access tokens used by the dashboard connections API (identity-global `JWT_AUDIENCE`). |
 | `GLOBAL_IDENTITY_JWKS` | empty. Pinned identity-global JWKS JSON. One pair of wrapping quotes is ignored, so a Compose env file can quote the document. The dev stack copies host `GLOBAL_JWKS` into this name. |
 | `GLOBAL_IDENTITY_JWKS_URL` | `{GLOBAL_IDENTITY_URL}/.well-known/jwks.json` when the URL is set |
 | `GLOBAL_OIDC_CLIENT_ID` | empty |

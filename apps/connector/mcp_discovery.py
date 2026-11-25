@@ -648,7 +648,13 @@ def describe_match(tool: dict[str, Any], *, access_mode: str) -> dict[str, Any]:
     }
 
 
-def empty_search_hint(query: str, *, service: str | None, access: str | None) -> str:
+def empty_search_hint(
+    query: str,
+    *,
+    service: str | None,
+    access: str | None,
+    catalog_hint: str | None = None,
+) -> str:
     filters = []
     if service:
         filters.append(f'service {service}')
@@ -656,10 +662,15 @@ def empty_search_hint(query: str, *, service: str | None, access: str | None) ->
         filters.append(f'access {access}')
     scope = f' with {" and ".join(filters)}' if filters else ''
     shown = fold_text(query).strip() or 'that query'
+    follow = (
+        catalog_hint
+        if catalog_hint
+        else 'Call ai_list_services to see which services this connection can use.'
+    )
     return (
         f'No tools matched "{shown}"{scope}. '
         'Try a shorter phrase such as invite user, deploy app, newsletter, or bucket. '
-        'Call ai_list_services to see which services this connection can use.'
+        + follow
     )
 
 
@@ -691,6 +702,7 @@ def search_payload(
     arguments: dict[str, Any],
     *,
     access_mode: str,
+    catalog_hint: str | None = None,
 ) -> dict[str, Any]:
     parsed, error = parse_search_arguments(arguments)
     if error or parsed is None:
@@ -705,7 +717,12 @@ def search_payload(
     matches = [public_match(tool, access_mode=access_mode) for _score, tool in ranked]
     payload: dict[str, Any] = {'query': parsed['query'], 'matches': matches}
     if not matches:
-        payload['hint'] = empty_search_hint(parsed['query'], service=parsed['service'], access=parsed['access'])
+        payload['hint'] = empty_search_hint(
+            parsed['query'],
+            service=parsed['service'],
+            access=parsed['access'],
+            catalog_hint=catalog_hint,
+        )
     return payload
 
 
