@@ -1,67 +1,82 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Connect an agent · Shellui</title>
-    {% load static %}
-    <link rel="stylesheet" href="{% static 'css/site.css' %}" />
-  </head>
-  <body class="min-h-full bg-background text-foreground">
-    <main class="mx-auto max-w-lg px-6 py-16">
-      <h1 class="text-2xl font-semibold">Connect {{ client_name }}</h1>
-      <p class="mt-3 text-sm text-muted-foreground">
-        Signed in as {{ email }}. This agent can use your Shellui account at this MCP endpoint.
-        Reads follow the level you choose. Changes ask you first, unless you choose full access.
-        Destructive actions still open a link for you to approve.
-      </p>
-      <div class="mt-6 rounded border px-4 py-3 text-sm" role="alert">
-        <p class="font-semibold">Only continue if you started this from {{ client_name }}.</p>
-        <p class="mt-1 text-muted-foreground">
-          The client chose the name "{{ client_name }}" itself. Shellui does not verify it.
-          If someone sent you this link or code, choose Deny.
+{% extends "global_mcp/_base.html" %}
+{% block title %}Connect {{ client_name }}{% endblock %}
+{% block content %}
+        <h1 class="text-xl font-semibold tracking-tight text-balance text-foreground">Connect {{ client_name }}</h1>
+        <p class="mt-1.5 text-xs text-muted-foreground">Signed in as {{ email }}</p>
+        <p class="mt-4 text-sm leading-relaxed text-foreground">
+          This agent can use your Shellui account at this MCP endpoint.
+          Reads follow the level you choose. Changes ask you first unless you choose full access.
+          Destructive actions still open a link for you to approve.
         </p>
-      </div>
-      <div class="mt-6 text-sm">
-        <p class="font-semibold">Access requested</p>
-        <ul class="mt-1 list-disc pl-5 text-muted-foreground">
-          <li>Scope: mcp, the Shellui MCP endpoint at {{ resource }}</li>
-          <li>Acts as {{ email }} on the tools of your Shellui account</li>
-          <li>Reads, changes and destructive actions follow the choices below</li>
-        </ul>
-      </div>
-      <p class="mt-3 text-sm">{{ region_message }} <a class="underline" href="{{ docs_url }}">Docs</a></p>
-      <form method="post" class="mt-8 space-y-4">
-        {% csrf_token %}
-        <input type="hidden" name="{{ hidden_name }}" value="{{ hidden_value }}" />
-        <label class="block text-sm">
-          Agent name
-          <input class="mt-1 w-full rounded border px-3 py-2" name="agent_name" value="{{ client_name }}" maxlength="255" />
-        </label>
-        <label class="block text-sm">
-          Access
-          <select class="mt-1 w-full rounded border px-3 py-2" name="access_mode">
-            <option value="read_only">Read only</option>
-            <option value="ask" selected>Ask before changes</option>
-            <option value="full">Full access</option>
-          </select>
-        </label>
-        <label class="block text-sm">
-          Reads
-          <select class="mt-1 w-full rounded border px-3 py-2" name="read_level">
-            <option value="safe" selected>Safe reads</option>
-            <option value="sensitive">Sensitive data</option>
-          </select>
-        </label>
-        <label class="flex items-center gap-2 text-sm">
-          <input type="checkbox" name="allow_destructive" value="1" />
-          Allow destructive actions. Each one still opens an approval link.
-        </label>
-        <div class="flex gap-3">
-          <button class="rounded bg-primary px-4 py-2 text-primary-foreground" type="submit" name="decision" value="allow">Allow</button>
-          <button class="rounded border px-4 py-2" type="submit" name="decision" value="deny">Deny</button>
+        <section class="mt-5" aria-labelledby="access-heading">
+          <h2 id="access-heading" class="text-sm font-semibold text-foreground">Access requested</h2>
+          <ul class="mt-2 list-disc space-y-1 pl-5 text-sm leading-relaxed text-muted-foreground">
+            <li>Scope: mcp, the Shellui MCP endpoint at {{ resource }}</li>
+            <li>Acts as {{ email }} on the tools of your Shellui account</li>
+            <li>Reads, changes and destructive actions follow the choices below</li>
+          </ul>
+        </section>
+        <div class="mt-5 rounded-lg border border-amber-500/50 bg-amber-500/10 p-3.5 text-sm leading-relaxed text-foreground" role="alert">
+          <p class="font-semibold">Only continue if you started this from {{ client_name }}.</p>
+          <p class="mt-1 text-muted-foreground">
+            The client chose the name "{{ client_name }}" itself. Shellui does not verify it.
+            If someone sent you this link or code, choose Deny.
+          </p>
         </div>
-      </form>
-    </main>
-  </body>
-</html>
+        <p class="mt-4 text-xs leading-relaxed text-muted-foreground">
+          {{ region_message }}
+          <a class="underline text-foreground hover:text-primary-ink" href="{{ docs_url }}">Read the Shellui MCP docs</a>
+        </p>
+        <form method="post" class="mt-5 space-y-4">
+          {% csrf_token %}
+          <input type="hidden" name="{{ hidden_name }}" value="{{ hidden_value }}" />
+          <label class="block text-sm font-semibold text-foreground">
+            Agent name
+            <input
+              class="mt-1.5 w-full rounded-md border border-border bg-background px-3 py-2 text-sm font-normal text-foreground outline-none focus:border-foreground focus:ring-2 focus:ring-ring/30"
+              name="agent_name"
+              value="{{ client_name }}"
+              maxlength="255"
+            />
+          </label>
+          <label class="block text-sm font-semibold text-foreground">
+            Access
+            <select
+              class="mt-1.5 w-full rounded-md border border-border bg-background px-3 py-2 text-sm font-normal text-foreground outline-none focus:border-foreground focus:ring-2 focus:ring-ring/30"
+              name="access_mode"
+            >
+              <option value="read_only">Read only</option>
+              <option value="ask" selected>Ask before changes</option>
+              <option value="full">Full access</option>
+            </select>
+          </label>
+          <label class="block text-sm font-semibold text-foreground">
+            Reads
+            <select
+              class="mt-1.5 w-full rounded-md border border-border bg-background px-3 py-2 text-sm font-normal text-foreground outline-none focus:border-foreground focus:ring-2 focus:ring-ring/30"
+              name="read_level"
+            >
+              <option value="safe" selected>Safe reads</option>
+              <option value="sensitive">Sensitive data</option>
+            </select>
+          </label>
+          <label class="flex items-start gap-2.5 text-sm leading-relaxed text-foreground">
+            <input class="mt-1 size-4 rounded border-border accent-primary" type="checkbox" name="allow_destructive" value="1" />
+            <span>Allow destructive actions. Each one still opens an approval link.</span>
+          </label>
+          <div class="space-y-2.5 pt-2">
+            <button
+              class="min-h-11 w-full cursor-pointer rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              type="submit"
+              name="decision"
+              value="allow"
+            >Allow</button>
+            <button
+              class="min-h-11 w-full cursor-pointer rounded-md border border-border bg-transparent px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              type="submit"
+              name="decision"
+              value="deny"
+            >Deny</button>
+          </div>
+        </form>
+{% endblock %}

@@ -1,33 +1,39 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Connect an agent · Shellui</title>
-    {% load static %}
-    <link rel="stylesheet" href="{% static 'css/site.css' %}" />
-  </head>
-  <body class="min-h-full bg-background text-foreground">
-    <main class="mx-auto max-w-lg px-6 py-16">
-      <h1 class="text-2xl font-semibold">Connect an agent</h1>
-      <p class="mt-3 text-sm text-muted-foreground">
-        Your agent showed a code. Enter it here to connect it to your Shellui account.
-        Only enter a code from an agent you started yourself.
-      </p>
-      {% if error %}
-        <p class="mt-4 text-sm" role="alert">{{ error }}</p>
-      {% endif %}
-      <form method="post" action="/oauth/mcp/device" class="mt-8 space-y-4">
-        {% csrf_token %}
-        <label class="block text-sm">
-          Code
-          <input class="mt-1 w-full rounded border px-3 py-2" name="user_code" value="{{ user_code }}" maxlength="16"
-            autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX" required />
-        </label>
-        <p class="text-sm text-muted-foreground">Eight letters or digits, with or without the hyphen.</p>
-        <button class="rounded bg-primary px-4 py-2 text-primary-foreground" type="submit">Continue</button>
-      </form>
-      <p class="mt-6 text-sm"><a class="underline" href="{{ docs_url }}">Docs</a></p>
-    </main>
-  </body>
-</html>
+{% extends "global_mcp/_base.html" %}
+{% block title %}Connect an agent{% endblock %}
+{% block content %}
+        <h1 class="text-xl font-semibold tracking-tight text-balance text-foreground">Connect an agent</h1>
+        <p class="mt-2 text-sm leading-relaxed text-muted-foreground">
+          Your agent showed a code. Enter it here to connect it to your Shellui account.
+          Only enter a code from an agent you started yourself.
+        </p>
+        {% if error %}
+          <p class="mt-4 rounded-lg border border-amber-500/50 bg-amber-500/10 p-3.5 text-sm leading-relaxed text-foreground" role="alert">{{ error }}</p>
+        {% endif %}
+        <form method="post" action="/oauth/mcp/device" class="mt-5 space-y-4">
+          {% csrf_token %}
+          <label class="block text-sm font-semibold text-foreground">
+            Code
+            <input
+              class="mt-1.5 w-full rounded-md border border-border bg-background px-3 py-2 text-sm font-normal tracking-wider text-foreground outline-none focus:border-foreground focus:ring-2 focus:ring-ring/30"
+              name="user_code"
+              value="{{ user_code }}"
+              maxlength="16"
+              autocomplete="one-time-code"
+              autocapitalize="characters"
+              spellcheck="false"
+              placeholder="XXXX-XXXX"
+              required
+            />
+          </label>
+          <p class="text-xs text-muted-foreground">Eight letters or digits, with or without the hyphen.</p>
+          <div class="pt-1">
+            <button
+              class="min-h-11 w-full cursor-pointer rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              type="submit"
+            >Continue</button>
+          </div>
+        </form>
+        <p class="mt-5 text-xs text-muted-foreground">
+          <a class="underline text-foreground hover:text-primary-ink" href="{{ docs_url }}">Read the Shellui MCP docs</a>
+        </p>
+{% endblock %}
