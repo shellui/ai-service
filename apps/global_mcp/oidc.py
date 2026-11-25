@@ -11,6 +11,7 @@ import requests
 from django.conf import settings
 from django.utils import timezone
 
+from apps.global_mcp.copy import REGION_ONLY_MESSAGE
 from apps.global_mcp.models import McpAuthorizationRequest, McpDeviceAuthorization, OidcTransaction
 from apps.global_mcp.pkce import new_verifier, s256_challenge
 
@@ -76,16 +77,50 @@ def begin(
 
 
 def complete(state: str, code: str) -> tuple[OidcTransaction, dict]:
-    row = OidcTransaction.objects.select_related('authorization_request').filter(state=state).first()
+    row = (
+        OidcTransaction.objects.select_related('authorization_request', 'device_authorization')
+        .filter(state=state)
+        .first()
+    )
     if row is None or row.consumed_at is not None or row.expires_at <= timezone.now():
         raise OidcError('invalid_state', 'Sign-in state is not valid.')
     token = _exchange(code, row.code_verifier)
     claims = _verify_id_token(str(token.get('id_token') or ''), nonce=row.nonce)
     access = str(token.get('access_token') or '')
+    if access:
+        info = fetch_userinfo(access)
+        if str(info.get('sub') or '').strip() != str(claims.get('sub') or '').strip():
+            raise OidcError('invalid_grant', 'Userinfo subject does not match id token.')
+        for field in ('email', 'email_verified', 'name'):
+            if field in info and info[field] not in (None, ''):
+                claims[field] = info[field]
     claims['access_token'] = access
     row.consumed_at = timezone.now()
     row.save(update_fields=['consumed_at'])
     return row, claims
+
+
+def fetch_userinfo(access_token: str) -> dict:
+    """Verify the opaque OIDC access token against identity-global /oauth/userinfo."""
+    try:
+        response = requests.get(
+            f'{_identity_internal()}/oauth/userinfo',
+            headers={'Authorization': f'Bearer {access_token}', 'Accept': 'application/json'},
+            timeout=10,
+        )
+    except requests.RequestException as exc:
+        raise OidcError('server_error', 'Could not verify your Shellui account. Try again.') from exc
+    if response.status_code in {401, 403}:
+        raise OidcError('access_denied', REGION_ONLY_MESSAGE)
+    if response.status_code >= 400:
+        raise OidcError('server_error', 'Could not verify your Shellui account. Try again.')
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise OidcError('server_error', 'identity-global userinfo response was not JSON.') from exc
+    if not isinstance(payload, dict) or not str(payload.get('sub') or '').strip():
+        raise OidcError('access_denied', REGION_ONLY_MESSAGE)
+    return payload
 
 
 def _exchange(code: str, verifier: str) -> dict:

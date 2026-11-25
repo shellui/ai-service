@@ -13,7 +13,8 @@ from django.utils import timezone
 
 from apps.global_mcp.device import normalize_user_code
 from apps.global_mcp.models import GlobalAgentTokenAudit, McpDeviceAuthorization, OidcTransaction
-from apps.global_mcp.tests.test_global_mode import GLOBAL, _profile
+from apps.authapi.ai_service_jwks import build_jwks_document
+from apps.global_mcp.tests.test_global_mode import GLOBAL, _PRIVATE, _SIGNING
 
 DEVICE_GRANT = 'urn:ietf:params:oauth:grant-type:device_code'
 
@@ -123,9 +124,7 @@ class DeviceLoginTests(TestCase):
         self.assertEqual(to_identity.status_code, 302)
         self.assertTrue(to_identity['Location'].startswith('http://id.test/oauth/authorize?'))
         state = parse_qs(urlsplit(to_identity['Location']).query)['state'][0]
-        with patch('apps.global_mcp.oauth_views.oidc.complete', side_effect=_complete), patch(
-            'apps.global_mcp.oauth_views.fetch_me', return_value=_profile()
-        ):
+        with patch('apps.global_mcp.oauth_views.oidc.complete', side_effect=_complete):
             back = self.client.get('/oauth/mcp/signin/complete', {'state': state, 'code': 'x'})
         self.assertEqual(back.status_code, 302)
         self.assertEqual(back['Location'], '/oauth/mcp/device')
@@ -267,3 +266,125 @@ class McpChallengeTests(TestCase):
         self.assertEqual(response.status_code, 401)
         self.assertIn('error="invalid_token"', response['WWW-Authenticate'])
         self.assertIn('scope="mcp"', response['WWW-Authenticate'])
+
+
+@override_settings(
+    **GLOBAL,
+    GLOBAL_IDENTITY_JWKS_DOCUMENT=build_jwks_document(_SIGNING),
+)
+class RealIdentityOidcSigninTests(TestCase):
+    """End-to-end signin_complete against identity-global token + userinfo shapes."""
+
+    def setUp(self):
+        cache.clear()
+
+    def _id_token(self, *, nonce: str, sub: str = '1'):
+        import jwt as pyjwt
+
+        now = timezone.now()
+        return pyjwt.encode(
+            {
+                'iss': 'http://id.test',
+                'sub': sub,
+                'aud': 'ai-global',
+                'exp': int((now + timedelta(minutes=5)).timestamp()),
+                'iat': int(now.timestamp()),
+                'nonce': nonce,
+                'email': 'owner@example.com',
+                'email_verified': True,
+                'name': 'Owner',
+            },
+            _PRIVATE,
+            algorithm='RS256',
+            headers={'kid': _SIGNING.kid},
+        )
+
+    def test_device_flow_accepts_opaque_access_token_without_terms_claim(self):
+        reg = self.client.post(
+            '/oauth/mcp/register',
+            data=json.dumps({'client_name': 'Hermes', 'grant_types': [DEVICE_GRANT]}),
+            content_type='application/json',
+        )
+        cid = reg.json()['client_id']
+        start = self.client.post('/oauth/mcp/device/code', {'client_id': cid, 'scope': 'mcp'}).json()
+        self.client.get(start['verification_uri_complete'].replace('http://ai.test', ''))
+        to_id = self.client.get('/oauth/mcp/device')
+        state = parse_qs(urlsplit(to_id['Location']).query)['state'][0]
+        row = OidcTransaction.objects.get(state=state)
+        id_token = self._id_token(nonce=row.nonce)
+
+        class Resp:
+            def __init__(self, status_code, payload):
+                self.status_code = status_code
+                self._payload = payload
+
+            def json(self):
+                return self._payload
+
+        with patch(
+            'apps.global_mcp.oidc.requests.post',
+            return_value=Resp(200, {'access_token': 'opaque-userinfo-token', 'token_type': 'Bearer', 'id_token': id_token}),
+        ) as token_post, patch(
+            'apps.global_mcp.oidc.requests.get',
+            return_value=Resp(200, {'sub': '1', 'email': 'owner@example.com', 'email_verified': True, 'name': 'Owner'}),
+        ) as userinfo_get:
+            done = self.client.get('/oauth/mcp/signin/complete', {'state': state, 'code': 'oidc-code'})
+        self.assertEqual(done.status_code, 302, done.content)
+        self.assertEqual(done['Location'], '/oauth/mcp/device')
+        self.assertIn('/oauth/token', token_post.call_args.args[0])
+        self.assertIn('/oauth/userinfo', userinfo_get.call_args.args[0])
+        consent = self.client.get('/oauth/mcp/device')
+        self.assertContains(consent, 'Connect Hermes')
+        self.assertContains(consent, '#logo-shellui-mark')
+        self.assertNotContains(consent, '<regional ai>')
+
+    def test_userinfo_401_and_explicit_terms_false_and_error_query_are_refused(self):
+        from apps.global_mcp.copy import REGION_ONLY_MESSAGE
+        from apps.global_mcp.eligibility import terms_accepted
+        from apps.global_mcp.saas_client import fetch_me
+
+        self.assertNotIn('<regional ai>', REGION_ONLY_MESSAGE)
+        self.assertNotIn('<company_id>', REGION_ONLY_MESSAGE)
+        self.assertTrue(terms_accepted({'sub': '1'}, {'sub': '1'}))
+        self.assertFalse(terms_accepted({'terms_accepted': False}, {'sub': '1'}))
+
+        # saas_client.fetch_me supports saas /api/v1/me's "subject" key.
+        with patch('apps.global_mcp.saas_client.request_json', return_value=(200, {'subject': '1', 'email': 'a@b.com'})):
+            self.assertEqual(fetch_me('jwt').sub, '1')
+
+        # ?error=access_denied renders cancelled message (not regional-only) with Shellui base layout.
+        cancelled = self.client.get('/oauth/mcp/signin/complete', {'error': 'access_denied'})
+        self.assertContains(cancelled, 'Sign-in cancelled', status_code=403)
+        self.assertContains(cancelled, '#logo-shellui-mark', status_code=403)
+        self.assertNotContains(cancelled, 'company account lives in one region', status_code=403)
+
+        # Userinfo 401 refuses with 403 Shellui account required.
+        reg = self.client.post(
+            '/oauth/mcp/register',
+            data=json.dumps({'client_name': 'Hermes', 'grant_types': [DEVICE_GRANT]}),
+            content_type='application/json',
+        )
+        start = self.client.post('/oauth/mcp/device/code', {'client_id': reg.json()['client_id']}).json()
+        self.client.get(start['verification_uri_complete'].replace('http://ai.test', ''))
+        state = parse_qs(urlsplit(self.client.get('/oauth/mcp/device')['Location']).query)['state'][0]
+        row = OidcTransaction.objects.get(state=state)
+        id_token = self._id_token(nonce=row.nonce)
+
+        class Resp:
+            def __init__(self, status_code, payload):
+                self.status_code = status_code
+                self._payload = payload
+
+            def json(self):
+                return self._payload
+
+        with patch(
+            'apps.global_mcp.oidc.requests.post',
+            return_value=Resp(200, {'access_token': 'opaque', 'id_token': id_token}),
+        ), patch(
+            'apps.global_mcp.oidc.requests.get',
+            return_value=Resp(401, {'error': 'invalid_token'}),
+        ):
+            refused = self.client.get('/oauth/mcp/signin/complete', {'state': state, 'code': 'oidc-code'})
+        self.assertContains(refused, 'Shellui accounts', status_code=403)
+        self.assertContains(refused, '#logo-shellui-mark', status_code=403)

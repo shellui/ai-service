@@ -19,6 +19,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 See for sample https://raw.githubusercontent.com/favoloso/conventional-changelog-emoji/master/CHANGELOG.md
 -->
 
+## [0.3.2] - 2026-11-25
+
+### 🐛 Bug Fixes
+
+- Global MCP OIDC sign-in (`signin/complete`) verifies the opaque OIDC `access_token` against identity-global `/oauth/userinfo` instead of sending it to saas-service `/api/v1/me` (which requires a JWT and returned 401, falsely showing the regional-only error to Shellui account owners in both browser and device flows).
+- `saas_client.fetch_me` accepts the `subject` key returned by saas-service `/api/v1/me` in addition to `sub` and `id`.
+- `eligibility.terms_accepted` refuses only when a terms claim is present and falsy rather than blocking accounts when identity-global emits no terms claim.
+- `?error=access_denied` on `signin/complete` renders a sign-in cancelled or staff-refused message instead of the regional-only message.
+- Replaced the literal `https://<regional ai>/c/<company_id>/mcp` placeholder in the regional-only message with a pointer to the Shellui dashboard and docs.
+
+### 🛠 Improvements
+
+- Global MCP HTML pages (`consent`, `device_code`, `decision`, `message`) share a common base layout matching `identity-service` and Shellui design tokens (`static/css/site.css`, Shellui mark header, centered 480px card, warning box, stacked buttons, dark mode).
+
 ## [0.3.1] - 2026-11-25
 
 ### ✨ Feature

@@ -72,7 +72,7 @@ def fetch_me(access_token: str) -> MeProfile | None:
         return None
     if status >= 400:
         return None
-    sub = str(payload.get('sub') or payload.get('id') or '').strip()
+    sub = str(payload.get('sub') or payload.get('subject') or payload.get('id') or '').strip()
     email = str(payload.get('email') or '').strip()
     if not sub or not email:
         return None

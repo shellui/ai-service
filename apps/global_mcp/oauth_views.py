@@ -30,7 +30,6 @@ from apps.global_mcp.models import (
 from apps.global_mcp.pkce import PkceError, parse_client_pkce, verify_client_pkce
 from apps.global_mcp.redirects import normalize_mcp_redirect_uris, validate_mcp_redirect_uri
 from apps.global_mcp.resources import issuer, mcp_resource
-from apps.global_mcp.saas_client import fetch_me
 from apps.global_mcp.tokens import issue_mcp_access_token
 
 DEVICE_CODE_GRANT = 'urn:ietf:params:oauth:grant-type:device_code'
@@ -197,29 +196,37 @@ def mcp_authorize(request: HttpRequest):
 def signin_complete(request: HttpRequest):
     error = (request.GET.get('error') or '').strip()
     if error:
-        return _message(request, REGION_ONLY_MESSAGE, status=403)
+        desc = (request.GET.get('error_description') or '').strip()
+        if error == 'access_denied' and 'staff' in desc.lower():
+            return _message(request, STAFF_MESSAGE, status=403, title='Sign-in refused')
+        if error == 'access_denied':
+            return _message(request, 'Sign-in was cancelled. Start again from your agent.', status=403, title='Sign-in cancelled')
+        return _message(request, 'Sign-in did not finish. Start again from your agent.', status=400, title='Sign-in failed')
     state = (request.GET.get('state') or '').strip()
     code = (request.GET.get('code') or '').strip()
     if not state or not code:
-        return _message(request, 'Sign-in did not finish.', status=400)
+        return _message(request, 'Sign-in did not finish. Start again from your agent.', status=400, title='Sign-in failed')
     try:
         row, claims = oidc.complete(state, code)
     except oidc.OidcError as exc:
-        return _message(request, exc.description or 'Sign-in failed.', status=400)
-    access = str(claims.get('access_token') or '')
-    profile = fetch_me(access)
-    if profile is None:
-        return _message(request, REGION_ONLY_MESSAGE, status=403)
-    if staff_refused(profile.raw, claims):
-        return _message(request, STAFF_MESSAGE, status=403)
-    if not terms_accepted(profile.raw, claims):
-        return _message(request, TERMS_MESSAGE, status=403)
+        status = 403 if exc.code == 'access_denied' else 400
+        title = 'Shellui account required' if exc.code == 'access_denied' else 'Sign-in failed'
+        return _message(request, exc.description or 'Sign-in failed.', status=status, title=title)
+    clean_claims = {key: value for key, value in claims.items() if key != 'access_token'}
+    sub = str(clean_claims.get('sub') or '').strip()
+    email = str(clean_claims.get('email') or '').strip()
+    if not sub or not email:
+        return _message(request, REGION_ONLY_MESSAGE, status=403, title='Shellui account required')
+    if staff_refused(clean_claims, clean_claims):
+        return _message(request, STAFF_MESSAGE, status=403, title='Sign-in refused')
+    if not terms_accepted(clean_claims, clean_claims):
+        return _message(request, TERMS_MESSAGE, status=403, title='Accept terms')
     request.session[_SESSION_USER] = {
-        'sub': profile.sub,
-        'email': profile.email,
-        'name': profile.name,
-        'claims': {key: value for key, value in claims.items() if key != 'access_token'},
-        'profile': profile.raw,
+        'sub': sub,
+        'email': email,
+        'name': str(clean_claims.get('name') or '').strip(),
+        'claims': clean_claims,
+        'profile': clean_claims,
     }
     if row.device_authorization_id:
         request.session[_SESSION_DEVICE] = str(row.device_authorization_id)
@@ -244,7 +251,7 @@ def mcp_consent(request: HttpRequest):
     pending = _load_request(request)
     user = request.session.get(_SESSION_USER)
     if pending is None or not isinstance(user, dict):
-        return _message(request, 'Sign in again to connect this agent.', status=400)
+        return _message(request, 'Sign in again to connect this agent.', status=400, title='Sign in again')
     if request.method == 'GET':
         return render(
             request,
@@ -456,11 +463,11 @@ def _refresh(body: dict) -> JsonResponse:
     return _token_response(access, refresh)
 
 
-def _message(request: HttpRequest, text: str, *, status: int) -> HttpResponse:
+def _message(request: HttpRequest, text: str, *, status: int, title: str = 'Shellui AI') -> HttpResponse:
     return render(
         request,
         'global_mcp/message.html',
-        {'message': text, 'docs_url': DOCS_URL},
+        {'title': title, 'message': text, 'docs_url': DOCS_URL, 'status_code': status},
         status=status,
     )
 
@@ -472,10 +479,10 @@ def approval_page(request: HttpRequest, approval_id):
 
     user = request.session.get(_SESSION_USER)
     if not isinstance(user, dict) or not user.get('sub'):
-        return _message(request, 'Sign in with your Shellui account to decide this approval.', status=401)
+        return _message(request, 'Sign in with your Shellui account to decide this approval.', status=401, title='Sign in required')
     approval = GlobalMcpApprovalRequest.objects.filter(pk=approval_id).first()
     if approval is None or approval.owner_sub != user['sub']:
-        return _message(request, 'This approval is not for your account.', status=404)
+        return _message(request, 'This approval is not for your account.', status=404, title='Approval not found')
     if request.method == 'GET':
         return render(
             request,
@@ -494,4 +501,5 @@ def approval_page(request: HttpRequest, approval_id):
         'expired': 'This approval expired.',
         'forbidden': 'This approval is not for your account.',
     }.get(outcome, 'This approval is already decided.')
-    return _message(request, label, status=200 if outcome in {'approved', 'rejected'} else 400)
+    outcome_title = {'approved': 'Action approved', 'rejected': 'Action denied', 'expired': 'Approval expired', 'forbidden': 'Approval not allowed'}.get(outcome, 'Approval already decided')
+    return _message(request, label, status=200 if outcome in {'approved', 'rejected'} else 400, title=outcome_title)

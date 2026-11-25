@@ -164,9 +164,7 @@ class GlobalOAuthTests(TestCase):
             row.save(update_fields=['consumed_at'])
             return row, {'sub': 'user-1', 'email': 'owner@example.com', 'email_verified': True}
 
-        with patch('apps.global_mcp.oauth_views.oidc.complete', side_effect=complete), patch(
-            'apps.global_mcp.oauth_views.fetch_me', return_value=_profile()
-        ):
+        with patch('apps.global_mcp.oauth_views.oidc.complete', side_effect=complete):
             done = self.client.get('/oauth/mcp/signin/complete', {'state': query['state'][0], 'code': 'oidc-code'})
         self.assertEqual(done.status_code, 302, done.content)
         consent = self.client.get(done['Location'])
@@ -242,12 +240,9 @@ class GlobalOAuthTests(TestCase):
 
         def complete(state_value, code):
             row = OidcTransaction.objects.get(state=state_value)
-            return row, {'sub': 'user-1', 'email': 'owner@example.com'}
+            return row, {'sub': 'user-1', 'email': 'owner@example.com', 'is_staff': True}
 
-        staff = MeProfile('user-1', 'owner@example.com', '', {'is_staff': True, 'terms_accepted': True, 'sub': 'user-1', 'email': 'owner@example.com'})
-        with patch('apps.global_mcp.oauth_views.oidc.complete', side_effect=complete), patch(
-            'apps.global_mcp.oauth_views.fetch_me', return_value=staff
-        ):
+        with patch('apps.global_mcp.oauth_views.oidc.complete', side_effect=complete):
             page = self.client.get('/oauth/mcp/signin/complete', {'state': state, 'code': 'x'})
         self.assertContains(page, 'Staff accounts cannot authorize', status_code=403)
 

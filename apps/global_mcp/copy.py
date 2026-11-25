@@ -2,8 +2,7 @@
 
 REGION_ONLY_MESSAGE = (
     'ai.shellui.com/mcp is for Shellui accounts. '
-    "If your company account is in one region, connect your region's AI URL instead: "
-    'https://<regional ai>/c/<company_id>/mcp.'
+    'If your company account lives in one region, copy its MCP URL from your Shellui dashboard instead.'
 )
 
 STAFF_MESSAGE = 'Staff accounts cannot authorize MCP agents.'
