@@ -141,12 +141,18 @@ def create_grant(
     binding_version: int | None = None,
 ) -> GlobalAgentCompanyGrant:
     version = binding_version if binding_version is not None else initial_binding_version(company)
-    region = company.get('region') if isinstance(company.get('region'), dict) else {}
+    raw_region = company.get('region')
+    if isinstance(raw_region, dict):
+        region_code = str(raw_region.get('code') or company.get('region_code') or '')
+    elif isinstance(raw_region, str) and raw_region.strip():
+        region_code = raw_region.strip()
+    else:
+        region_code = str(company.get('region_code') or '')
     return GlobalAgentCompanyGrant.objects.create(
         agent=agent,
         global_company_id=uuid.UUID(str(company.get('id'))),
         regional_company_id=str(company.get('regional_company_id') or ''),
-        region_code=str(region.get('code') or company.get('region_code') or ''),
+        region_code=region_code,
         services=requested.services,
         max_access_mode=requested.access_mode,
         max_read_level=requested.read_level,

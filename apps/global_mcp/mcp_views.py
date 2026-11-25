@@ -269,7 +269,12 @@ def _tools_call(request, agent: GlobalAgent, claims: dict, req_id, params: dict)
 def _discovery(name: str, arguments: dict, catalog: list[dict], agent: GlobalAgent) -> dict:
     operational = [tool for tool in catalog if tool.get('name') not in _BUILTIN]
     if name == 'ai_search_tools':
-        payload = search_payload(operational, arguments, access_mode=agent.access_mode)
+        payload = search_payload(
+            operational,
+            arguments,
+            access_mode=agent.access_mode,
+            catalog_hint='Call ai_list_companies to see your projects.',
+        )
     else:
         payload = describe_payload(operational, arguments, access_mode=agent.access_mode)
     return _tool_text(payload)

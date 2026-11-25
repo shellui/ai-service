@@ -487,6 +487,8 @@ AI_SERVICE_SIGNING_KEY = (
 GLOBAL_IDENTITY_URL = os.getenv('GLOBAL_IDENTITY_URL', '').strip().rstrip('/')
 GLOBAL_IDENTITY_INTERNAL_URL = os.getenv('GLOBAL_IDENTITY_INTERNAL_URL', '').strip().rstrip('/') or GLOBAL_IDENTITY_URL
 GLOBAL_IDENTITY_ISSUER = os.getenv('GLOBAL_IDENTITY_ISSUER', '').strip().rstrip('/')
+# Audience of identity-global access tokens used by the dashboard (JWT_AUDIENCE, typically shellui).
+GLOBAL_IDENTITY_AUDIENCE = os.getenv('GLOBAL_IDENTITY_AUDIENCE', 'shellui').strip() or 'shellui'
 def _strip_wrapped_quotes(raw: str) -> str:
     """Drop one pair of matching quotes. Compose env files often wrap JSON that way."""
     value = (raw or '').strip()

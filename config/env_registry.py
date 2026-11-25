@@ -74,6 +74,7 @@ OPTIONAL = (
     Var('GLOBAL_IDENTITY_URL', '', 'identity-global public origin for the OIDC login page'),
     Var('GLOBAL_IDENTITY_INTERNAL_URL', '', 'identity-global origin for the token and userinfo calls. Defaults to GLOBAL_IDENTITY_URL'),
     Var('GLOBAL_IDENTITY_ISSUER', '', 'iss of identity-global tokens'),
+    Var('GLOBAL_IDENTITY_AUDIENCE', 'shellui', 'aud of identity-global access tokens (dashboard JWT_AUDIENCE)'),
     Var('GLOBAL_IDENTITY_JWKS', '', 'Pinned identity-global JWKS JSON'),
     Var('GLOBAL_IDENTITY_JWKS_URL', '', 'Fetch URL when GLOBAL_IDENTITY_JWKS is empty'),
     Var('GLOBAL_OIDC_CLIENT_ID', '', 'Confidential client id in identity-global OIDC_CLIENTS'),

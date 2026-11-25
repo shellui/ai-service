@@ -137,3 +137,14 @@ curl -sS -X POST "$AI/oauth/mcp/token" \
 Success returns `access_token` (audience `https://ai.shellui.com/mcp`, scope `mcp`) and a rotating `refresh_token`, the same as the browser flow.
 
 Rate limits per client IP: 30 device code requests per hour and 30 code entries per 10 minutes on the verification page.
+
+## Active connections on the dashboard
+
+The signed-in Shellui account lists and revokes its global MCP agents (device grants and browser OAuth grants) with an identity-global access token (`aud` is `GLOBAL_IDENTITY_AUDIENCE`, typically `shellui`). Results are limited to that account's subject. A token for another account cannot list or revoke these rows.
+
+```
+GET  /ai/v1/mcp/global/agents
+POST /ai/v1/mcp/global/agents/{agent_id}/revoke
+```
+
+The response uses the same agent object as identity-service personal agents (`id`, `kind`, `name`, `access_mode`, `read_level`, `is_active`, `revoked_at`, `oauth_client_id`).
