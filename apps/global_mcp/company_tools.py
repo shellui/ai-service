@@ -111,12 +111,20 @@ def fetch_company(agent: GlobalAgent, company_id: str) -> dict:
 
 
 def region_urls(company: dict) -> tuple[str, str, str]:
-    region = company.get('region') if isinstance(company.get('region'), dict) else {}
+    raw_region = company.get('region')
+    if isinstance(raw_region, dict):
+        region = raw_region
+        code = str(region.get('code') or company.get('region_code') or '')
+    elif isinstance(raw_region, str) and raw_region.strip():
+        region = {}
+        code = raw_region.strip()
+    else:
+        region = {}
+        code = str(company.get('region_code') or '')
     endpoints = company.get('endpoints') if isinstance(company.get('endpoints'), dict) else {}
     mcp = endpoints.get('mcp') if isinstance(endpoints.get('mcp'), dict) else {}
     ai_url = str(region.get('ai_url') or company.get('ai_url') or mcp.get('ai') or '').rstrip('/')
     identity_url = str(region.get('identity_url') or company.get('identity_url') or mcp.get('identity') or '').rstrip('/')
-    code = str(region.get('code') or company.get('region_code') or '')
     return ai_url, identity_url, code
 
 
@@ -132,13 +140,25 @@ def caller_is_member(company: dict) -> bool:
     return role in {'staff', 'member', 'admin'} or bool(company.get('is_member'))
 
 
+def company_rows(payload) -> list:
+    """Accept the saas-service array body, or a dict wrapper with results or companies."""
+    if isinstance(payload, list):
+        return payload
+    if isinstance(payload, dict):
+        if isinstance(payload.get('results'), list):
+            return payload['results']
+        if isinstance(payload.get('companies'), list):
+            return payload['companies']
+    return []
+
+
 def list_companies(agent: GlobalAgent) -> dict:
     status, payload = request_json('GET', '/api/v1/companies', token=_token(agent))
-    if status >= 400 or not isinstance(payload, dict):
+    if status >= 400:
         raise SaasError(status, payload, 'Could not list projects.')
-    rows = payload.get('results') if isinstance(payload.get('results'), list) else payload.get('companies')
-    if not isinstance(rows, list):
-        rows = payload if isinstance(payload, list) else []
+    if payload is not None and not isinstance(payload, (list, dict)):
+        raise SaasError(status, payload, 'Could not list projects.')
+    rows = company_rows(payload)
     listed = []
     for row in rows:
         if not isinstance(row, dict):

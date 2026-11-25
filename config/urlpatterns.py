@@ -10,6 +10,7 @@ from apps.connector.mcp_approval_decided_views import McpApprovalDecidedView
 from apps.connector.mcp_oauth import OAuthProtectedResourceMetadataView
 from apps.connector.mcp_views import mcp_endpoint, mcp_plain_endpoint
 from apps.global_mcp.device import device_authorization, device_verify
+from apps.global_mcp.agent_views import GlobalAgentListView, GlobalAgentRevokeView
 from apps.global_mcp.mcp_views import global_mcp_endpoint
 from apps.global_mcp.oauth_views import (
     approval_page,
@@ -126,6 +127,12 @@ def global_urlpatterns():
         path('oauth/mcp/device', device_verify, name='global-oauth-device'),
         path('oauth/mcp/approvals/<uuid:approval_id>', approval_page, name='global-oauth-approval'),
         path('mcp', global_mcp_endpoint, name='global-mcp'),
+        path('ai/v1/mcp/global/agents', GlobalAgentListView.as_view(), name='ai_v1_mcp_global_agents_list'),
+        path(
+            'ai/v1/mcp/global/agents/<uuid:agent_id>/revoke',
+            GlobalAgentRevokeView.as_view(),
+            name='ai_v1_mcp_global_agents_revoke',
+        ),
         path('ai/v1/', include('apps.connector.urls')),
         *_docs(),
     ]
