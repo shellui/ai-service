@@ -19,6 +19,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 See for sample https://raw.githubusercontent.com/favoloso/conventional-changelog-emoji/master/CHANGELOG.md
 -->
 
+## [Unreleased]
+
+### ✨ Feature
+
+- Global MCP opens a project the signed-in account belongs to on first use, with no approval page. Membership is checked on saas-service with the connection's own account on every call. The automatic grant is `ask`: read and write tools run, destructive tools still ask.
+- `ai_search_tools` on the global endpoint returns a `project_tools` hint that points at `ai_list_companies` and `ai_company_search_tools`.
+
+### 🚨 Changed
+
+- Project members can narrow or revoke their own connection on a project. Widening still needs an owner and an approval link. Fields left out of `ai_grant_company_access` keep the current grant.
+
+### 🔒 Security
+
+- Revoking a global connection also revokes its project grants and fans the revoke out to the regions.
+- Cached regional tokens are keyed by binding version, so a narrowed grant never reuses an older token.
+
+### 🐛 Bug Fixes
+
+- Granting a project again after a revoke reuses the revoked row instead of failing on the unique constraint.
+
 ## [0.3.3] - 2026-11-25
 
 ### 🐛 Bug Fixes

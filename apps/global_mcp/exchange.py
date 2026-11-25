@@ -23,8 +23,9 @@ class ExchangeError(Exception):
         self.description = description
 
 
-def _cache_key(agent_id: str, company_id: str, services: list[str]) -> str:
-    return 'global_mcp:regional:' + ':'.join([agent_id, company_id, '-'.join(services)])
+def _cache_key(agent_id: str, company_id: str, services: list[str], binding_version: int) -> str:
+    # A new binding version (narrow or revoke) never reuses a cached regional token.
+    return 'global_mcp:regional:' + ':'.join([agent_id, company_id, '-'.join(services), str(binding_version)])
 
 
 def regional_access_token(
@@ -41,7 +42,7 @@ def regional_access_token(
     setup: dict | None = None,
 ) -> str:
     company_id = str(company.get('id') or '')
-    key = _cache_key(str(agent.id), company_id, services)
+    key = _cache_key(str(agent.id), company_id, services, binding_version)
     cached = cache.get(key)
     now = int(time.time())
     if isinstance(cached, dict) and int(cached.get('exp') or 0) - _CACHE_SKEW_SECONDS > now:

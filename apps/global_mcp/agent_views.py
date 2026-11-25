@@ -7,6 +7,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.global_mcp.grants import revoke_grant
 from apps.global_mcp.identity_auth import GlobalIdentityAuthentication
 from apps.global_mcp.models import GlobalAgent
 
@@ -67,4 +68,6 @@ class GlobalAgentRevokeView(APIView):
         if agent.revoked_at is None:
             agent.revoked_at = timezone.now()
             agent.save(update_fields=['revoked_at', 'updated_at'])
+        for grant in agent.company_grants.filter(revoked_at__isnull=True):
+            revoke_grant(grant)
         return Response({'agent': serialize_global_agent(agent)})
