@@ -13,6 +13,7 @@ from apps.global_mcp.approvals import approval_url
 from apps.global_mcp.exchange import ExchangeError, regional_access_token
 from apps.global_mcp.grants import (
     active_grant,
+    auto_grant,
     is_narrowing,
     is_widening,
     maybe_setup_grant,
@@ -226,11 +227,14 @@ def _grant_link(agent: GlobalAgent, company: dict, arguments: dict) -> dict:
 
 
 def ensure_grant(agent: GlobalAgent, company: dict) -> tuple[Any, dict | None]:
-    grant = active_grant(agent, str(company.get('id') or ''))
+    """company comes from saas for this agent's owner, never from the client."""
+    if not caller_is_member(company):
+        return None, {'error': 'You are not a member of this project.'}
+    grant = active_grant(agent, str(company.get('id') or '')) or auto_grant(agent, company)
     if grant is not None:
         return grant, None
     if not caller_is_owner(company):
-        return None, {'error': 'Only an owner can grant this agent access to the project.'}
+        return None, {'error': 'Access to this project was revoked for this connection. Ask an owner to grant it again.'}
     return None, _grant_link(agent, company, {'company_id': str(company.get('id') or '')})
 
 
@@ -242,15 +246,15 @@ def forward_company_tool(
     *,
     correlation_id: str,
 ) -> dict:
+    ai_url, identity_url, _code = region_urls(company)
+    regional_id = str(company.get('regional_company_id') or '').strip()
+    if not caller_is_member(company):
+        return {'error': 'You are not a member of this project.'}
+    if str(company.get('status') or 'active') != 'active' or not ai_url or not identity_url or not regional_id.isdigit():
+        return {'error': 'This project does not have a regional AI URL yet.'}
     grant, missing = ensure_grant(agent, company)
     if missing is not None:
         return missing
-    if not caller_is_member(company):
-        return {'error': 'You are not a member of this project.'}
-    ai_url, identity_url, _code = region_urls(company)
-    regional_id = str(company.get('regional_company_id') or '').strip()
-    if not ai_url or not identity_url or not regional_id.isdigit():
-        return {'error': 'This project does not have a regional AI URL yet.'}
     resource = f'{ai_url}/c/{int(regional_id)}/mcp'
     setup = None
     if (
@@ -459,22 +463,33 @@ def handle_builtin(agent: GlobalAgent, name: str, arguments: dict, *, correlatio
 
 def grant_company(agent: GlobalAgent, arguments: dict) -> dict:
     company = fetch_company(agent, str(arguments.get('company_id') or ''))
-    if not caller_is_owner(company):
-        return {'error': 'Only an owner can grant this agent access to the project.'}
-    requested = normalize_grant_request(arguments, agent)
+    if not caller_is_member(company):
+        return {'error': 'You are not a member of this project.'}
     existing = active_grant(agent, str(company.get('id') or ''))
+    if existing is not None:
+        # Fields left out keep the current grant, so read_only alone only narrows.
+        current = {
+            'services': existing.services,
+            'access_mode': existing.max_access_mode,
+            'read_level': existing.max_read_level,
+            'allow_destructive': existing.max_destructive,
+        }
+        arguments = {**current, **{key: value for key, value in arguments.items() if value is not None}}
+    requested = normalize_grant_request(arguments, agent)
     if existing is not None and is_narrowing(existing, requested) and not is_widening(existing, requested):
         updated = narrow_grant(existing, requested)
         return {'binding_version': updated.binding_version, 'services': updated.services, 'narrowed': True}
     if existing is not None and not is_widening(existing, requested) and not is_narrowing(existing, requested):
         return {'binding_version': existing.binding_version, 'services': existing.services, 'unchanged': True}
+    if not caller_is_owner(company):
+        return {'error': 'Only an owner can widen this agent\'s access to the project.'}
     return _grant_link(agent, company, {**arguments, 'services': requested.services})
 
 
 def revoke_company(agent: GlobalAgent, company_id: str) -> dict:
     company = fetch_company(agent, company_id)
-    if not caller_is_owner(company):
-        return {'error': 'Only an owner can revoke this agent.'}
+    if not caller_is_member(company):
+        return {'error': 'You are not a member of this project.'}
     grant = active_grant(agent, str(company.get('id') or ''))
     if grant is None:
         return {'revoked': False}

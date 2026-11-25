@@ -47,6 +47,10 @@ from apps.global_mcp.signing import decode_rs256
 from apps.global_mcp.tokens import TOKEN_MCP_ACCESS
 from urllib.parse import urlsplit
 
+PROJECT_TOOLS_HINT = (
+    'Project tools such as users, storage, apps, and email live on each project. '
+    'Call ai_list_companies, then ai_company_search_tools with company_id and query.'
+)
 _BUILTIN = {tool['name'] for tool in discovery_tool_definitions()}
 
 
@@ -273,8 +277,9 @@ def _discovery(name: str, arguments: dict, catalog: list[dict], agent: GlobalAge
             operational,
             arguments,
             access_mode=agent.access_mode,
-            catalog_hint='Call ai_list_companies to see your projects.',
+            catalog_hint=PROJECT_TOOLS_HINT,
         )
+        payload['project_tools'] = PROJECT_TOOLS_HINT
     else:
         payload = describe_payload(operational, arguments, access_mode=agent.access_mode)
     return _tool_text(payload)

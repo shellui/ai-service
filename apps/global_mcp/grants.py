@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 
-from django.db import models
+from django.db import IntegrityError, models, transaction
 from django.utils import timezone
 
 from apps.global_mcp.models import GlobalAgent, GlobalMcpApprovalRequest
@@ -148,17 +148,50 @@ def create_grant(
         region_code = raw_region.strip()
     else:
         region_code = str(company.get('region_code') or '')
+    gid = uuid.UUID(str(company.get('id')))
+    fields = {
+        'regional_company_id': str(company.get('regional_company_id') or ''),
+        'region_code': region_code,
+        'services': requested.services,
+        'max_access_mode': requested.access_mode,
+        'max_read_level': requested.read_level,
+        'max_destructive': requested.destructive,
+    }
+    previous = GlobalAgentCompanyGrant.objects.filter(agent=agent, global_company_id=gid).first()
+    if previous is not None:
+        # A revoked row is reused. The version keeps moving forward.
+        for key, value in fields.items():
+            setattr(previous, key, value)
+        previous.revoked_at = None
+        previous.binding_version = max(version, int(previous.binding_version) + 1)
+        previous.save()
+        return previous
     return GlobalAgentCompanyGrant.objects.create(
-        agent=agent,
-        global_company_id=uuid.UUID(str(company.get('id'))),
-        regional_company_id=str(company.get('regional_company_id') or ''),
-        region_code=region_code,
-        services=requested.services,
-        max_access_mode=requested.access_mode,
-        max_read_level=requested.read_level,
-        max_destructive=requested.destructive,
-        binding_version=version,
+        agent=agent, global_company_id=gid, binding_version=version, **fields
     )
+
+
+def auto_grant(agent: GlobalAgent, company: dict) -> GlobalAgentCompanyGrant | None:
+    """First use of a project the owner belongs to. Read and write, destructive tools still ask.
+
+    The caller has already checked membership on saas with this agent's own token.
+    A grant that was revoked for this project is never restored here.
+    """
+    company_id = str(company.get('id') or '')
+    if GlobalAgentCompanyGrant.objects.filter(agent=agent, global_company_id=company_id).exists():
+        return active_grant(agent, company_id)
+    access = GlobalAgent.ACCESS_READ_ONLY if agent.access_mode == GlobalAgent.ACCESS_READ_ONLY else GlobalAgent.ACCESS_ASK
+    requested = GrantRequest(
+        services=list(REGIONAL_SERVICE_ORDER),
+        access_mode=access,
+        read_level=agent.read_level,
+        destructive=False,
+    )
+    try:
+        with transaction.atomic():
+            return create_grant(agent, company, requested)
+    except IntegrityError:
+        return active_grant(agent, company_id)
 
 
 def narrow_grant(grant: GlobalAgentCompanyGrant, requested: GrantRequest) -> GlobalAgentCompanyGrant:
@@ -267,8 +300,9 @@ def builtin_tools() -> list[dict]:
         {
             'name': 'ai_grant_company_access',
             'description': (
-                'Grant this agent access to one Shellui project. '
-                'Only an owner can grant. A new or wider grant opens an approval link.'
+                'Change this agent\'s access to one Shellui project. Projects you belong to get '
+                'read and write access on first use, and destructive tools still ask. '
+                'Narrowing (for example read_only) applies at once. Only an owner can widen, with an approval link.'
             ),
             'inputSchema': {
                 'type': 'object',
