@@ -317,9 +317,39 @@ class GlobalToolTests(TestCase):
         self.assertIn('ai_list_companies', names)
         self.assertIn('ai_grant_company_access', names)
         self.assertNotIn('saas_get_me', names)
+        self.assertNotIn('ai_get_approval', names)
+        from apps.global_mcp.mcp_views import _account_tool_names
+
+        self.assertEqual(names, _account_tool_names())
         destroyed = self._call('saas_delete_companies', {'company_id': str(uuid.uuid4())})
         self.assertIn('does not delete', destroyed.json()['result']['content'][0]['text'])
         self.assertTrue(destroyed.json()['result']['isError'])
+
+    def test_tools_list_omits_ai_get_approval_and_the_call_fails(self):
+        listed = self.client.post(
+            '/mcp',
+            data=json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'}),
+            content_type='application/json',
+            HTTP_AUTHORIZATION=f'Bearer {self.token}',
+        )
+        names = {tool['name'] for tool in listed.json()['result']['tools']}
+        self.assertNotIn('ai_get_approval', names)
+        full = self.client.post(
+            '/mcp',
+            data=json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list', 'params': {'mode': 'all'}}),
+            content_type='application/json',
+            HTTP_AUTHORIZATION=f'Bearer {self.token}',
+        )
+        full_names = {tool['name'] for tool in full.json()['result']['tools']}
+        self.assertNotIn('ai_get_approval', full_names)
+        self.assertTrue(names <= full_names)
+        response = self._call('ai_get_approval', {'approval_id': 'missing'})
+        text = response.json()['result']['content'][0]['text']
+        self.assertTrue(response.json()['result']['isError'])
+        self.assertIn('not found', text.lower())
+        wrapped = self._call('ai_call_tool', {'name': 'ai_get_approval', 'arguments': {'approval_id': 'missing'}})
+        self.assertTrue(wrapped.json()['result']['isError'])
+        self.assertIn('not found', wrapped.json()['result']['content'][0]['text'].lower())
 
     def test_create_company_asks_then_runs_and_writes_a_global_log(self):
         first = self._call('saas_create_companies', {'name': 'North', 'region': 'ch'})
@@ -407,6 +437,154 @@ class GlobalToolTests(TestCase):
         )
         self.assertEqual(link['approval_url'], 'http://id.region/approve')
         self.assertEqual(link['elicitation']['mode'], 'url')
+
+    def test_company_approval_copy_does_not_tell_the_agent_to_call_ai_get_approval(self):
+        from apps.connector import mcp_approval_copy as regional
+        from apps.global_mcp.copy import rewrite_relayed_approval_copy
+
+        instruction = regional.pending_agent_instruction(tool_name='identity_create_invitations')
+        self.assertIn('Call ai_get_approval', instruction)
+        rewritten = rewrite_relayed_approval_copy(
+            {
+                'approval_url': 'http://id.region/oauth/mcp/approval/abc',
+                'instruction': instruction,
+                'message': regional.url_elicitation_message(tool_name='identity_create_invitations'),
+                'name': 'ai_get_approval',
+                '_relay_call': {'token': 'ai_get_approval'},
+            }
+        )
+        self.assertEqual(rewritten['name'], 'ai_get_approval')
+        self.assertEqual(rewritten['_relay_call']['token'], 'ai_get_approval')
+        self.assertNotIn('Call ai_get_approval', rewritten['instruction'])
+        self.assertNotIn('call ai_get_approval', rewritten['message'])
+        self.assertIn('ai_call_company_tool', rewritten['instruction'])
+        self.assertIn('same company_id, tool, and arguments', rewritten['instruction'])
+        self.assertIn('ai_call_company_tool', rewritten['message'])
+
+        company_id = uuid.uuid4()
+        company = {
+            'id': str(company_id),
+            'role': 'owner',
+            'regional_company_id': '42',
+            'limits_version': 1,
+            'status': 'active',
+            'region': {'code': 'ch', 'ai_url': 'http://ai.region', 'identity_url': 'http://id.region'},
+        }
+        maybe_setup_grant(self.agent, company)
+
+        def fake_post(url, json=None, headers=None, timeout=None):
+            class Response:
+                status_code = 200
+                headers = {'Content-Type': 'application/json'}
+                text = ''
+
+                def json(self):
+                    if str(url).endswith('/oauth/mcp/token'):
+                        return {'access_token': 'regional-access', 'expires_in': 300, 'token_type': 'Bearer'}
+                    return {
+                        'result': {
+                            'content': [
+                                {
+                                    'type': 'text',
+                                    'text': regional.pending_agent_instruction(
+                                        tool_name='identity_create_invitations'
+                                    ),
+                                }
+                            ],
+                            'instruction': regional.pending_agent_instruction(
+                                tool_name='identity_create_invitations'
+                            ),
+                            'approval_url': 'http://id.region/oauth/mcp/approval/abc',
+                            'isError': False,
+                        }
+                    }
+
+            return Response()
+
+        with patch('apps.global_mcp.company_tools.fetch_company', return_value=company), patch(
+            'apps.global_mcp.company_tools.requests.post', side_effect=fake_post
+        ):
+            called = self._call(
+                'ai_call_company_tool',
+                {
+                    'company_id': str(company_id),
+                    'tool': 'identity_create_invitations',
+                    'arguments': {'email': 'ada@example.com'},
+                },
+            )
+        self.assertFalse(called.json()['result'].get('isError'), called.content)
+        body = called.json()['result']['content'][0]['text']
+        self.assertNotIn('Call ai_get_approval', body)
+        self.assertIn('ai_call_company_tool', body)
+        self.assertIn('same company_id, tool, and arguments', body)
+
+    def test_company_catalog_keeps_ai_get_approval_name(self):
+        from apps.connector import mcp_approval_copy as regional
+        from apps.global_mcp.copy import rewrite_relayed_approval_copy
+
+        description = regional.pending_agent_instruction(tool_name='identity_create_invitations')
+        catalog = {
+            'result': {
+                'matches': [{'name': 'ai_get_approval', 'description': description}],
+                'tools': [{'name': 'ai_get_approval', 'description': description}],
+                'content': [
+                    {
+                        'type': 'text',
+                        'text': 'ai_get_approval: Call ai_get_approval once with this approval_id (SSE holds until decided).',
+                    }
+                ],
+                'isError': False,
+            }
+        }
+        self.assertEqual(rewrite_relayed_approval_copy(catalog), catalog)
+
+        company_id = uuid.uuid4()
+        company = {
+            'id': str(company_id),
+            'role': 'owner',
+            'regional_company_id': '42',
+            'limits_version': 1,
+            'status': 'active',
+            'region': {'code': 'ch', 'ai_url': 'http://ai.region', 'identity_url': 'http://id.region'},
+        }
+        maybe_setup_grant(self.agent, company)
+
+        def fake_post(url, json=None, headers=None, timeout=None):
+            class Response:
+                status_code = 200
+                headers = {'Content-Type': 'application/json'}
+                text = ''
+
+                def json(self):
+                    if str(url).endswith('/oauth/mcp/token'):
+                        return {'access_token': 'regional-access', 'expires_in': 300, 'token_type': 'Bearer'}
+                    name = (json or {}).get('params', {}).get('name')
+                    entry = {'name': 'ai_get_approval', 'description': description}
+                    if name == 'ai_search_tools':
+                        return {'result': {'matches': [entry], 'isError': False}}
+                    return {'result': {'tools': [entry], 'isError': False}}
+
+            return Response()
+
+        with patch('apps.global_mcp.company_tools.fetch_company', return_value=company), patch(
+            'apps.global_mcp.company_tools.requests.post', side_effect=fake_post
+        ):
+            searched = self._call(
+                'ai_company_search_tools',
+                {'company_id': str(company_id), 'query': 'approval'},
+            )
+            described = self._call(
+                'ai_company_describe_tool',
+                {'company_id': str(company_id), 'names': ['ai_get_approval']},
+            )
+        self.assertFalse(searched.json()['result'].get('isError'), searched.content)
+        search_body = json.loads(searched.json()['result']['content'][0]['text'])
+        self.assertEqual(search_body['result']['matches'][0]['name'], 'ai_get_approval')
+        self.assertEqual(search_body['result']['matches'][0]['description'], description)
+        self.assertFalse(described.json()['result'].get('isError'), described.content)
+        describe_body = json.loads(described.json()['result']['content'][0]['text'])
+        self.assertEqual(describe_body['result']['tools'][0]['name'], 'ai_get_approval')
+        self.assertEqual(describe_body['result']['tools'][0]['description'], description)
 
     def test_subject_token_version_and_single_use_jti(self):
         company_id = str(uuid.uuid4())
