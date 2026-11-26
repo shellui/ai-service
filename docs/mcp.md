@@ -4,16 +4,17 @@ title: MCP gateway handbook
 
 # MCP gateway handbook
 
-This document describes how the **ai-service MCP gateway** behaves in this repository: URLs, tokens, approvals, session grants, tool naming, and what gets sent to Identity for activity. It is the operational reference for gateway code in `apps/connector/mcp_*.py`, not a status log for other projects.
+This document describes how the **ai-service MCP gateway** behaves in this repository: URLs, tokens, approvals, session grants, tool naming, and what gets sent to Identity for activity. It is the operational reference for the regional company gateway in `apps/connector/mcp_*.py`. The global account endpoint (`AI_SERVICE_MODE=global`, `POST /mcp`) is documented in [Device login](./mcp-device-login.md).
 
 Longer backend-oriented examples and request field lists: [mcp-handbook.md](./mcp-handbook.md).
 
 ## Public URL and company scope
 
 - **Per-company MCP endpoint:** `POST /c/<company_id>/mcp` where `company_id` is the **numeric regional** company id (integer in the path and JWT `company_id` claim).
-- **OAuth protected-resource metadata (RFC 9728):** `GET /.well-known/oauth-protected-resource/c/<company_id>/mcp` (also the trailing-slash and `/c/<company_id>/mcp/.well-known/oauth-protected-resource` forms). `authorization_servers` is `IDENTITY_ISSUER` (Identity's metadata `issuer`). `scopes_supported` is `mcp`. The origin-root well-known URL stays `404` `company_required`.
+- **OAuth protected-resource metadata (RFC 9728):** `GET /.well-known/oauth-protected-resource/c/<company_id>/mcp` (also the trailing-slash and `/c/<company_id>/mcp/.well-known/oauth-protected-resource` forms). `authorization_servers` is `IDENTITY_ISSUER` (Identity's metadata `issuer`). `scopes_supported` is `mcp`. In region mode the origin-root well-known URL stays `404` `company_required`.
 - **Unauthenticated** `GET` and `POST` get `401` with `WWW-Authenticate: Bearer realm="mcp", resource_metadata="<that document>", scope="mcp"`. Token `aud` must match the per-company URL and `company_id` must match the path. Device-grant access tokens use the same claims as authorization-code agent tokens and are accepted the same way. See [Device login](./mcp-device-login.md).
-- **No company in path:** `POST /mcp` returns `404` with `company_required`.
+- **Region mode (`AI_SERVICE_MODE=region`):** `POST /mcp` returns `404` with `company_required`. Use `POST /c/<company_id>/mcp`.
+- **Global mode (`AI_SERVICE_MODE=global`):** `POST /mcp` is the Shellui account MCP (`https://ai.shellui.com/mcp`). See [Device login](./mcp-device-login.md). That endpoint does not list or handle `ai_get_approval`. After an approval is required, the original `tools/call` can wait over SSE, or the agent retries the same tool once the person has approved.
 - Behind a reverse proxy, set **`AI_PUBLIC_URL`** so metadata and redirects stay correct.
 
 ### Regional company id versus global delegation
@@ -47,7 +48,7 @@ By default **`tools/list`** returns a short set an agent can use to find the rig
 2. **`ai_search_tools`**: natural-language `query`, optional `service`, optional `access` (`read` or `write`), and `limit` (default 8, maximum 20). Matches include the name, description, read/write/destructive/approval flags, and the full input schema.
 3. **`ai_describe_tool`**: full schema and a usage note for one or more tool names. Search and describe load the full catalog when it is missing or expired, through the same fetch, company scope, and cache lifetime as `tools/list?tools=all`. Each company has its own cache entry.
 4. **`ai_call_tool`**: `{name, arguments}` runs that tool through the same tenant, scope, approval, masking, and audit path as a direct **`tools/call`**. In ask mode the person sees the real tool and its arguments.
-5. **`ai_get_approval`**: `{approval_id}` reads one approval without running the tool. Prefer one call with `Accept: text/event-stream`: while the row is still `pending`, the `tools/call` response is an SSE stream that holds until approved, denied, expired, or the wait times out (~`MCP_APPROVAL_FORM_ELICITATION_WAIT_SECONDS`). JSON-only callers still get a one-shot status. It does not consume the grant. When the status is `approved`, call the original tool again with the same arguments. That runs it once.
+5. **`ai_get_approval`** (regional company endpoint only): `{approval_id}` reads one approval without running the tool. Prefer one call with `Accept: text/event-stream`: while the row is still `pending`, the `tools/call` response is an SSE stream that holds until approved, denied, expired, or the wait times out (~`MCP_APPROVAL_FORM_ELICITATION_WAIT_SECONDS`). JSON-only callers still get a one-shot status. It does not consume the grant. When the status is `approved`, call the original tool again with the same arguments. That runs it once. Global `POST /mcp` does not list or handle this tool.
 6. Four common reads, when that service is connected: `identity_list_users`, `storage_list_bucket`, `hosting_list_apps`, `email_list_messages`. They answer "who, what files, what apps, what mail" without a search.
 
 Workflow: list services, search, then call. A direct **`tools/call`** of any of the 224 tools still works when that tool is not in the default list. The route cache and the tools list share one TTL, but a route lookup can refresh only the route key. The next call then still has a route after the list has expired. The gateway treats that as a miss and loads `tools/list` for that service again before it decides the tool is unknown. The error text says the tool was not found, or that the catalog could not be loaded. It does not say `Tool call rejected.`

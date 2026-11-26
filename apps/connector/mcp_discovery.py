@@ -243,9 +243,13 @@ def arguments_preview(arguments: dict[str, Any] | None) -> str:
     return f'Arguments: {text}'
 
 
-def discovery_tool_definitions() -> list[dict[str, Any]]:
-    """Search, describe, and call. ``ai_list_services`` stays the OpenAPI tool."""
-    return [
+def discovery_tool_definitions(*, include_approval: bool = True) -> list[dict[str, Any]]:
+    """Search, describe, and call. ``ai_list_services`` stays the OpenAPI tool.
+
+    ``ai_get_approval`` is handled only on the regional company endpoint. The
+    global ``/mcp`` catalog passes ``include_approval=False``.
+    """
+    tools = [
         {
             'name': 'ai_search_tools',
             'title': 'AI: Search tools',
@@ -362,6 +366,9 @@ def discovery_tool_definitions() -> list[dict[str, Any]]:
             'annotations': dict(_ANNOTATIONS_READ),
         },
     ]
+    if include_approval:
+        return tools
+    return [tool for tool in tools if tool['name'] != 'ai_get_approval']
 
 
 def tools_list_mode(request: Any, params: dict[str, Any] | None) -> str:

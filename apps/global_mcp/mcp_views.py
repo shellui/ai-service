@@ -16,7 +16,6 @@ from config.telemetry import annotate_mcp_span
 from apps.connector.mcp_discovery import (
     describe_payload,
     discovery_tool_definitions,
-    listed_tools,
     search_payload,
 )
 from apps.connector.mcp_form_elicitation import (
@@ -51,7 +50,24 @@ PROJECT_TOOLS_HINT = (
     'Project tools such as users, storage, apps, and email live on each project. '
     'Call ai_list_companies, then ai_company_search_tools with company_id and query.'
 )
-_BUILTIN = {tool['name'] for tool in discovery_tool_definitions()}
+
+
+def _discovery_tools() -> list[dict]:
+    """Discovery tools this endpoint lists and handles. Approval status is regional-only."""
+    return discovery_tool_definitions(include_approval=False)
+
+
+def _account_tool_names() -> set[str]:
+    from apps.global_mcp.company_tools import builtin_tools
+
+    return (
+        {tool['name'] for tool in _discovery_tools()}
+        | {tool['name'] for tool in builtin_tools()}
+        | {tool['name'] for tool in grant_tools()}
+    )
+
+
+_BUILTIN = {tool['name'] for tool in _discovery_tools()}
 
 
 def _catalog() -> list[dict]:
@@ -59,13 +75,13 @@ def _catalog() -> list[dict]:
 
     saas = [public_tool(tool) for tool in load_saas_tools()]
     # Keep private meta on a parallel list for execution.
-    return discovery_tool_definitions() + builtin_tools() + grant_tools() + saas
+    return _discovery_tools() + builtin_tools() + grant_tools() + saas
 
 
 def _execution_catalog() -> list[dict]:
     from apps.global_mcp.company_tools import builtin_tools
 
-    return discovery_tool_definitions() + builtin_tools() + grant_tools() + load_saas_tools()
+    return _discovery_tools() + builtin_tools() + grant_tools() + load_saas_tools()
 
 
 def _www(request: HttpRequest, *, description: str = '') -> str:
@@ -188,14 +204,8 @@ def global_mcp_endpoint(request: HttpRequest):
         if mode == 'all':
             visible = catalog
         else:
-            names = {tool['name'] for tool in discovery_tool_definitions()}
-            from apps.global_mcp.company_tools import builtin_tools
-
-            names.update(tool['name'] for tool in builtin_tools())
-            names.update(tool['name'] for tool in grant_tools())
+            names = _account_tool_names()
             visible = [tool for tool in catalog if tool['name'] in names]
-            # listed_tools also filters the discovery set. Keep our extra builtins.
-            _ = listed_tools
         return JsonResponse(_rpc_result(req_id, {'tools': [public_tool(tool) if '_meta' in tool else tool for tool in visible]}))
     if method == 'tools/call':
         return _tools_call(request, agent, claims, req_id, params)
@@ -218,15 +228,9 @@ def _tools_call(request, agent: GlobalAgent, claims: dict, req_id, params: dict)
     if name == 'ai_call_tool':
         name = str(arguments.get('name') or arguments.get('tool') or '')
         arguments = arguments.get('arguments') if isinstance(arguments.get('arguments'), dict) else {}
-    builtin_names = {
-        'ai_list_companies',
-        'ai_wait_for_company',
-        'ai_company_search_tools',
-        'ai_company_describe_tool',
-        'ai_call_company_tool',
-        'ai_grant_company_access',
-        'ai_revoke_company_access',
-    }
+    from apps.global_mcp.company_tools import builtin_tools
+
+    builtin_names = {tool['name'] for tool in builtin_tools()} | {tool['name'] for tool in grant_tools()}
     if name in builtin_names:
         return _builtin(request, agent, name, arguments, req_id, correlation, started)
     tool = find_tool(catalog, name)

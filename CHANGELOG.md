@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 See for sample https://raw.githubusercontent.com/favoloso/conventional-changelog-emoji/master/CHANGELOG.md
 -->
 
+## [Unreleased]
+
+### 🐛 Bug Fixes
+
+- Global MCP `tools/list` no longer advertises `ai_get_approval`. That tool is handled only on the regional company endpoint. On the global endpoint, agents learn the outcome from the approval link, the original call's SSE wait, or by retrying the same tool after approval.
+
 ## [0.4.1] - 2026-11-26
 
 ### 🐛 Bug Fixes

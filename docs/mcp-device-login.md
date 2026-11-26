@@ -138,6 +138,8 @@ Success returns `access_token` (audience `https://ai.shellui.com/mcp`, scope `mc
 
 Rate limits per client IP: 30 device code requests per hour and 30 code entries per 10 minutes on the verification page.
 
+Default `tools/list` on this endpoint is the account discovery set: `ai_search_tools`, `ai_describe_tool`, `ai_call_tool`, `ai_list_companies`, `ai_wait_for_company`, `ai_company_search_tools`, `ai_company_describe_tool`, `ai_call_company_tool`, `ai_grant_company_access`, and `ai_revoke_company_access`. Pass `{"mode": "all"}` to include SaaS account tools. The list does not include `ai_get_approval`. When a write needs approval, the original `tools/call` can wait over SSE, or the agent shows the approval link and retries the same tool after the person approves.
+
 ### Project access
 
 Project tools (identity, storage, hosting, email) live on each project. Call `ai_list_companies`, then `ai_company_search_tools`, `ai_company_describe_tool` or `ai_call_company_tool` with the project `company_id`. `ai_search_tools` on the global endpoint only lists account tools, and its response carries a `project_tools` hint that says so.

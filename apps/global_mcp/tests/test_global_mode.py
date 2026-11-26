@@ -317,9 +317,39 @@ class GlobalToolTests(TestCase):
         self.assertIn('ai_list_companies', names)
         self.assertIn('ai_grant_company_access', names)
         self.assertNotIn('saas_get_me', names)
+        self.assertNotIn('ai_get_approval', names)
+        from apps.global_mcp.mcp_views import _account_tool_names
+
+        self.assertEqual(names, _account_tool_names())
         destroyed = self._call('saas_delete_companies', {'company_id': str(uuid.uuid4())})
         self.assertIn('does not delete', destroyed.json()['result']['content'][0]['text'])
         self.assertTrue(destroyed.json()['result']['isError'])
+
+    def test_tools_list_omits_ai_get_approval_and_the_call_fails(self):
+        listed = self.client.post(
+            '/mcp',
+            data=json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'}),
+            content_type='application/json',
+            HTTP_AUTHORIZATION=f'Bearer {self.token}',
+        )
+        names = {tool['name'] for tool in listed.json()['result']['tools']}
+        self.assertNotIn('ai_get_approval', names)
+        full = self.client.post(
+            '/mcp',
+            data=json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list', 'params': {'mode': 'all'}}),
+            content_type='application/json',
+            HTTP_AUTHORIZATION=f'Bearer {self.token}',
+        )
+        full_names = {tool['name'] for tool in full.json()['result']['tools']}
+        self.assertNotIn('ai_get_approval', full_names)
+        self.assertTrue(names <= full_names)
+        response = self._call('ai_get_approval', {'approval_id': 'missing'})
+        text = response.json()['result']['content'][0]['text']
+        self.assertTrue(response.json()['result']['isError'])
+        self.assertIn('not found', text.lower())
+        wrapped = self._call('ai_call_tool', {'name': 'ai_get_approval', 'arguments': {'approval_id': 'missing'}})
+        self.assertTrue(wrapped.json()['result']['isError'])
+        self.assertIn('not found', wrapped.json()['result']['content'][0]['text'].lower())
 
     def test_create_company_asks_then_runs_and_writes_a_global_log(self):
         first = self._call('saas_create_companies', {'name': 'North', 'region': 'ch'})
