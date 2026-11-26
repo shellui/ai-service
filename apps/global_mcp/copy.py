@@ -27,26 +27,81 @@ _PENDING = re.compile(
     r'Call ai_get_approval once with this approval_id \(SSE holds until decided\)\.\s*'
     r'When status is approved, call \S+ again with the same arguments\.'
 )
-_BARE_TOOL = re.compile(r'(?<!tool )ai_get_approval')
+_TEXT_KEYS = frozenset({'instruction', 'message'})
 
 
 def rewrite_relayed_approval_copy(value):
-    """Rewrite regional approval instructions that tell an agent to call ai_get_approval.
+    """Rewrite regional approval instruction and message fields on a pending payload.
 
-    That name is not on the global endpoint. After the person approves the link,
-    retry the same ai_call_company_tool call. Private keys starting with ``_``
-    (tokens, relay sessions) are left untouched.
+    Catalog results, including a tool named ai_get_approval, are left unchanged.
+    After the person approves the link, retry the same ai_call_company_tool call.
+    Private keys starting with ``_`` are left untouched.
     """
-    if isinstance(value, str):
-        return _rewrite_approval_instruction(value)
+    if not _is_pending_approval(value):
+        return value
+    return _rewrite_approval_fields(value)
+
+
+def _has_approval_url(value) -> bool:
+    if not isinstance(value, dict):
+        return False
+    if value.get('approval_url') or value.get('approval_required'):
+        return True
+    structured = value.get('structuredContent')
+    return isinstance(structured, dict) and bool(structured.get('approval_url'))
+
+
+def _is_pending_approval(value) -> bool:
+    if not isinstance(value, dict):
+        return False
+    if _has_approval_url(value) or value.get('status') == 'pending':
+        return True
+    relay = value.get('relay') if isinstance(value.get('relay'), dict) else None
+    if relay is not None:
+        if _has_approval_url(relay) or _has_approval_url(relay.get('result')):
+            return True
+        elicitation = relay.get('elicitation')
+        if isinstance(elicitation, dict) and (
+            elicitation.get('url') or elicitation.get('mode') in {'url', 'form'}
+        ):
+            return True
+    result = value.get('result') if isinstance(value.get('result'), dict) else None
+    if result is None:
+        return False
+    if _has_approval_url(result) or result.get('status') == 'pending':
+        return True
+    structured = result.get('structuredContent')
+    return isinstance(structured, dict) and (
+        structured.get('status') == 'pending' or bool(structured.get('approval_url'))
+    )
+
+
+def _rewrite_approval_fields(value):
     if isinstance(value, list):
-        return [rewrite_relayed_approval_copy(item) for item in value]
-    if isinstance(value, dict):
-        return {
-            key: value[key] if str(key).startswith('_') else rewrite_relayed_approval_copy(item)
-            for key, item in value.items()
-        }
-    return value
+        return [_rewrite_approval_fields(item) for item in value]
+    if not isinstance(value, dict):
+        return value
+    out = {}
+    for key, item in value.items():
+        if str(key).startswith('_'):
+            out[key] = item
+        elif key in _TEXT_KEYS and isinstance(item, str):
+            out[key] = _rewrite_approval_instruction(item)
+        elif key == 'content' and isinstance(item, list):
+            out[key] = [_rewrite_content_item(entry) for entry in item]
+        elif isinstance(item, (dict, list)):
+            out[key] = _rewrite_approval_fields(item)
+        else:
+            out[key] = item
+    return out
+
+
+def _rewrite_content_item(entry):
+    if isinstance(entry, dict) and isinstance(entry.get('text'), str):
+        rewritten = dict(entry)
+        rewritten['text'] = _rewrite_approval_instruction(entry['text'])
+        return rewritten
+    return entry
 
 
 def _rewrite_approval_instruction(text: str) -> str:
@@ -60,12 +115,10 @@ def _rewrite_approval_instruction(text: str) -> str:
     )
     text = text.replace(
         'Call the original tool again, or try ai_get_approval shortly.',
-        f'Call ai_call_company_tool again with the same company_id, tool, and arguments.',
+        'Call ai_call_company_tool again with the same company_id, tool, and arguments.',
     )
     text = text.replace(
         'Call ai_get_approval once (SSE holds until decided). After they approve, call the same tool again.',
         retry,
     )
-    if 'ai_get_approval' in text:
-        text = _BARE_TOOL.sub('ai_call_company_tool with tool ai_get_approval', text)
     return text

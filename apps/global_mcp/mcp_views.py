@@ -413,6 +413,7 @@ def _builtin(request, agent, name, arguments, req_id, correlation, started):
     try:
         payload = handle_builtin(agent, name, arguments, correlation_id=str(correlation))
         if isinstance(payload, dict):
+            # Pending approvals only; catalog results are left unchanged.
             payload = rewrite_relayed_approval_copy(payload)
     except Exception as exc:
         _log(agent, name, arguments, 'error', correlation, started, error_message=str(exc))
