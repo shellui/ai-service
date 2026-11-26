@@ -37,7 +37,7 @@ from apps.global_mcp.approvals import (
 )
 from apps.global_mcp.call_log import write_global_call
 from apps.global_mcp.company_tools import handle_builtin, note_company_created
-from apps.global_mcp.copy import REGION_ONLY_MESSAGE
+from apps.global_mcp.copy import REGION_ONLY_MESSAGE, rewrite_relayed_approval_copy
 from apps.global_mcp.grants import builtin_tools as grant_tools
 from apps.global_mcp.models import GlobalAgent, GlobalMcpApprovalRequest
 from apps.global_mcp.openapi_tools import call_saas_tool, find_tool, load_saas_tools, public_tool
@@ -412,6 +412,9 @@ def _wait_local_approval(approval_id, *, timeout_seconds, drain=None):
 def _builtin(request, agent, name, arguments, req_id, correlation, started):
     try:
         payload = handle_builtin(agent, name, arguments, correlation_id=str(correlation))
+        if isinstance(payload, dict):
+            # Pending approvals only; catalog results are left unchanged.
+            payload = rewrite_relayed_approval_copy(payload)
     except Exception as exc:
         _log(agent, name, arguments, 'error', correlation, started, error_message=str(exc))
         return JsonResponse(_rpc_result(req_id, _tool_error(str(exc) or 'The call failed.')))
