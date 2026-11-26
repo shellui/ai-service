@@ -41,7 +41,7 @@ Identity verifies delegation requests with `AI_SERVICE_JWKS` / `AI_SERVICE_JWKS_
 | `MCP_APPROVAL_SETUP_SESSION_TTL_MIN_SECONDS` | `600` | Lower bound for signed `mcp_session_ttl_seconds` during setup (must match identity). |
 | `MCP_APPROVAL_SETUP_SESSION_TTL_MAX_SECONDS` | `900` | Upper bound for the same. |
 | `MCP_APPROVAL_CHANNEL_BY_COMPANY` | empty | JSON map of company id to `form` or `link` for non-destructive tools. Destructive tools always use the approval link. Example: `{"10": "link"}`. |
-| `MCP_APPROVAL_FORM_ELICITATION_WAIT_SECONDS` | `90` | Seconds `ai_get_approval` SSE waits for an approval decide wake. Keep this under `GUNICORN_TIMEOUT` (default 120). |
+| `MCP_APPROVAL_FORM_ELICITATION_WAIT_SECONDS` | `90` | Seconds the approval SSE wait holds for a decide wake: `ai_get_approval` on the regional company endpoint, and the original `tools/call` on global `/mcp`. Keep this under `GUNICORN_TIMEOUT` (default 120). |
 | `MCP_CALL_LOG_RETENTION_DAYS` | `90` | Days to keep gateway MCP tool-call logs. `python manage.py prune_mcp_call_logs` deletes older rows. |
 
 `setup_flow` assertions and session grants always require absolute `setup_expires_at` (token + session-check response when setup) and absolute `expires_at` on the session-check response; there are no toggles.
