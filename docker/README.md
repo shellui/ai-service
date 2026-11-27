@@ -109,7 +109,7 @@ Run a second container from the same image. Do not point it at regional identity
 
 With `DEBUG=false`, global mode requires `GLOBAL_IDENTITY_URL`, `GLOBAL_IDENTITY_ISSUER`, `GLOBAL_IDENTITY_JWKS` or `GLOBAL_IDENTITY_JWKS_URL`, `GLOBAL_OIDC_CLIENT_ID`, `GLOBAL_OIDC_CLIENT_SECRET`, `GLOBAL_OIDC_REDIRECT_URI`, `SAAS_SERVICE_URL`, `SAAS_API_AUDIENCE`, and `REGIONAL_EXCHANGE_ALLOWED_HOSTS`, plus the shared signing key and `AI_SERVICE_ISSUER`. Leave `IDENTITY_JWKS`, `IDENTITY_JWKS_FILE`, `IDENTITY_JWKS_URL`, `IDENTITY_SERVICE_URL`, `IDENTITY_ISSUER`, `IDENTITY_AUDIENCE`, `STORAGE_SERVICE_URL`, `HOSTING_SERVICE_URL`, and `EMAIL_SERVICE_API_KEY` unset.
 
-`REGIONAL_EXCHANGE_ALLOWED_HOSTS` lists the regional identity and AI hosts that may receive a subject token. Use a suffix such as `.shellui.com` or exact hosts such as `id.ch.shellui.com`. With `DEBUG=false` those URLs must be `https`. An empty list allows no hosts.
+`REGIONAL_EXCHANGE_ALLOWED_HOSTS` lists the regional identity and AI hosts that may receive a subject token. List exact hosts such as `id.ch.shellui.com`. With `DEBUG=false` a suffix entry such as `.shellui.com` stops startup. With `DEBUG=false` those URLs must be `https`. An empty list allows no hosts.
 
 The Shellui dev stack (`shellui/shellui` `dev/docker-compose.yml`, service `ai-global` on port 8008) passes these process env names. Host file names on the left are mapped by Compose. This service reads the process names on the right.
 

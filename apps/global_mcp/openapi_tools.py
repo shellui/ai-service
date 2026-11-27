@@ -120,6 +120,9 @@ def tools_from_openapi(document: dict) -> list[dict[str, Any]]:
             ext = _extension(operation)
             if not ext:
                 continue
+            if ext.get('global_refused') is True:
+                # Refused for every agent (project deletion, ownership transfer): never listed or callable.
+                continue
             operation_id = str(operation.get('operationId') or '')
             name = tool_name_for(operation_id, str(ext.get('name') or ''))
             description = str(operation.get('description') or operation.get('summary') or name)

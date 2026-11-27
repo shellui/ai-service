@@ -129,6 +129,12 @@ AI_SERVICE_MODE = _ai_service_mode
 # One-time web bootstrap token for the first superuser form at `/`.
 # Required even when DEBUG is true. When unset, use `manage.py createsuperuser`.
 SETUP_TOKEN = os.getenv('SETUP_TOKEN', '').strip()
+SETUP_TOKEN_MIN_LENGTH = 32
+if SETUP_TOKEN and len(SETUP_TOKEN) < SETUP_TOKEN_MIN_LENGTH:
+    raise ImproperlyConfigured(
+        f'SETUP_TOKEN must be at least {SETUP_TOKEN_MIN_LENGTH} characters. Generate one with: '
+        'python -c "import secrets; print(secrets.token_urlsafe(32))"'
+    )
 LOG_LEVEL = os.getenv('LOG_LEVEL', 'DEBUG' if DEBUG else 'INFO').strip().upper() or (
     'DEBUG' if DEBUG else 'INFO'
 )
@@ -676,6 +682,11 @@ if not DEBUG and AI_SERVICE_MODE == 'global':
     if not REGIONAL_EXCHANGE_ALLOWED_HOSTS:
         _production_config_errors.append(
             'REGIONAL_EXCHANGE_ALLOWED_HOSTS is required when AI_SERVICE_MODE=global and DEBUG=false.'
+        )
+    elif any(str(_entry).strip().startswith(('.', '*')) for _entry in REGIONAL_EXCHANGE_ALLOWED_HOSTS):
+        _production_config_errors.append(
+            'REGIONAL_EXCHANGE_ALLOWED_HOSTS must list exact region hosts (for example id.ch.shellui.com) '
+            'when DEBUG=false. Suffix entries such as .shellui.com are not accepted.'
         )
     if not _ai_signing_pem:
         _production_config_errors.append(

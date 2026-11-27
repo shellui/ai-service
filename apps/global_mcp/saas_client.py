@@ -91,6 +91,8 @@ def request_json(
         json=body if body is not None else None,
         headers=hdrs,
         timeout=_timeout(),
+        # The bearer token must go only to the configured saas URL, never to a redirect target.
+        allow_redirects=False,
     )
     try:
         payload = response.json()

@@ -108,7 +108,7 @@ Required when `DEBUG=false` and `AI_SERVICE_MODE=global`: `GLOBAL_IDENTITY_URL`,
 | `MCP_DYNAMIC_CLIENT_REGISTRATION` | `true` |
 | `GLOBAL_COMPANY_WAIT_SECONDS` | `60` |
 | `GLOBAL_COMPANY_POLL_SECONDS` | `2` |
-| `REGIONAL_EXCHANGE_ALLOWED_HOSTS` | empty. Comma-separated hosts that may receive a regional subject token. An entry is an exact host (`id.ch.shellui.com`), `host:port` (`localhost:8001`), or a suffix (`.shellui.com` or `*.shellui.com`, including the bare domain). A suffix matches any port. An exact host matches the default port unless the entry includes a port. With `DEBUG=false` the URL must be `https`. An empty list allows no hosts. |
+| `REGIONAL_EXCHANGE_ALLOWED_HOSTS` | empty. Comma-separated hosts that may receive a regional subject token. An entry is an exact host (`id.ch.shellui.com`) or `host:port` (`localhost:8001`). With `DEBUG=false` only exact hosts are accepted, and startup fails on a suffix entry. With `DEBUG=true` a suffix (`.shellui.com` or `*.shellui.com`, including the bare domain) also works and matches any port. An exact host matches the default port unless the entry includes a port. With `DEBUG=false` the URL must be `https`. An empty list allows no hosts. |
 
 Shared by both modes: `DEBUG`, `SECRET_KEY`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `AI_PUBLIC_URL`, `AI_SERVICE_ISSUER`, `AI_SERVICE_SIGNING_KEY` (or `AI_SERVICE_SIGNING_KEY_FILE`), `AI_SERVICE_SIGNING_KID`, `REDIS_URL`, `POSTGRES_DATABASE_URL`, `MCP_TOOLS_LIST_MODE`.
 
@@ -146,7 +146,7 @@ Logs include `trace_id` and `span_id` next to the existing request id. An MCP sp
 | -------- | ------- |
 | `LOG_LEVEL` | `INFO` |
 | `DJANGO_ADMIN_ENABLED` | `true` |
-| `SETUP_TOKEN` | empty. The form at `/` creates the first superuser only when this token is presented, including when `DEBUG=true`. Leave it empty and use `manage.py createsuperuser`. |
+| `SETUP_TOKEN` | empty. At least 32 characters, and startup fails on a shorter value. The form at `/` creates the first superuser only when this token is entered in the form (or sent in the `X-Setup-Token` header or the POST body), including when `DEBUG=true`. The URL query is not read. Leave it empty and use `manage.py createsuperuser`. |
 | `SQLITE_PATH` | `db.sqlite3` |
 | `POSTGRES_SSL_REQUIRE` | `true` |
 | `CORS_ALLOW_ALL_ORIGINS` | `true` |

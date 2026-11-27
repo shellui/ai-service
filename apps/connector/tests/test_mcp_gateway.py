@@ -543,6 +543,88 @@ class McpGatewayTests(TestCase):
         self.assertEqual(err.get('code'), -32603, body)
         self.assertEqual(err.get('message'), 'Forbidden')
 
+    @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
+    @patch('apps.connector.mcp_views.requests.post')
+    def test_route_that_appears_after_the_gate_is_not_forwarded(self, post, mint, _rev_ok):
+        """The route is resolved once. A cache fill between the gate and the forward must not skip approval."""
+        from apps.connector.mcp_views import _get_server
+
+        post.side_effect = AssertionError('an ungated call must never reach the downstream service')
+        route = {'service_id': 'storage', 'downstream_name': 'list_buckets'}
+        state = {'armed': False, 'ensures': 0, 'lookups': 0}
+        server = _get_server()
+
+        def arm(*_args, **_kwargs):
+            # The second call is the one made right before the gate, after argument preparation.
+            state['ensures'] += 1
+            state['armed'] = state['ensures'] >= 2
+
+        def lookup(_tool_name):
+            if not state['armed']:
+                return None
+            state['lookups'] += 1
+            return None if state['lookups'] == 1 else route
+
+        with patch.object(server, '_ensure_routes_for_export', side_effect=arm), \
+                patch.object(server, '_lookup_route', side_effect=lookup):
+            token = _agent_token(secret=self.secret, issuer=self.issuer, scope='ai storage')
+            response = self.client.post(
+                '/c/10/mcp',
+                data=_rpc('tools/call', name='storage_list_buckets', arguments={}),
+                content_type='application/json',
+                **self._auth(token),
+            )
+        self.assertEqual(response.status_code, 200, response.content)
+        body = response.json()
+        self.assertEqual((body.get('error') or {}).get('message'), 'Unknown tool', body)
+        post.assert_not_called()
+        mint.assert_not_called()
+        self.assertEqual(state['lookups'], 1, 'the route must be looked up once, not again at the forward')
+
+    @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
+    @patch('apps.connector.mcp_views.requests.post')
+    def test_forward_without_a_gate_decision_is_refused_and_mints_no_grant(self, post, mint, _rev_ok):
+        from apps.connector.mcp_views import _get_server
+
+        post.side_effect = AssertionError('downstream MCP must not run without a gate decision')
+        route = {'service_id': 'storage', 'downstream_name': 'list_buckets'}
+        server = _get_server()
+        response = server._shellui_base_maybe_forward_tool_call(
+            None, 1, {'name': 'storage_list_buckets', 'arguments': {}}, {'company_id': 10}, route=route
+        )
+        body = json.loads(response.content)
+        self.assertEqual(body['error']['code'], -32603)
+        self.assertEqual(body['error']['message'], 'Forbidden')
+        mint.assert_not_called()
+
+    @patch('apps.connector.mcp_views.requests.post')
+    @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
+    def test_gated_forward_carries_the_delegated_action_for_that_tool_only(self, mint, post, _rev_ok):
+        from apps.connector.mcp_views import route_cache_key, tools_list_cache_key
+
+        cache.set(
+            tools_list_cache_key(10, 'https://storage.test/mcp'),
+            [{'name': 'list_buckets', 'description': 'List', '_meta': {'method': 'get', 'path': '/buckets/'}}],
+        )
+        cache.set(
+            route_cache_key(10, 'storage_list_buckets'),
+            {'service_id': 'storage', 'downstream_name': 'list_buckets'},
+        )
+        ok = Mock()
+        ok.status_code = 200
+        ok.json.return_value = {'jsonrpc': '2.0', 'id': 1, 'result': {'content': []}}
+        post.return_value = ok
+        token = _agent_token(secret=self.secret, issuer=self.issuer, scope='ai storage')
+        response = self.client.post(
+            '/c/10/mcp',
+            data=_rpc('tools/call', name='storage_list_buckets', arguments={}),
+            content_type='application/json',
+            **self._auth(token),
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(mint.call_args.kwargs.get('delegated_action'), 'list_buckets')
+        post.assert_called_once()
+
     def test_token_for_other_company_is_refused(self, _rev_ok):
         # aud names company 11 and matches the URL, but company_id is 10: refuse.
         token = _agent_token(secret=self.secret, issuer=self.issuer, resource='https://ai.test/c/11/mcp')

@@ -215,9 +215,24 @@ class ProductionSettingsValidationTests(unittest.TestCase):
             result.stderr,
         )
 
-    def test_global_production_starts_with_exchange_allowlist(self):
-        result = _settings_check(self._global_production_env(REGIONAL_EXCHANGE_ALLOWED_HOSTS='.shellui.com'))
+    def test_global_production_starts_with_exact_exchange_hosts(self):
+        result = _settings_check(
+            self._global_production_env(REGIONAL_EXCHANGE_ALLOWED_HOSTS='id.ch.shellui.com,ai.ch.shellui.com')
+        )
         self.assertEqual(result.returncode, 0, msg=_output(result))
+
+    def test_global_production_rejects_suffix_exchange_hosts(self):
+        for value in ('.shellui.com', '*.shellui.com', 'id.ch.shellui.com,.shellui.com'):
+            result = _settings_check(self._global_production_env(REGIONAL_EXCHANGE_ALLOWED_HOSTS=value))
+            self.assertNotEqual(result.returncode, 0, msg=value)
+            self.assertIn('must list exact region hosts', _output(result), msg=value)
+
+    def test_short_setup_token_is_rejected_at_startup(self):
+        result = _settings_check(
+            {'DEBUG': 'true', 'SETUP_TOKEN': 'short-token'}
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('SETUP_TOKEN must be at least 32 characters', _output(result))
 
     def test_production_starts_with_matching_iss_aud(self):
         result = _settings_check(

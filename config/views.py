@@ -47,27 +47,32 @@ class InitialSuperuserForm(forms.Form):
         return cleaned_data
 
 
+SETUP_TOKEN_MIN_LENGTH = 32
+
+
+def _setup_token_configured():
+    """A configured token shorter than the minimum is treated as not configured."""
+    return len(settings.SETUP_TOKEN or '') >= SETUP_TOKEN_MIN_LENGTH
+
+
 def _provided_setup_token(request):
-    if request.method == 'POST':
-        return (
-            request.POST.get('setup_token', '').strip()
-            or request.headers.get('X-Setup-Token', '').strip()
-        )
+    """The token comes from the POST body or the X-Setup-Token header. Never from the URL query."""
+    if request.method != 'POST':
+        return ''
     return (
-        request.GET.get('setup_token', '').strip()
+        request.POST.get('setup_token', '').strip()
         or request.headers.get('X-Setup-Token', '').strip()
     )
 
 
 def _bootstrap_allowed(request):
     # SETUP_TOKEN is required even when DEBUG is true.
-    setup_token = settings.SETUP_TOKEN
-    if not setup_token:
+    if not _setup_token_configured():
         return False
     provided = _provided_setup_token(request)
     if not provided:
         return False
-    return secrets.compare_digest(provided, setup_token)
+    return secrets.compare_digest(provided.encode(), settings.SETUP_TOKEN.encode())
 
 
 def health_live(_request):
@@ -116,7 +121,8 @@ def root(request):
                     'We could not create the initial user right now. Please retry in a moment.',
                 )
 
-    show_setup_form = not has_users and bootstrap_allowed
+    # The form is offered whenever a usable token is configured. The token is checked on POST.
+    show_setup_form = not has_users and _setup_token_configured()
     ai_docs_url = getattr(
         settings,
         'SHELLUI_AI_DOCS_URL',
@@ -125,7 +131,7 @@ def root(request):
     context = {
         'form': form,
         'show_setup_form': show_setup_form,
-        'bootstrap_blocked': not has_users and not bootstrap_allowed,
+        'bootstrap_blocked': not has_users and not _setup_token_configured(),
         'swagger_url': reverse('swagger-ui'),
         'redoc_url': reverse('redoc'),
         'schema_url': reverse('schema'),

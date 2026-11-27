@@ -73,6 +73,14 @@ class SaasUrlTests(SimpleTestCase):
                 request_json('GET', 'https://evil.example/collect', token='t')
         request.assert_not_called()
 
+    def test_request_json_never_follows_a_redirect(self):
+        redirected = _response({'detail': 'moved'})
+        redirected.status_code = 302
+        with patch('apps.global_mcp.saas_client.requests.request', return_value=redirected) as request:
+            status, _payload = request_json('GET', '/api/v1/me', token='t')
+        self.assertEqual(status, 302)
+        self.assertIs(request.call_args.kwargs['allow_redirects'], False)
+
     def test_request_json_rejects_dotdot_that_leaves_the_base(self):
         with patch('apps.global_mcp.saas_client.requests.request') as request:
             with self.assertRaises(SaasError):
