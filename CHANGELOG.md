@@ -30,6 +30,19 @@ See for sample https://raw.githubusercontent.com/favoloso/conventional-changelog
 - The form at `/` requires `SETUP_TOKEN` when `DEBUG=true`, the same as when `DEBUG=false`. The token is no longer read from the URL query: enter it in the form, or send it in the `X-Setup-Token` header or the POST body. It must be at least 32 characters, and a shorter value stops startup. Leave `SETUP_TOKEN` empty and use `manage.py createsuperuser` for local setup.
 - Published images build the Dockerfile `production` stage (`DEBUG=false`). The `dev` stage is local only and is not published. Root Compose tags that stage `ai-service:local`.
 - The company gateway refuses a call when the revocation check is missing or fails. Downstream calls for a tool the gateway already allowed send `mcp_gateway_delegated` as `{"action": "<tool name>", "exp": <unix seconds>}` on the bearer token, with `exp` 60 seconds ahead.
+- `shellui-django` 0.8.0 with Django 6.1.3, Django REST framework 3.18.3 and drf-spectacular 0.30.0. The shellui-django pins are exact, so these move together.
+- gunicorn 27.0.1. A request whose `Transfer-Encoding` does not end with `chunked` (for example `identity` alone) now gets HTTP 400. No gunicorn setting changed.
+
+### 🔒 Security
+
+- Django 6.1.3 includes the Django security releases of October and November 2026, among them a fix for memory use when parsing large multipart uploads.
+
+### 🏗 Chore
+
+- Node.js 26, the current LTS, for the image build stage and CI.
+- GitHub Actions: actions/checkout v7, actions/setup-node v7, astral-sh/setup-uv v10.4.0, docker/build-push-action v7, docker/login-action v4, docker/metadata-action v6, docker/setup-buildx-action v4, docker/setup-qemu-action v4, peter-evans/dockerhub-description v5.0.0.
+- Python dependencies: python-dotenv 1.2.4, psycopg 3.3.9, sentry-sdk 2.77.0, cryptography 50.0.2, requests 2.34.2, markdown 3.11.4, redis 8.2.0, sqlparse 0.6.1.
+- npm dependencies: @tailwindcss/cli 4.3.5, tailwindcss 4.3.5.
 
 ## [0.4.2] - 2026-11-27
 

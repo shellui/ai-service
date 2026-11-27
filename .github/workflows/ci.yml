@@ -40,10 +40,10 @@ jobs:
       IDENTITY_JWKS_URL: http://localhost:8000/.well-known/jwks.json
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
           version: '0.12.1'
           python-version: '3.14'
@@ -54,9 +54,9 @@ jobs:
         run: uv sync --frozen --no-dev --group test
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '26'
           cache: npm
           cache-dependency-path: package-lock.json
 
@@ -77,35 +77,35 @@ jobs:
 
       # Optional repo variable IDENTITY_SERVICE_REF (commit SHA or branch) to test against identity changes not yet on develop.
       - name: Checkout identity-service (develop)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: shellui/identity-service
           ref: ${{ vars.IDENTITY_SERVICE_REF || 'develop' }}
           path: .e2e-identity
 
       - name: Checkout storage-service (develop)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: shellui/storage-service
           ref: ${{ vars.STORAGE_SERVICE_REF || 'develop' }}
           path: .e2e-storage-service
 
       - name: Checkout hosting-service (develop)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: shellui/hosting-service
           ref: ${{ vars.HOSTING_SERVICE_REF || 'develop' }}
           path: .e2e-hosting-service
 
       - name: Checkout email-service (develop)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: shellui/email-service
           ref: ${{ vars.EMAIL_SERVICE_REF || 'develop' }}
           path: .e2e-email-service
 
       - name: Checkout saas-service (develop)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         continue-on-error: true
         with:
           repository: shellui/saas-service
@@ -120,7 +120,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -135,7 +135,7 @@ jobs:
           "${install_dir}/gitleaks" detect --source . --verbose --redact --exit-code 1
 
       - name: Install uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
           version: '0.12.1'
           python-version: '3.14'
@@ -187,7 +187,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Link check (lychee)
         uses: lycheeverse/lychee-action@v2
@@ -207,7 +207,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # Full docs.shellui.com build requires shellui/shellui to register the ai service
       # in DOCS_SERVICES (same as identity, storage, hosting). Until then, validate sources.
@@ -229,17 +229,17 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Checkout ai-service
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Checkout identity-service (develop)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: shellui/identity-service
           ref: ${{ vars.IDENTITY_SERVICE_REF || 'develop' }}
           path: identity-service
 
       - name: Install uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
           version: '0.12.1'
           python-version: '3.14'
@@ -252,14 +252,14 @@ jobs:
         run: uv sync --frozen --no-dev
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '26'
           cache: npm
           cache-dependency-path: tools/mcp-e2e/clients/package-lock.json
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Run MCP client conformance
         env:
@@ -272,13 +272,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           target: production
