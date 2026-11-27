@@ -49,7 +49,8 @@ class IsMcpCallLogReader(BasePermission):
 
     Staff follows the existing ai-service admin rule (``IsStaffOrCompanyOwner``):
     a staff user may read the company on their JWT. Company admins are
-    ``is_company_admin`` or an admin group, and do not have to be owners.
+    the explicit ``is_company_admin`` claim, and do not have to be owners. A group name
+    never makes someone a company admin.
     """
 
     def has_permission(self, request, view):
