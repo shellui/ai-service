@@ -91,7 +91,7 @@ class DownstreamDelegationSigningTests(SimpleTestCase):
         self.assertIsInstance(grant['exp'], int)
         self.assertLessEqual(grant['exp'] - int(claims['iat']), 60)
         self.assertGreater(grant['exp'], int(claims['iat']))
-        self.assertEqual(post.call_args.kwargs['json']['mcp_gateway_delegated'], grant)
+        self.assertIsNone(post.call_args.kwargs.get('json'))
 
     @patch('apps.connector.downstream_tokens.requests.post')
     def test_mint_logs_never_include_private_key_or_bearer(self, post):

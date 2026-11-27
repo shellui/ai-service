@@ -49,8 +49,8 @@ def mint_downstream_access_token(
     """Ask identity to sign an agent access token for ``resource`` (downstream ``/mcp`` URL).
 
     ``delegated_action`` is the downstream tool name the gateway already allowed.
-    The mint request carries ``mcp_gateway_delegated`` as ``{"action", "exp"}`` and the
-    access token is sent to that service as a bearer token.
+    The signed mint request carries ``mcp_gateway_delegated`` as ``{"action", "exp"}``.
+    Identity copies that tool onto the access token it returns.
     """
     signing = getattr(settings, 'AI_SERVICE_SIGNING_KEY', None)
     issuer = (getattr(settings, 'AI_SERVICE_ISSUER', '') or '').strip().rstrip('/')
@@ -85,18 +85,9 @@ def mint_downstream_access_token(
         raise DownstreamTokenError('Could not sign downstream token request.') from exc
     url = f'{origin}{DOWNSTREAM_TOKEN_PATH}'
     timeout = float(getattr(settings, 'MCP_GATEWAY_DOWNSTREAM_TIMEOUT_SECONDS', 5))
-    body = None
-    if grant is not None:
-        body = {
-            'agent_id': agent.agent_id,
-            'company_id': agent.company_id,
-            'resource': resource,
-            'mcp_gateway_delegated': grant,
-        }
     try:
         response = requests.post(
             url,
-            json=body,
             headers={'Authorization': f'Bearer {assertion}', 'Content-Type': 'application/json'},
             timeout=timeout,
         )
