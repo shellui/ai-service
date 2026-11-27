@@ -11,6 +11,7 @@ from django.conf import settings
 from django.http import HttpRequest, HttpResponse, JsonResponse, StreamingHttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from drf_spectacular.generators import SchemaGenerator
+from rest_framework.request import Request
 from shellui_django.mcp.gateway import (
     AggregatingMcpServer,
     McpGatewayConfig,
@@ -656,58 +657,8 @@ class PrefixingMcpServer(AggregatingMcpServer):
         # into ``unknown_tool`` (e2e: ``ai_list_services`` must resolve like ``list_services``).
         return downstream
 
-    def handle(self, request: HttpRequest, *, agent_claims: dict | None = None):
-        # ``agent_claims`` is not a trust source. The bearer token is verified here.
-        del agent_claims
-        claims = self._claims_from_bearer(request)
-        if claims is None:
-            return JsonResponse({'error': 'unauthorized'}, status=401)
-        from shellui_django.mcp.server import VerifiedTokenUser
-
-        request.user = VerifiedTokenUser(str(claims.get('agent_id') or ''))
-        request.auth = claims
-        return handle_mcp_gateway_request(self, request, agent_claims=claims)
-
-    def _claims_from_bearer(self, request: HttpRequest) -> dict | None:
-        """Verify the bearer with the configured identity issuer, audience, and JWKS."""
-        issuer = (getattr(settings, 'IDENTITY_ISSUER', '') or '').strip()
-        jwks = getattr(settings, 'IDENTITY_JWKS_DOCUMENT', None)
-        jwks_url = (getattr(settings, 'IDENTITY_JWKS_URL', '') or '').strip()
-        if not issuer or (jwks is None and not jwks_url):
-            if not (settings.DEBUG and getattr(settings, 'JWT_HS256_FALLBACK_SECRET', '')):
-                return None
-        header = str(request.META.get('HTTP_AUTHORIZATION') or '')
-        if not header.lower().startswith('bearer '):
-            return None
-        token = header[7:].strip()
-        if not token:
-            return None
-        company_id = _company_id_from_mcp_path(request.path)
-        if company_id is None:
-            return None
-        expected = company_mcp_resource(request, company_id)
-        if not expected:
-            return None
-        verified = _verify_rs256_agent_token(
-            token,
-            issuer=issuer,
-            jwks=jwks,
-            jwks_url=jwks_url,
-            expected_resource=expected,
-            company_id=company_id,
-        )
-        if verified is not None:
-            return verified
-        if _token_alg(token) == 'RS256':
-            return None
-        result = authenticate_agent_bearer(token, expected_resource=expected)
-        if not result:
-            return None
-        _principal, claims = result
-        claim_company = strict_numeric_company_id(claims.get('company_id'))
-        if claim_company is None or claim_company != company_id:
-            return None
-        return dict(claims)
+    def handle(self, request: HttpRequest, *, agent_claims: dict | None):
+        return handle_mcp_gateway_request(self, request, agent_claims=agent_claims)
 
     def _using_connector_tool_catalog(self, handler, request, req_id, params, agent_claims):
         import shellui_django.mcp.gateway as gw
@@ -1005,8 +956,7 @@ class PrefixingMcpServer(AggregatingMcpServer):
         mcp_url = self._gateway.get_service_urls().get(service_id)
         if not mcp_url:
             return JsonResponse(McpServer._error(req_id, -32603, 'Service unavailable'))
-        action = str(route.get('downstream_name') or '')
-        action_token = _downstream_delegated_action.set(action)
+        action_token = _downstream_delegated_action.set(str(route.get('downstream_name') or ''))
         try:
             token = self._gateway.mint_downstream_token(agent, mcp_url)
         finally:
@@ -1691,11 +1641,10 @@ def _mint_token(agent: AgentRecord, mcp_url: str) -> str:
     resource = downstream_resource_for(mcp_url)
     if not resource:
         raise DownstreamTokenError('MCP service is not configured.')
-    action = _downstream_delegated_action.get()
     return mint_downstream_access_token(
         agent,
         resource=resource,
-        delegated_action=action or None,
+        delegated_action=_downstream_delegated_action.get() or None,
     )
 
 
@@ -1716,80 +1665,34 @@ def _get_server() -> AggregatingMcpServer:
             schema_provider=_schema,
             urlconf=settings.ROOT_URLCONF,
             service_name='ai',
-            identity_issuer=(getattr(settings, 'IDENTITY_ISSUER', '') or '') or None,
-            identity_jwks=getattr(settings, 'IDENTITY_JWKS_DOCUMENT', None),
-            identity_jwks_url=(getattr(settings, 'IDENTITY_JWKS_URL', '') or '') or None,
-            mcp_audience=(getattr(settings, 'AI_PUBLIC_URL', '') or getattr(settings, 'AI_SERVICE_ISSUER', '') or '')
-            or None,
             identity_revocation_check=lambda agent_id, company_id: agent_is_revoked(agent_id, company_id),
             on_call=_record_mcp_call,
         )
     return _server
 
 
-def _token_alg(token: str) -> str:
-    import jwt
-
-    try:
-        return str(jwt.get_unverified_header(token).get('alg') or '')
-    except jwt.PyJWTError:
-        return ''
-
-
-def _verify_rs256_agent_token(
-    token: str,
-    *,
-    issuer: str,
-    jwks,
-    jwks_url: str,
-    expected_resource: str,
-    company_id: int,
-) -> dict | None:
-    """Verify an identity RS256 access token. ``https`` JWKS only, unless DEBUG, and no redirects."""
-    if not issuer or (jwks is None and not jwks_url):
+def _agent_claims(request: HttpRequest, company_id: int) -> dict | None:
+    header = request.headers.get('Authorization', '')
+    if not header.lower().startswith('bearer '):
         return None
-    import jwt
-    from shellui_django.mcp.identity_jwks import IdentityJwksError, decode_identity_rs256_jwt
-
-    from apps.authapi.agent_tokens import _agent_staff_refused, agent_scope_allows_ai
-    from apps.connector.mcp_identity import personal_agent_bearer_valid
-
-    try:
-        alg = str(jwt.get_unverified_header(token).get('alg') or '')
-    except jwt.PyJWTError:
+    raw = header.split(' ', 1)[1].strip()
+    expected_resource = company_mcp_resource(request, company_id)
+    if not expected_resource:
         return None
-    if alg != 'RS256':
+    result = authenticate_agent_bearer(raw, expected_resource=expected_resource)
+    if not result:
         return None
-    try:
-        claims = decode_identity_rs256_jwt(
-            token,
-            audience=expected_resource,
-            issuer=issuer.rstrip('/'),
-            jwks_url=jwks_url or None,
-            jwks=jwks if isinstance(jwks, dict) else None,
-            require_claims=('agent_id',),
-        )
-    except IdentityJwksError:
-        return None
-    claim_company = strict_numeric_company_id(claims.get('company_id'))
-    if claim_company is None or claim_company != company_id:
-        return None
+    principal, claims = result
     if not company_audience_matches(claims, expected_resource):
         return None
-    if _agent_staff_refused(claims) or not agent_scope_allows_ai(claims):
+    # The URL names the tenant: require strict numeric ``company_id`` (no UUID/string coercion).
+    claim_cid = strict_numeric_company_id(claims.get('company_id'))
+    if claim_cid is None or claim_cid != int(company_id):
         return None
-    if not personal_agent_bearer_valid(claims):
-        return None
+    request.user = principal
+    drf_request = Request(request)
+    drf_request.user = principal
     return dict(claims)
-
-
-def _company_id_from_mcp_path(path: str) -> int | None:
-    import re
-
-    match = re.search(r'/c/([1-9][0-9]*)/mcp/?$', path or '')
-    if not match:
-        return None
-    return int(match.group(1))
 
 
 def _with_www_authenticate(response, request: HttpRequest, company_id: int):
@@ -1830,8 +1733,7 @@ def mcp_endpoint(request: HttpRequest, company_id: int):
         # Same 404 as before for 0 / non-positive ids. No challenge: that would
         # describe a company URL we do not serve.
         return JsonResponse({'error': 'not_found'}, status=404)
-    server = _get_server()
-    claims = server._claims_from_bearer(request)
+    claims = _agent_claims(request, company_id)
     if claims is None:
         # GET and POST without a token both challenge. Clients such as Hermes
         # probe with GET and read WWW-Authenticate before the well-known paths.
@@ -1851,7 +1753,7 @@ def mcp_endpoint(request: HttpRequest, company_id: int):
     token = _mcp_http_request.set(request)
     claims_token = _mcp_agent_claims.set(claims)
     try:
-        return _with_www_authenticate(server.handle(request), request, company_id)
+        return _with_www_authenticate(_get_server().handle(request, agent_claims=claims), request, company_id)
     except DownstreamTokenError:
         return JsonResponse({'error': 'downstream_token_unavailable'}, status=503)
     finally:

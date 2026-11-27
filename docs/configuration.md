@@ -46,7 +46,7 @@ Identity verifies delegation requests with `AI_SERVICE_JWKS` / `AI_SERVICE_JWKS_
 
 `setup_flow` assertions and session grants always require absolute `setup_expires_at` (token + session-check response when setup) and absolute `expires_at` on the session-check response; there are no toggles.
 
-The company gateway verifies the bearer token with `IDENTITY_ISSUER` and `IDENTITY_JWKS` (or `IDENTITY_JWKS_URL`). A JWKS URL must be `https` unless `DEBUG=true`, and redirects are not followed. Global mode verifies tokens with `AI_SERVICE_ISSUER`, `AI_PUBLIC_URL`, and `AI_SERVICE_SIGNING_KEY`. Both modes reject the call when the revocation check is missing or raises. After the gateway allows a tool, the downstream bearer token carries `mcp_gateway_delegated` as `{"action": "<tool name>", "exp": <unix seconds>}` for 60 seconds. A boolean value does not skip a second approval.
+The company gateway rejects an MCP call when the revocation check is missing or raises. After the gateway allows a tool, the downstream bearer token carries `mcp_gateway_delegated` as `{"action": "<tool name>", "exp": <unix seconds>}` for 60 seconds. A boolean value does not skip a second approval.
 
 ## Downstream services
 

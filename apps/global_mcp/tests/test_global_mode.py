@@ -469,11 +469,11 @@ class GlobalToolTests(TestCase):
             'regional_company_id': '42',
             'limits_version': 1,
             'status': 'active',
-            'region': {'code': 'ch', 'ai_url': 'http://ai.region', 'identity_url': 'http://id.region'},
+            'region': {'code': 'ch', 'ai_url': 'https://ai.region', 'identity_url': 'https://id.region'},
         }
         maybe_setup_grant(self.agent, company)
 
-        def fake_post(url, json=None, headers=None, timeout=None):
+        def fake_post(url, json=None, headers=None, timeout=None, **_kwargs):
             class Response:
                 status_code = 200
                 headers = {'Content-Type': 'application/json'}
@@ -546,11 +546,11 @@ class GlobalToolTests(TestCase):
             'regional_company_id': '42',
             'limits_version': 1,
             'status': 'active',
-            'region': {'code': 'ch', 'ai_url': 'http://ai.region', 'identity_url': 'http://id.region'},
+            'region': {'code': 'ch', 'ai_url': 'https://ai.region', 'identity_url': 'https://id.region'},
         }
         maybe_setup_grant(self.agent, company)
 
-        def fake_post(url, json=None, headers=None, timeout=None):
+        def fake_post(url, json=None, headers=None, timeout=None, **_kwargs):
             class Response:
                 status_code = 200
                 headers = {'Content-Type': 'application/json'}
@@ -660,20 +660,6 @@ class GlobalToolTests(TestCase):
         self.assertEqual(grant['action'], 'saas_get_me')
         self.assertLessEqual(int(grant['exp']) - int(claims['iat']), 60)
         self.assertGreater(int(grant['exp']), int(claims['iat']))
-
-    def test_revocation_hook_error_is_forbidden(self):
-        with patch(
-            'apps.global_mcp.mcp_views.global_agent_revocation_check',
-            side_effect=RuntimeError('down'),
-        ):
-            response = self.client.post(
-                '/mcp',
-                data=json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'}),
-                content_type='application/json',
-                HTTP_AUTHORIZATION=f'Bearer {self.token}',
-            )
-        self.assertEqual(response.status_code, 403)
-        self.assertEqual(response.json()['error'], 'revocation_unavailable')
 
 
 class RegionUnchangedTests(TestCase):

@@ -254,14 +254,14 @@ def forward_company_tool(
         return {'error': 'You are not a member of this project.'}
     if str(company.get('status') or 'active') != 'active' or not ai_url or not identity_url or not regional_id.isdigit():
         return {'error': 'This project does not have a regional AI URL yet.'}
+    grant, missing = ensure_grant(agent, company)
+    if missing is not None:
+        return missing
     try:
         ai_url = require_exchange_url(ai_url).rstrip('/')
         identity_url = require_exchange_url(identity_url).rstrip('/')
     except ExchangeHostRejected:
         return {'error': 'Region URL is not an allowed exchange host.'}
-    grant, missing = ensure_grant(agent, company)
-    if missing is not None:
-        return missing
     resource = f'{ai_url}/c/{int(regional_id)}/mcp'
     setup = None
     if (

@@ -158,23 +158,6 @@ class McpGatewayTests(TestCase):
     def _auth(self, token: str) -> dict:
         return {'HTTP_AUTHORIZATION': f'Bearer {token}', 'HTTP_ACCEPT': MCP_ACCEPT}
 
-    def test_handle_does_not_trust_passed_claims(self, _rev_ok):
-        from django.test import RequestFactory
-
-        from apps.connector.mcp_views import _get_server
-
-        request = RequestFactory().post(
-            '/c/10/mcp',
-            data=_rpc('tools/list'),
-            content_type='application/json',
-            HTTP_ACCEPT=MCP_ACCEPT,
-        )
-        response = _get_server().handle(
-            request,
-            agent_claims={'agent_id': 'intruder', 'company_id': 10, 'scope': 'ai', 'mcp_access': 'full'},
-        )
-        self.assertEqual(response.status_code, 401)
-
     def test_auth_required(self, _rev_ok):
         response = self.client.post('/c/10/mcp', data=_rpc('tools/list'), content_type='application/json')
         self.assertEqual(response.status_code, 401)

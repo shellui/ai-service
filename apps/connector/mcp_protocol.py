@@ -13,8 +13,6 @@ import logging
 import secrets
 from typing import Any
 
-logger = logging.getLogger(__name__)
-
 from django.core.cache import cache
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from shellui_django.mcp.gateway import AggregatingMcpServer
@@ -37,6 +35,8 @@ from apps.connector.mcp_setup_context import (
 from apps.connector.mcp_tool_presentation import shellui_gateway_instructions
 from shellui_django.mcp.rate_limit import check_agent_rate_limit
 from shellui_django.mcp.server import McpServer
+
+logger = logging.getLogger(__name__)
 
 # Supported MCP revisions, newest first. ``negotiate_protocol_version`` echoes a requested
 # member and otherwise answers with the newest revision this gateway implements.
