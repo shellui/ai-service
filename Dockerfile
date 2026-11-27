@@ -12,7 +12,7 @@ RUN npm run build:css
 
 # Local dev stack (shellui/dev): deps only; bind-mount source at /app.
 # This stage is not published. Releases build the production stage below.
-FROM python:3.14-slim AS dev
+FROM python:3.14.10-slim AS dev
 
 LABEL com.shellui.image-stage=dev
 
@@ -31,7 +31,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     util-linux \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=ghcr.io/astral-sh/uv:0.12.1 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.13.10 /uv /uvx /bin/
 
 COPY pyproject.toml uv.lock /app/
 RUN uv sync --frozen --no-dev --no-install-project
@@ -47,7 +47,7 @@ ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["dev"]
 
 # Published image. Keep this stage last so a build without --target still selects it.
-FROM python:3.14-slim AS production
+FROM python:3.14.10-slim AS production
 
 LABEL com.shellui.image-stage=production
 
@@ -66,7 +66,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     util-linux \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=ghcr.io/astral-sh/uv:0.12.1 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.13.10 /uv /uvx /bin/
 
 COPY pyproject.toml uv.lock /app/
 RUN uv sync --frozen --no-dev --no-install-project
