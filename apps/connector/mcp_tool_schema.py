@@ -9,6 +9,8 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
+from shellui_django.mcp.openapi_tools import DESTINATION_MARKER
+
 _VALID_TYPES = frozenset({'string', 'integer', 'number', 'boolean', 'array', 'object', 'null'})
 
 
@@ -75,13 +77,39 @@ def _overlay_description(node: dict[str, Any], description: str | None) -> dict[
     return {**node, 'description': f'{text} {current}'.strip()}
 
 
+def _marked_destination(schema: dict[str, Any]) -> bool:
+    """``x-mcp-destination`` on the node or on one of its anyOf/oneOf/allOf branches (blank-allowed fields)."""
+    if schema.get(DESTINATION_MARKER) is True:
+        return True
+    return any(
+        isinstance(branch, dict) and branch.get(DESTINATION_MARKER) is True
+        for key in ('anyOf', 'oneOf', 'allOf')
+        for branch in (schema.get(key) if isinstance(schema.get(key), list) else [])
+    )
+
+
 def openapi_schema_to_json_schema(
     schema: dict[str, Any] | None,
     root: dict[str, Any],
     *,
     _seen: set[str] | None = None,
 ) -> dict[str, Any]:
-    """Convert an OpenAPI 3.0/3.1 schema fragment to a JSON Schema node for MCP clients."""
+    """Convert an OpenAPI 3.0/3.1 schema fragment to a JSON Schema node for MCP clients.
+
+    ``x-mcp-destination`` is kept: the approval prompt reads it to show where a call sends data.
+    """
+    out = _convert_openapi_schema(schema, root, _seen=_seen)
+    if isinstance(schema, dict) and _marked_destination(schema):
+        out = {**out, DESTINATION_MARKER: True}
+    return out
+
+
+def _convert_openapi_schema(
+    schema: dict[str, Any] | None,
+    root: dict[str, Any],
+    *,
+    _seen: set[str] | None = None,
+) -> dict[str, Any]:
     if not isinstance(schema, dict):
         return {'type': 'string', 'description': 'OpenAPI schema missing; treated as string.'}
     seen = _seen if _seen is not None else set()

@@ -341,7 +341,7 @@ Identity `GET /api/v1/mcp/personal/agents/{id}/activity` returns `{ "agent_id", 
 
 Approval creates still must not send `arguments` or `arguments_redacted`. A redacted `arguments_summary` string (max 500 characters) is the only argument text Identity accepts, and only on that create.
 
-The summary lists destination-like arguments first (`url`, `uri`, `endpoint`, `destination`, `host`, `redirect_uri`, and names ending `_url` or `_uri`, including inside nested objects), shows `user:pass@` as `***@`, and cuts every other value on its own, so a long argument cannot hide the destination.
+The summary is built from the cleaned arguments that are forwarded to the service. A tool declares its destination properties (URL, email, host, redirect target) with `x-mcp-destination: true` in its `inputSchema`, on plain, nested and list item properties. The line shows those values first and in full as `Destinations: {"hosts[1]": "..."}`, with labels taken from the schema path and values from the arguments, so an argument key can never pose as a label. Non-ASCII and control characters appear as `\uXXXX` escapes, and `user:pass@` is shown as `***@` in every string value. If the destinations do not fit in 500 characters the call is refused, never shortened. The other values follow as `Arguments:`, cut at 60 characters each, with secrets masked. The marker is built by `shellui_django.mcp` (see the commons MCP docs).
 
 A downstream HTTP 2xx alone does not imply `allowed` if the gateway classified the operation as an error (`is_error`, audit `log_result`). See `outcome_from_audit`.
 

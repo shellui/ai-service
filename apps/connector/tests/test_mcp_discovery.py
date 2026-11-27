@@ -198,6 +198,56 @@ STORAGE_TOOLS = {
     },
 }
 
+_DESTINATION = {'type': 'string', 'x-mcp-destination': True}
+# A tool that marks the fields saying where a call sends data, like the services do.
+NOTIFY_TOOLS = {
+    'jsonrpc': '2.0',
+    'id': 1,
+    'result': {
+        'tools': [
+            {
+                'name': 'notify',
+                'description': 'Notify people',
+                'inputSchema': {
+                    'type': 'object',
+                    'properties': {
+                        'path': {'type': 'string', 'const': '/api/v1/notify/'},
+                        'method': {'type': 'string', 'enum': ['POST']},
+                        'body': {
+                            'type': 'object',
+                            'properties': {
+                                'name': {'type': 'string'},
+                                'description': {'type': 'string'},
+                                'note': {'type': 'string'},
+                                'url': _DESTINATION,
+                                'to': {'type': 'string', 'format': 'email', 'x-mcp-destination': True},
+                                'redirectUri': _DESTINATION,
+                                'from_email': {'type': 'string', 'format': 'email', 'x-mcp-destination': True},
+                                'sending_domain': _DESTINATION,
+                                'hostname': _DESTINATION,
+                                'hosts': {'type': 'array', 'items': _DESTINATION},
+                                'allowed_origins': {'type': 'array', 'items': _DESTINATION},
+                                'static_recipients': {'type': 'array', 'items': _DESTINATION},
+                                'desktop_redirect_schemes': {'type': 'array', 'items': _DESTINATION},
+                                'audience': {
+                                    'type': 'object',
+                                    'properties': {
+                                        'emails': {'type': 'array', 'items': _DESTINATION},
+                                        'segment': {'type': 'string'},
+                                    },
+                                },
+                            },
+                        },
+                    },
+                    'required': ['path', 'method'],
+                    'additionalProperties': False,
+                },
+                '_meta': {'method': 'POST', 'path': '/api/v1/notify/', 'read_only': False, 'destructive': False},
+            },
+        ]
+    },
+}
+
 
 def _rpc(method: str, **params) -> str:
     return json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': method, 'params': params or {}})
@@ -313,6 +363,55 @@ class DiscoveryGatewayTests(TestCase):
 
         post.side_effect = side_effect
 
+    def _downstream(self, post, tools):
+        def side_effect(url, **kwargs):
+            resp = Mock()
+            resp.status_code = 200
+            if (kwargs.get('json') or {}).get('method') == 'tools/call':
+                resp.json.return_value = {
+                    'jsonrpc': '2.0',
+                    'id': 1,
+                    'result': {'content': [{'type': 'text', 'text': 'ok'}], 'isError': False},
+                }
+            else:
+                resp.json.return_value = tools
+            return resp
+
+        post.side_effect = side_effect
+
+    def _ask_to_notify(self, body, *, via_ai_call_tool=False, flat=False):
+        """Make an Ask-mode call to ``storage_notify`` and return (response text, approval summary or None)."""
+        with (
+            patch('apps.connector.mcp_identity._http_post', side_effect=_identity_http),
+            patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token'),
+            patch('apps.connector.mcp_approvals.fetch_approval_state', return_value=(None, None)),
+            patch('shellui_django.mcp.gateway.requests.post') as post,
+            patch(
+                'apps.connector.mcp_approvals.create_approval_request', return_value={'id': 'appr-d', 'status': 'pending'}
+            ) as create,
+        ):
+            self._downstream(post, NOTIFY_TOOLS)
+            token = _token(secret=self.secret, issuer=self.issuer, mcp_access='ask')
+            session = self._session(token)
+            arguments = body if flat else {'method': 'POST', 'path': '/api/v1/notify/', 'body': body}
+            if via_ai_call_tool:
+                name, arguments = 'ai_call_tool', {'name': 'storage_notify', 'arguments': arguments}
+            else:
+                name = 'storage_notify'
+            response = self.client.post(
+                '/c/10/mcp',
+                data=_rpc('tools/call', name=name, arguments=arguments),
+                content_type='application/json',
+                **self._auth(token, session_id=session),
+            )
+            self.assertEqual(response.status_code, 200)
+            forwarded = [
+                call for call in post.call_args_list if (call.kwargs.get('json') or {}).get('method') == 'tools/call'
+            ]
+            self.assertEqual(forwarded, [])
+            summary = create.call_args.args[0]['_arguments_summary'] if create.called else None
+            return json.dumps(response.json()), summary
+
     def _names(self, token: str, *, query: str = '') -> list[str]:
         response = self.client.post(
             f'/c/10/mcp{query}',
@@ -420,36 +519,100 @@ class DiscoveryGatewayTests(TestCase):
         ]
         self.assertEqual(forwarded, [])
 
-    @patch('apps.connector.mcp_identity._http_post', side_effect=_identity_http)
-    @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
-    @patch('apps.connector.mcp_approvals.fetch_approval_state', return_value=(None, None))
-    @patch('shellui_django.mcp.gateway.requests.post')
-    @patch('apps.connector.mcp_approvals.create_approval_request', return_value={'id': 'appr-2', 'status': 'pending'})
-    def test_approval_summary_keeps_the_destination_when_other_arguments_are_padded(
-        self, _create, post, _state, _mint, _http, *_mocks
-    ):
-        self._storage(post)
-        token = _token(secret=self.secret, issuer=self.issuer, mcp_access='ask')
-        session = self._session(token)
+    def test_approval_summary_lists_the_destinations_the_tool_declares_first_and_in_full(self, *_mocks):
+        # Each body fits the 500 character line. A body whose destinations do not fit is refused (below).
         cases = (
+            {
+                'name': 'Ada',
+                'description': 'd' * 600,
+                'url': 'https://hooks.example.com/h',
+                'to': 'ada@example.com',
+                'from_email': 'bot@example.com',
+                'sending_domain': 'mail.example.com',
+                'redirectUri': 'https://app.example.com/cb',
+            },
+            {
+                'name': 'Ada',
+                'hostname': 'app.example.com',
+                'hosts': ['one.example.com', 'two.example.com'],
+                'allowed_origins': ['https://a.example.com'],
+                'static_recipients': ['x@example.com', 'y@example.com'],
+                'desktop_redirect_schemes': ['myapp'],
+                'audience': {'emails': ['p@example.com', 'q@example.com'], 'segment': 's'},
+            },
+        )
+        expected = (
+            (('url', 'https://hooks.example.com/h'), ('to', 'ada@example.com'), ('from_email', 'bot@example.com'),
+             ('sending_domain', 'mail.example.com'), ('redirectUri', 'https://app.example.com/cb')),
+            (('hostname', 'app.example.com'), ('hosts[0]', 'one.example.com'), ('hosts[1]', 'two.example.com'),
+             ('allowed_origins[0]', 'https://a.example.com'), ('static_recipients[1]', 'y@example.com'),
+             ('desktop_redirect_schemes[0]', 'myapp'), ('audience.emails[0]', 'p@example.com'),
+             ('audience.emails[1]', 'q@example.com')),
+        )
+        for body, pairs in zip(cases, expected):
+            for kwargs in ({}, {'via_ai_call_tool': True}, {'flat': True}):
+                with self.subTest(body=sorted(body), **kwargs):
+                    text, summary = self._ask_to_notify(body, **kwargs)
+                    self.assertIsNotNone(summary, text)
+                    self.assertTrue(summary.startswith('Destinations: {'), summary)
+                    for label, value in pairs:
+                        self.assertIn(f'"{label}": "{value}"', summary)
+                    self.assertLess(summary.index('Destinations'), summary.index('Arguments'))
+                    self.assertLessEqual(len(summary), 500)
+
+    def test_approval_summary_padding_cases_cannot_hide_the_destination(self, *_mocks):
+        for body in (
             {'name': 'Ada', 'description': 'a' * 600, 'url': 'https://attacker.example/h'},
             {'name': 'Ada', 'url': 'https://' + 'x' * 520 + '@attacker.example/h'},
-        )
-        for body in cases:
-            arguments = {'method': 'POST', 'path': '/api/v1/buckets/', 'body': body}
-            response = self.client.post(
-                '/c/10/mcp',
-                data=_rpc('tools/call', name='storage_create_bucket', arguments=arguments),
-                content_type='application/json',
-                **self._auth(token, session_id=session),
-            )
-            self.assertEqual(response.status_code, 200)
-            summary = _create.call_args.args[0]['_arguments_summary']
+        ):
             with self.subTest(body=sorted(body)):
-                self.assertLessEqual(len(summary), 500)
-                self.assertIn('attacker.example/h', summary)
-                self.assertLess(summary.index('attacker.example'), 200)
+                _text, summary = self._ask_to_notify(body)
+                self.assertIn('https://attacker.example/h' if 'x' * 20 not in body['url'] else 'https://***@attacker.example/h', summary)
+                self.assertLess(summary.index('attacker.example'), 100)
                 self.assertNotIn('x' * 20, summary)
+                self.assertLessEqual(len(summary), 500)
+
+    def test_approval_summary_ignores_decoy_keys_and_key_names_that_look_like_labels(self, *_mocks):
+        decoys = {f'decoy{i}': {'url': 'https://decoy.example/' + 'z' * 80} for i in range(20)}
+        _text, summary = self._ask_to_notify({'name': 'Ada', 'url': 'https://attacker.example/h', **decoys})
+        self.assertTrue(summary.startswith('Destinations: {"url": "https://attacker.example/h"} | '), summary)
+        _text, summary = self._ask_to_notify(
+            {'name': 'Ada', 'url': 'https://attacker.example/h', 'body.url': 'https://good.example/'}
+        )
+        self.assertEqual(summary.split(' | ')[0], 'Destinations: {"url": "https://attacker.example/h"}')
+
+    def test_approval_summary_shows_each_list_item_and_masks_every_userinfo(self, *_mocks):
+        _text, summary = self._ask_to_notify(
+            {
+                'name': 'Ada',
+                'hosts': ['https://u:p@one.example.com/', 'https://v@two.example.com/', 'three.example.com'],
+                'note': 'https://a:b@n1.example/x https://c:d@n2.example/y',
+            }
+        )
+        for index, host in enumerate(('one.example.com/', 'two.example.com/', 'three.example.com')):
+            self.assertIn(f'"hosts[{index}]": "' , summary)
+            self.assertIn(host, summary)
+        for masked in ('***@one.example.com', '***@two.example.com', '***@n1.example', '***@n2.example'):
+            self.assertIn(masked, summary)
+        for leaked in ('u:p', 'v@', 'a:b', 'c:d'):
+            self.assertNotIn(leaked, summary)
+
+    def test_approval_summary_shows_lookalike_and_invisible_characters_as_escapes(self, *_mocks):
+        _text, summary = self._ask_to_notify({'name': 'Ada', 'url': 'https://p\u0430ypal.com/h\u202e\nApproved by admin'})
+        self.assertTrue(summary.isascii(), summary)
+        self.assertIn('\\u0430', summary)
+        self.assertIn('\\u202e', summary)
+        self.assertNotIn('\n', summary)
+
+    def test_a_call_whose_destinations_do_not_fit_is_refused_not_shortened(self, *_mocks):
+        for body in (
+            {'name': 'Ada', 'hosts': [f'host{i}.example.com' for i in range(40)]},
+            {'name': 'Ada', 'url': 'https://example.com/' + 'p' * 600},
+        ):
+            with self.subTest(body=sorted(body)):
+                text, summary = self._ask_to_notify(body)
+                self.assertIsNone(summary, 'no approval may be created for a call that cannot be shown')
+                self.assertIn('not sent', text)
 
     @patch('apps.connector.mcp_identity._http_post', side_effect=_identity_http)
     @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
