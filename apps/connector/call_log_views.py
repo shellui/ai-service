@@ -263,8 +263,8 @@ class McpCallLogListView(APIView):
         description=(
             'Returns tool calls recorded by the Shellui AI MCP gateway for the company '
             'on the caller JWT. Staff, company owners, and company admins only. '
-            'A company admin is user_metadata.is_company_admin, or a group named '
-            'admin, admins, or company admins, and does not have to be an owner. '
+            'A company admin is user_metadata.is_company_admin and does not have to be '
+            'an owner. A group name never makes someone a company admin. '
             'Agent access tokens are refused. '
             'Each row includes operation_title (tool name when no registry title), '
             'access_kind (read, write, destructive, or unknown), outcome '

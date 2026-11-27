@@ -413,16 +413,17 @@ class CallLogHelperTests(TestCase):
         )
         self.assertTrue(admin.is_company_admin)
         self.assertFalse(admin.is_company_owner)
-        grouped = principal_from_claims(
-            {
-                'sub': '5',
-                'user_id': 5,
-                'company_id': 10,
-                'user_metadata': {'groups': ['Company admins']},
-            }
-        )
-        self.assertTrue(grouped.is_company_admin)
-        self.assertFalse(grouped.is_company_owner)
+        for names in (['Company admins'], ['admins'], ['Admin'], ['company admin'], 'admins'):
+            with self.subTest(groups=names):
+                for where in ('user_metadata', 'claims'):
+                    claims = {'sub': '5', 'user_id': 5, 'company_id': 10, 'user_metadata': {}}
+                    if where == 'user_metadata':
+                        claims['user_metadata'] = {'groups': names}
+                    else:
+                        claims['groups'] = names
+                    grouped = principal_from_claims(claims)
+                    self.assertFalse(grouped.is_company_admin)
+                    self.assertFalse(grouped.is_company_owner)
         member = principal_from_claims(
             {
                 'sub': '6',
@@ -555,6 +556,45 @@ class CallLogListApiTests(TestCase):
         self.assertTrue(all(row['company_id'] == 10 for row in listed.json()['call_logs']))
         self._auth(company_id=10, staff=False, owner=False, admin=False)
         self.assertEqual(self.client.get('/ai/v1/mcp/call-logs').status_code, 403)
+
+    @override_settings(
+        DEBUG=True,
+        JWT_HS256_FALLBACK_SECRET='test-hs256-secret-for-mcp-gateway-tests-only',  # gitleaks:allow
+        ALLOW_JWT_HS256_FALLBACK=True,
+        IDENTITY_ISSUER='',
+        IDENTITY_AUDIENCE='',
+        IDENTITY_JWKS_URL='',
+    )
+    def test_a_group_named_admins_does_not_grant_company_admin(self):
+        """A member whose token carries groups ['admins'] cannot read the company call logs."""
+        import time
+
+        import jwt
+
+        def get(**metadata):
+            now = int(time.time())
+            token = jwt.encode(
+                {
+                    'sub': '21',
+                    'user_id': 21,
+                    'company_id': 10,
+                    'email': 'member@example.com',
+                    'user_metadata': {'is_staff': False, 'is_company_owner': False, **metadata},
+                    'iat': now,
+                    'exp': now + 600,
+                },
+                'test-hs256-secret-for-mcp-gateway-tests-only',  # gitleaks:allow
+                algorithm='HS256',
+            )
+            return APIClient().get('/ai/v1/mcp/call-logs', HTTP_AUTHORIZATION=f'Bearer {token}')
+
+        for groups in (['admins'], ['admin'], ['Company admins'], ['company admin'], ['Members', 'ADMINS']):
+            with self.subTest(groups=groups):
+                self.assertEqual(get(groups=groups).status_code, 403)
+        self.assertEqual(get(groups=[]).status_code, 403)
+        # The real roles still work.
+        self.assertEqual(get(is_company_owner=True, groups=['Members']).status_code, 200)
+        self.assertEqual(get(is_company_admin=True).status_code, 200)
 
     def test_staff_can_list_own_company_and_members_cannot(self):
         self._auth(company_id=10, staff=True, owner=False)

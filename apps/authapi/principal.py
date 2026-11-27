@@ -39,9 +39,6 @@ class StoragePrincipal:
         return self.email or self.username or str(self.user_id)
 
 
-_ADMIN_GROUP_NAMES = frozenset({'admin', 'admins', 'company admin', 'company admins'})
-
-
 def _claim_flag(value: object) -> bool:
     if isinstance(value, bool):
         return value
@@ -53,23 +50,12 @@ def _claim_flag(value: object) -> bool:
 def company_admin_from_claims(claims: dict[str, Any], user_metadata: dict[str, Any] | None = None) -> bool:
     """True for a company admin who is not necessarily an owner.
 
-    Identity marks owners with ``is_company_owner``. A company admin is
-    ``is_company_admin``, or a group named admin, admins, or company admins.
+    Identity marks owners with ``is_company_owner``. A company admin is the explicit
+    ``is_company_admin`` claim. A group name never grants it: a company can name a group
+    anything, so ``groups`` is a label and not a role.
     """
     meta = user_metadata if isinstance(user_metadata, dict) else {}
-    if _claim_flag(meta.get('is_company_admin')) or _claim_flag(claims.get('is_company_admin')):
-        return True
-    groups = meta.get('groups')
-    if groups is None:
-        groups = claims.get('groups')
-    if isinstance(groups, str):
-        groups = [groups]
-    if not isinstance(groups, list):
-        return False
-    for group in groups:
-        if str(group).strip().lower() in _ADMIN_GROUP_NAMES:
-            return True
-    return False
+    return _claim_flag(meta.get('is_company_admin')) or _claim_flag(claims.get('is_company_admin'))
 
 
 def principal_from_claims(claims: dict[str, Any]) -> StoragePrincipal:

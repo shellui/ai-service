@@ -194,7 +194,7 @@ The gateway does not POST tool-call logs to Identity `POST /api/v1/mcp/internal/
 
 `GET /ai/v1/mcp/call-logs`
 
-Authentication is a bearer JWT verified the same way as other ai-service APIs. The caller must be staff, a company owner, or a company admin for the `company_id` on that JWT. A company admin is `user_metadata.is_company_admin`, or a group named `admin`, `admins`, or `company admins`, and does not have to be an owner. A plain member cannot read the list. A token cannot read another company. Agent access tokens are refused.
+Authentication is a bearer JWT verified the same way as other ai-service APIs. The caller must be staff, a company owner, or a company admin for the `company_id` on that JWT. A company admin is `user_metadata.is_company_admin` and does not have to be an owner. A group name never makes someone a company admin, whatever it is called: groups are labels that any company can create. A plain member cannot read the list. A token cannot read another company. Agent access tokens are refused.
 
 | Parameter | Meaning |
 | --- | --- |
