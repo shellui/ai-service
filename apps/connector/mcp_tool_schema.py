@@ -9,8 +9,9 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
-from shellui_django.mcp.openapi_tools import DESTINATION_MARKER
-
+# Same marker as shellui_django.mcp.openapi_tools.DESTINATION_MARKER. Not imported: the MCP conformance
+# schema audit imports this module with the standard library only.
+DESTINATION_MARKER = 'x-mcp-destination'
 _VALID_TYPES = frozenset({'string', 'integer', 'number', 'boolean', 'array', 'object', 'null'})
 
 
