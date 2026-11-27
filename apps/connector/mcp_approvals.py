@@ -359,7 +359,7 @@ def approval_arguments_summary(
     arguments: dict[str, Any] | None,
     input_schema: dict[str, Any] | None = None,
     *,
-    destinations_declared: bool = True,
+    destinations_declared: bool = False,
 ) -> str:
     """Redacted one-line summary safe to show on the identity approval page. Empty when there is nothing to say.
 

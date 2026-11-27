@@ -384,7 +384,7 @@ def tools_list_mode(request: Any, params: dict[str, Any] | None) -> str:
     return 'discovery'
 
 
-def _client_tool(tool: dict[str, Any]) -> dict[str, Any]:
+def client_tool(tool: dict[str, Any]) -> dict[str, Any]:
     """MCP ``tools/list`` row: no private registry keys and no ``x-mcp-destination`` (the gate keeps its own copy)."""
     row = {k: v for k, v in tool.items() if not str(k).startswith('_')}
     if isinstance(row.get('inputSchema'), dict):
@@ -403,7 +403,7 @@ def listed_tools(full_catalog: list[dict[str, Any]], *, mode: str, company_label
     if mode == 'all':
         present = {str(tool.get('name') or '') for tool in full_catalog}
         rows = list(full_catalog) + [tool for tool in extras if tool['name'] not in present]
-        return [_client_tool(tool) for tool in rows]
+        return [client_tool(tool) for tool in rows]
     by_name = {str(tool.get('name') or ''): tool for tool in full_catalog}
     listed: list[dict[str, Any]] = []
     services = by_name.get('ai_list_services')
@@ -414,7 +414,7 @@ def listed_tools(full_catalog: list[dict[str, Any]], *, mode: str, company_label
         tool = by_name.get(name)
         if tool is not None:
             listed.append(tool)
-    return [_client_tool(tool) for tool in listed]
+    return [client_tool(tool) for tool in listed]
 
 
 def enrich_service_rows(

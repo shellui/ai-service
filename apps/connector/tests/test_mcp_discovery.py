@@ -705,6 +705,18 @@ class DiscoveryGatewayTests(TestCase):
             self.assertIn('hosts', json.dumps(described.json()))
             self.assertNotIn('x-mcp-destination', json.dumps(described.json()))
 
+    def test_a_marked_field_sent_as_an_object_is_refused_not_approved(self, *_mocks):
+        for body in (
+            {'name': 'Ada', 'url': {'href': 'https://attacker.example/h'}},
+            {'name': 'Ada', 'hosts': {'one': 'attacker.example'}},
+            {'name': 'Ada', 'audience': {'emails': {'a': 'x@attacker.example'}}},
+        ):
+            with self.subTest(body=body):
+                text, summary = self._ask_to_notify(body)
+                self.assertIsNone(summary, 'no approval may be created for a destination sent as an object')
+                self.assertIn('not sent', text)
+                self.assertNotIn('Internal Server Error', text)
+
     def test_a_call_whose_destinations_do_not_fit_is_refused_not_shortened(self, *_mocks):
         for body in (
             {'name': 'Ada', 'hosts': [f'host{i}.example.com' for i in range(40)]},
