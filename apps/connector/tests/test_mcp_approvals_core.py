@@ -480,6 +480,54 @@ class McpApprovalsCoreTests(TestCase):
         )
         self.assertEqual(created['expires_at'], '2026-11-10T21:10:00+00:00')
 
+    def test_summary_puts_destinations_first_and_cuts_each_value_alone(self):
+        summary = mcp_approvals.approval_arguments_summary(
+            {
+                'a_note': 'n' * 600,
+                'description': 'd' * 600,
+                'name': 'Ada',
+                'url': 'https://attacker.example/h',
+            }
+        )
+        self.assertLessEqual(len(summary), 500)
+        self.assertTrue(summary.startswith('{"url": "https://attacker.example/h"'), summary)
+        for key in ('a_note', 'description', 'name'):
+            self.assertIn(f'"{key}"', summary)
+        self.assertIn('"name": "Ada"', summary)
+
+    def test_summary_order_covers_every_destination_key_and_nested_bodies(self):
+        keys = ('url', 'uri', 'endpoint', 'destination', 'host', 'redirect_uri')
+        summary = mcp_approvals.approval_arguments_summary(
+            {'a': 'x' * 700, **{key: f'https://{key}.example/p' for key in keys}, 'callback_url': 'https://cb.example/'}
+        )
+        positions = [summary.index(f'{key}.example') for key in keys]
+        self.assertEqual(positions, sorted(positions))
+        self.assertLess(max(positions), summary.index('"a"'))
+        nested = mcp_approvals.approval_arguments_summary(
+            {'body': {'description': 'd' * 900, 'url': 'https://attacker.example/h'}}
+        )
+        self.assertTrue(nested.startswith('{"body.url": "https://attacker.example/h"'), nested)
+
+    def test_summary_shows_the_real_host_when_the_url_is_padded_with_userinfo(self):
+        padded = 'https://' + 'x' * 520 + '@attacker.example/h'
+        summary = mcp_approvals.approval_arguments_summary({'url': padded})
+        self.assertEqual(summary, '{"url": "https://***@attacker.example/h"}')
+        both = mcp_approvals.approval_arguments_summary({'url': 'https://u:p@a.example', 'note': 'z' * 900})
+        self.assertIn('https://***@a.example', both)
+        self.assertNotIn('u:p', both)
+
+    def test_summary_still_masks_secrets_and_handles_odd_values(self):
+        summary = mcp_approvals.approval_arguments_summary(
+            {'api_key': 'sekret-value', 'url': 'https://h.example', 'n': 3, 'items': list(range(500)), 'é' * 300: 'é' * 300}
+        )
+        self.assertNotIn('sekret-value', summary)
+        self.assertIn('"api_key": "***"', summary)
+        self.assertLessEqual(len(summary), 500)
+        self.assertEqual(mcp_approvals.approval_arguments_summary({}), '')
+        self.assertEqual(mcp_approvals.approval_arguments_summary(None), '')
+        for odd in ('', 'not a url', 'https://', 'https://@', None, 5):
+            self.assertLessEqual(len(mcp_approvals.approval_arguments_summary({'url': odd})), 500)
+
     @patch('apps.connector.mcp_approvals.requests.post')
     def test_state_keeps_id_and_approval_url_for_every_status(self, post):
         post.return_value = MagicMock(

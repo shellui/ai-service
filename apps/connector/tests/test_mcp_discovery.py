@@ -422,6 +422,37 @@ class DiscoveryGatewayTests(TestCase):
 
     @patch('apps.connector.mcp_identity._http_post', side_effect=_identity_http)
     @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
+    @patch('apps.connector.mcp_approvals.fetch_approval_state', return_value=(None, None))
+    @patch('shellui_django.mcp.gateway.requests.post')
+    @patch('apps.connector.mcp_approvals.create_approval_request', return_value={'id': 'appr-2', 'status': 'pending'})
+    def test_approval_summary_keeps_the_destination_when_other_arguments_are_padded(
+        self, _create, post, _state, _mint, _http, *_mocks
+    ):
+        self._storage(post)
+        token = _token(secret=self.secret, issuer=self.issuer, mcp_access='ask')
+        session = self._session(token)
+        cases = (
+            {'name': 'Ada', 'description': 'a' * 600, 'url': 'https://attacker.example/h'},
+            {'name': 'Ada', 'url': 'https://' + 'x' * 520 + '@attacker.example/h'},
+        )
+        for body in cases:
+            arguments = {'method': 'POST', 'path': '/api/v1/buckets/', 'body': body}
+            response = self.client.post(
+                '/c/10/mcp',
+                data=_rpc('tools/call', name='storage_create_bucket', arguments=arguments),
+                content_type='application/json',
+                **self._auth(token, session_id=session),
+            )
+            self.assertEqual(response.status_code, 200)
+            summary = _create.call_args.args[0]['_arguments_summary']
+            with self.subTest(body=sorted(body)):
+                self.assertLessEqual(len(summary), 500)
+                self.assertIn('attacker.example/h', summary)
+                self.assertLess(summary.index('attacker.example'), 200)
+                self.assertNotIn('x' * 20, summary)
+
+    @patch('apps.connector.mcp_identity._http_post', side_effect=_identity_http)
+    @patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token')
     @patch('shellui_django.mcp.gateway.requests.post')
     def test_call_tool_read_full_and_unlisted_direct_call(self, post, _mint, _http, *_mocks):
         self._storage(post)

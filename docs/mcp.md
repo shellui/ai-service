@@ -341,6 +341,8 @@ Identity `GET /api/v1/mcp/personal/agents/{id}/activity` returns `{ "agent_id", 
 
 Approval creates still must not send `arguments` or `arguments_redacted`. A redacted `arguments_summary` string (max 500 characters) is the only argument text Identity accepts, and only on that create.
 
+The summary lists destination-like arguments first (`url`, `uri`, `endpoint`, `destination`, `host`, `redirect_uri`, and names ending `_url` or `_uri`, including inside nested objects), shows `user:pass@` as `***@`, and cuts every other value on its own, so a long argument cannot hide the destination.
+
 A downstream HTTP 2xx alone does not imply `allowed` if the gateway classified the operation as an error (`is_error`, audit `log_result`). See `outcome_from_audit`.
 
 ### Approvals: state before create, retry, and bodies

@@ -356,18 +356,13 @@ _SUMMARY_FORBIDDEN_KEYS = frozenset({'arguments', 'arguments_redacted', 'target'
 
 
 def approval_arguments_summary(arguments: dict[str, Any] | None) -> str:
-    """Redacted one-line summary safe to show on the identity approval page. Empty when there is nothing to say."""
-    from apps.connector.mcp_discovery import redact_arguments
+    """Redacted one-line summary safe to show on the identity approval page. Empty when there is nothing to say.
 
-    if not isinstance(arguments, dict) or not arguments:
-        return ''
-    text = json.dumps(redact_arguments(arguments), sort_keys=True, default=str, ensure_ascii=True)
-    text = ' '.join(text.split())
-    if not text or text == '{}':
-        return ''
-    if len(text) > _ARGUMENTS_SUMMARY_MAX:
-        text = text[: _ARGUMENTS_SUMMARY_MAX - 3].rstrip() + '...'
-    return text
+    Destinations come first and every other value is cut on its own, see ``summarize_arguments``.
+    """
+    from apps.connector.mcp_discovery import summarize_arguments
+
+    return summarize_arguments(arguments, _ARGUMENTS_SUMMARY_MAX)
 
 
 def _summary_from_payload(payload: dict[str, Any]) -> str:
