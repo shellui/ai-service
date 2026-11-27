@@ -89,6 +89,16 @@ def _marked_destination(schema: dict[str, Any]) -> bool:
     )
 
 
+def strip_destination_markers(node: Any) -> Any:
+    """A copy of ``node`` without ``x-mcp-destination``. The gateway keeps the marker to build approval
+    summaries and removes it from what agents are shown, since strict clients reject unknown keywords."""
+    if isinstance(node, dict):
+        return {key: strip_destination_markers(value) for key, value in node.items() if key != DESTINATION_MARKER}
+    if isinstance(node, list):
+        return [strip_destination_markers(item) for item in node]
+    return node
+
+
 def openapi_schema_to_json_schema(
     schema: dict[str, Any] | None,
     root: dict[str, Any],

@@ -13,6 +13,8 @@ from typing import Any
 
 from shellui_django.mcp.write_gate import decide_write
 
+from apps.connector.mcp_tool_schema import strip_destination_markers
+
 SEARCH_DEFAULT_LIMIT = 8
 SEARCH_MAX_LIMIT = 20
 
@@ -383,8 +385,11 @@ def tools_list_mode(request: Any, params: dict[str, Any] | None) -> str:
 
 
 def _client_tool(tool: dict[str, Any]) -> dict[str, Any]:
-    """MCP ``tools/list`` row: no private registry keys."""
-    return {k: v for k, v in tool.items() if not str(k).startswith('_')}
+    """MCP ``tools/list`` row: no private registry keys and no ``x-mcp-destination`` (the gate keeps its own copy)."""
+    row = {k: v for k, v in tool.items() if not str(k).startswith('_')}
+    if isinstance(row.get('inputSchema'), dict):
+        row['inputSchema'] = strip_destination_markers(row['inputSchema'])
+    return row
 
 
 def listed_tools(full_catalog: list[dict[str, Any]], *, mode: str, company_label: str) -> list[dict[str, Any]]:
@@ -642,7 +647,7 @@ def describe_match(tool: dict[str, Any], *, access_mode: str) -> dict[str, Any]:
         'read_only': read_only,
         'destructive': destructive,
         'needs_approval': _needs_approval(tool, access_mode),
-        'inputSchema': public_input_schema(schema),
+        'inputSchema': strip_destination_markers(public_input_schema(schema)),
     }
 
 

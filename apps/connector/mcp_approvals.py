@@ -355,19 +355,32 @@ _ARGUMENTS_SUMMARY_MAX = 500
 _SUMMARY_FORBIDDEN_KEYS = frozenset({'arguments', 'arguments_redacted', 'target', 'short_action_summary'})
 
 
-def approval_arguments_summary(arguments: dict[str, Any] | None, input_schema: dict[str, Any] | None = None) -> str:
+def approval_arguments_summary(
+    arguments: dict[str, Any] | None,
+    input_schema: dict[str, Any] | None = None,
+    *,
+    destinations_declared: bool = True,
+) -> str:
     """Redacted one-line summary safe to show on the identity approval page. Empty when there is nothing to say.
 
     ``arguments`` are the cleaned arguments that will be forwarded, and ``input_schema`` is the tool's
-    own ``inputSchema``. The tool marks its destination fields with ``x-mcp-destination``, and those
-    values come first, in full. Raises ``ApprovalSummaryTooLong`` when they do not fit the line.
+    own ``inputSchema``. The tool marks its destination fields with ``x-mcp-destination``. Those values
+    come first, in full, and are never masked by key name: only their siblings go through
+    ``redact_arguments``. Raises ``ApprovalSummaryRefused`` when they cannot be shown faithfully.
+    A tool that has not declared its destinations gets a warning at the start of the line.
     """
     from apps.connector.mcp_discovery import redact_arguments
     from shellui_django.mcp.approval_summary import summarize_arguments
 
     if not isinstance(arguments, dict) or not arguments:
         return ''
-    return summarize_arguments(redact_arguments(arguments), input_schema, _ARGUMENTS_SUMMARY_MAX)
+    return summarize_arguments(
+        arguments,
+        input_schema,
+        _ARGUMENTS_SUMMARY_MAX,
+        destinations_declared=destinations_declared,
+        redact=redact_arguments,
+    )
 
 
 def _summary_from_payload(payload: dict[str, Any]) -> str:

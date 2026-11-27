@@ -242,10 +242,42 @@ NOTIFY_TOOLS = {
                     'required': ['path', 'method'],
                     'additionalProperties': False,
                 },
-                '_meta': {'method': 'POST', 'path': '/api/v1/notify/', 'read_only': False, 'destructive': False},
+                '_meta': {
+                    'method': 'POST',
+                    'path': '/api/v1/notify/',
+                    'read_only': False,
+                    'destructive': False,
+                    'destinations_declared': True,
+                },
             },
         ]
     },
+}
+
+
+def _notify_variant(*, declared, fields=None):
+    """``NOTIFY_TOOLS`` with the ``destinations_declared`` flag set or absent, and optionally other body fields."""
+    tools = json.loads(json.dumps(NOTIFY_TOOLS))
+    tool = tools['result']['tools'][0]
+    if not declared:
+        tool['_meta'].pop('destinations_declared')
+    if fields:
+        tool['inputSchema']['properties']['body']['properties'] = fields
+    return tools
+
+
+_PROVIDER_FIELDS = {
+    'provider': {'type': 'string'},
+    'credentials': {
+        'type': 'object',
+        'properties': {
+            'host': _DESTINATION,
+            'username': {'type': 'string'},
+            'password': {'type': 'string'},
+        },
+    },
+    'token_url': _DESTINATION,
+    'redirect_url': _DESTINATION,
 }
 
 
@@ -379,7 +411,7 @@ class DiscoveryGatewayTests(TestCase):
 
         post.side_effect = side_effect
 
-    def _ask_to_notify(self, body, *, via_ai_call_tool=False, flat=False):
+    def _ask_to_notify(self, body, *, via_ai_call_tool=False, flat=False, tools=None):
         """Make an Ask-mode call to ``storage_notify`` and return (response text, approval summary or None)."""
         with (
             patch('apps.connector.mcp_identity._http_post', side_effect=_identity_http),
@@ -390,7 +422,7 @@ class DiscoveryGatewayTests(TestCase):
                 'apps.connector.mcp_approvals.create_approval_request', return_value={'id': 'appr-d', 'status': 'pending'}
             ) as create,
         ):
-            self._downstream(post, NOTIFY_TOOLS)
+            self._downstream(post, tools or NOTIFY_TOOLS)
             token = _token(secret=self.secret, issuer=self.issuer, mcp_access='ask')
             session = self._session(token)
             arguments = body if flat else {'method': 'POST', 'path': '/api/v1/notify/', 'body': body}
@@ -603,6 +635,75 @@ class DiscoveryGatewayTests(TestCase):
         self.assertIn('\\u0430', summary)
         self.assertIn('\\u202e', summary)
         self.assertNotIn('\n', summary)
+
+    def test_declared_destinations_win_over_key_name_masking_and_only_siblings_are_masked(self, *_mocks):
+        tools = _notify_variant(declared=True, fields=_PROVIDER_FIELDS)
+        _text, summary = self._ask_to_notify(
+            {
+                'provider': 'smtp',
+                'credentials': {'host': 'smtp.attacker.example', 'username': 'bot', 'password': 'hunter2-value'},
+                'token_url': 'https://auth.attacker.example/token',
+                'redirect_url': 'https://app.example.com/cb',
+            },
+            tools=tools,
+        )
+        self.assertIn('"credentials.host": "smtp.attacker.example"', summary)
+        self.assertIn('"token_url": "https://auth.attacker.example/token"', summary)
+        self.assertIn('"redirect_url": "https://app.example.com/cb"', summary)
+        self.assertNotIn('hunter2-value', summary)
+        self.assertNotIn('"bot"', summary)
+        self.assertIn('***', summary)
+        self.assertLess(summary.index('smtp.attacker.example'), summary.index('Arguments'))
+
+    def test_secret_looking_query_parameters_inside_a_destination_are_masked(self, *_mocks):
+        _text, summary = self._ask_to_notify(
+            {
+                'name': 'Ada',
+                'url': 'https://hooks.example.com/h?id=7&token=tok-abc123&key=k-9&secret=s-9&sig=sig-9&api_key=ak-9',
+            }
+        )
+        self.assertIn('hooks.example.com/h?id=7&token=***', summary)
+        for leaked in ('tok-abc123', 'k-9', 's-9', 'sig-9', 'ak-9'):
+            self.assertNotIn(leaked, summary)
+
+    def test_a_tool_that_has_not_declared_its_destinations_gets_a_warning_on_the_line(self, *_mocks):
+        from shellui_django.mcp.approval_summary import UNDECLARED_WARNING
+
+        _text, summary = self._ask_to_notify(
+            {'name': 'Ada', 'url': 'https://attacker.example/h'}, tools=_notify_variant(declared=False)
+        )
+        self.assertTrue(summary.startswith(UNDECLARED_WARNING), summary)
+        self.assertIn('attacker.example', summary)
+
+    def test_a_tool_that_declares_its_destinations_has_no_warning(self, *_mocks):
+        _text, summary = self._ask_to_notify({'name': 'Ada', 'url': 'https://attacker.example/h'})
+        self.assertNotIn('WARNING', summary)
+
+    def test_destination_marker_is_kept_for_the_gate_and_not_shown_to_agents(self, *_mocks):
+        # The gate reads the marker from the catalog it holds (every test above depends on it).
+        # What an agent receives from tools/list, describe and search carries no marker.
+        with (
+            patch('apps.connector.mcp_identity._http_post', side_effect=_identity_http),
+            patch('apps.connector.mcp_views.mint_downstream_access_token', return_value='downstream-token'),
+            patch('shellui_django.mcp.gateway.requests.post') as post,
+        ):
+            self._downstream(post, NOTIFY_TOOLS)
+            token = _token(secret=self.secret, issuer=self.issuer, mcp_access='ask')
+            listed = self.client.post(
+                '/c/10/mcp?tools=all', data=_rpc('tools/list'), content_type='application/json', **self._auth(token)
+            )
+            rows = {tool['name']: tool for tool in listed.json()['result']['tools']}
+            self.assertIn('storage_notify', rows)
+            self.assertIn('hosts', json.dumps(rows['storage_notify']['inputSchema']))
+            self.assertNotIn('x-mcp-destination', json.dumps(listed.json()))
+            described = self.client.post(
+                '/c/10/mcp',
+                data=_rpc('tools/call', name='ai_describe_tool', arguments={'name': 'storage_notify'}),
+                content_type='application/json',
+                **self._auth(token),
+            )
+            self.assertIn('hosts', json.dumps(described.json()))
+            self.assertNotIn('x-mcp-destination', json.dumps(described.json()))
 
     def test_a_call_whose_destinations_do_not_fit_is_refused_not_shortened(self, *_mocks):
         for body in (

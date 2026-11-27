@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from django.http import HttpRequest, JsonResponse
-from shellui_django.mcp.approval_summary import ApprovalSummaryTooLong
+from shellui_django.mcp.approval_summary import ApprovalSummaryRefused
 from shellui_django.mcp.server import McpServer
 from shellui_django.mcp.write_gate import WriteGateDecision, decide_write
 
@@ -792,9 +792,13 @@ def enforce_tool_call_approval(
         )
 
     try:
-        arguments_summary = approvals.approval_arguments_summary(arguments, (tool or {}).get('inputSchema'))
-    except ApprovalSummaryTooLong:
-        # The person approving must see every destination. Refuse the call rather than shorten them.
+        arguments_summary = approvals.approval_arguments_summary(
+            arguments,
+            (tool or {}).get('inputSchema'),
+            destinations_declared=((tool or {}).get('_meta') or {}).get('destinations_declared') is True,
+        )
+    except ApprovalSummaryRefused:
+        # The person approving must see every destination. Refuse the call rather than shorten or skip one.
         return GateOutcome(
             proceed=False,
             response=_approval_result(
