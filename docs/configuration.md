@@ -46,6 +46,8 @@ Identity verifies delegation requests with `AI_SERVICE_JWKS` / `AI_SERVICE_JWKS_
 
 `setup_flow` assertions and session grants always require absolute `setup_expires_at` (token + session-check response when setup) and absolute `expires_at` on the session-check response; there are no toggles.
 
+The company gateway rejects an MCP call when the revocation check is missing or raises. After the gateway allows a tool, the downstream bearer token carries `mcp_gateway_delegated` as `{"action": "<tool name>", "exp": <unix seconds>}` for 60 seconds. A boolean value does not skip a second approval.
+
 ## Downstream services
 
 | Variable | Default |
@@ -81,7 +83,7 @@ The gateway calls each service at `{*_SERVICE_URL}/mcp`, and asks identity for a
 
 ### Global mode
 
-Required when `DEBUG=false` and `AI_SERVICE_MODE=global`: `GLOBAL_IDENTITY_URL`, `GLOBAL_IDENTITY_ISSUER`, `GLOBAL_IDENTITY_JWKS` or `GLOBAL_IDENTITY_JWKS_URL`, `GLOBAL_OIDC_CLIENT_ID`, `GLOBAL_OIDC_CLIENT_SECRET`, `GLOBAL_OIDC_REDIRECT_URI`, `SAAS_SERVICE_URL`, `SAAS_API_AUDIENCE`, plus the shared signing key and `AI_SERVICE_ISSUER`. Regional identity settings are not required and must be unset.
+Required when `DEBUG=false` and `AI_SERVICE_MODE=global`: `GLOBAL_IDENTITY_URL`, `GLOBAL_IDENTITY_ISSUER`, `GLOBAL_IDENTITY_JWKS` or `GLOBAL_IDENTITY_JWKS_URL`, `GLOBAL_OIDC_CLIENT_ID`, `GLOBAL_OIDC_CLIENT_SECRET`, `GLOBAL_OIDC_REDIRECT_URI`, `SAAS_SERVICE_URL`, `SAAS_API_AUDIENCE`, `REGIONAL_EXCHANGE_ALLOWED_HOSTS`, plus the shared signing key and `AI_SERVICE_ISSUER`. Regional identity settings are not required and must be unset.
 
 | Variable | Default |
 | -------- | ------- |
@@ -106,6 +108,7 @@ Required when `DEBUG=false` and `AI_SERVICE_MODE=global`: `GLOBAL_IDENTITY_URL`,
 | `MCP_DYNAMIC_CLIENT_REGISTRATION` | `true` |
 | `GLOBAL_COMPANY_WAIT_SECONDS` | `60` |
 | `GLOBAL_COMPANY_POLL_SECONDS` | `2` |
+| `REGIONAL_EXCHANGE_ALLOWED_HOSTS` | empty. Comma-separated hosts that may receive a regional subject token. An entry is an exact host (`id.ch.shellui.com`) or `host:port` (`localhost:8001`). With `DEBUG=false` only exact hosts are accepted, and startup fails on a suffix entry. With `DEBUG=true` a suffix (`.shellui.com` or `*.shellui.com`, including the bare domain) also works and matches any port. An exact host matches the default port unless the entry includes a port. With `DEBUG=false` the URL must be `https`. An empty list allows no hosts. |
 
 Shared by both modes: `DEBUG`, `SECRET_KEY`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `AI_PUBLIC_URL`, `AI_SERVICE_ISSUER`, `AI_SERVICE_SIGNING_KEY` (or `AI_SERVICE_SIGNING_KEY_FILE`), `AI_SERVICE_SIGNING_KID`, `REDIS_URL`, `POSTGRES_DATABASE_URL`, `MCP_TOOLS_LIST_MODE`.
 
@@ -143,7 +146,7 @@ Logs include `trace_id` and `span_id` next to the existing request id. An MCP sp
 | -------- | ------- |
 | `LOG_LEVEL` | `INFO` |
 | `DJANGO_ADMIN_ENABLED` | `true` |
-| `SETUP_TOKEN` | empty |
+| `SETUP_TOKEN` | empty. At least 32 characters, and startup fails on a shorter value. The form at `/` creates the first superuser only when this token is entered in the form (or sent in the `X-Setup-Token` header or the POST body), including when `DEBUG=true`. The URL query is not read. Leave it empty and use `manage.py createsuperuser`. |
 | `SQLITE_PATH` | `db.sqlite3` |
 | `POSTGRES_SSL_REQUIRE` | `true` |
 | `CORS_ALLOW_ALL_ORIGINS` | `true` |

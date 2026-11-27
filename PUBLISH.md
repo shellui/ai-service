@@ -34,7 +34,7 @@ GitHub Actions: [`.github/workflows/pre-release.yml`](.github/workflows/pre-rele
 [`.github/workflows/publish.yml`](.github/workflows/publish.yml)
 
 - **Trigger:** GitHub release published, or **workflow_dispatch** with tag `vX.Y.Z`.
-- **Build:** buildx multi-arch `linux/amd64`, `linux/arm64`.
+- **Build:** buildx multi-arch `linux/amd64`, `linux/arm64`, Dockerfile target `production`. The `dev` stage is not published.
 - **Tags:** semver `X.Y.Z`, `X.Y`, and `latest` when this tag is the highest stable semver in the repo. Pre-releases never move `latest`.
 
 Required GitHub secrets (organization secrets shared with service repos):
@@ -54,6 +54,7 @@ Required Docker Hub repository: **`shellui/ai-service`** on Docker Hub under the
 VERSION=0.2.0
 IMAGE=shellui/ai-service
 docker buildx build --platform linux/amd64,linux/arm64 \
+  --target production \
   -t "${IMAGE}:${VERSION}" -t "${IMAGE}:latest" --push .
 ```
 

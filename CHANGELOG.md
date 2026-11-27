@@ -23,6 +23,13 @@ See for sample https://raw.githubusercontent.com/favoloso/conventional-changelog
 
 ### 🚨 Changed
 
+- The gateway resolves a tool's route once per call. The approval gate and the forward use that same route. A call is forwarded only after the gate has run on it and allowed it. If the route is missing at that point the call is refused with `Unknown tool` and nothing reaches the downstream service. The delegated grant is set only for a call the gate allowed.
+- Saas operations that saas marks `global_refused` (project deletion, ownership transfer) are not listed for agents.
+- Global mode sends a regional subject token only to hosts in `REGIONAL_EXCHANGE_ALLOWED_HOSTS`. The default is empty, so no host is called until the list is set. With `DEBUG=false` the URL must be `https`. With `DEBUG=false` the list must name exact region hosts such as `id.ch.shellui.com`, and a suffix entry (`.shellui.com`, `*.shellui.com`) stops startup. Suffix entries still work with `DEBUG=true`. Token exchange and saas calls do not follow redirects.
+- SaaS tool path parameters are percent-encoded. A tool call whose URL leaves `SAAS_SERVICE_URL` or the OpenAPI path template is refused.
+- The form at `/` requires `SETUP_TOKEN` when `DEBUG=true`, the same as when `DEBUG=false`. The token is no longer read from the URL query: enter it in the form, or send it in the `X-Setup-Token` header or the POST body. It must be at least 32 characters, and a shorter value stops startup. Leave `SETUP_TOKEN` empty and use `manage.py createsuperuser` for local setup.
+- Published images build the Dockerfile `production` stage (`DEBUG=false`). The `dev` stage is local only and is not published. Root Compose tags that stage `ai-service:local`.
+- The company gateway refuses a call when the revocation check is missing or fails. Downstream calls for a tool the gateway already allowed send `mcp_gateway_delegated` as `{"action": "<tool name>", "exp": <unix seconds>}` on the bearer token, with `exp` 60 seconds ahead.
 - `shellui-django` 0.8.0 with Django 6.1.3, Django REST framework 3.18.3 and drf-spectacular 0.30.0. The shellui-django pins are exact, so these move together.
 - gunicorn 27.0.1. A request whose `Transfer-Encoding` does not end with `chunked` (for example `identity` alone) now gets HTTP 400. No gunicorn setting changed.
 - Django 6.1 requires PostgreSQL 15 or newer, and drops 14. Check the database of any deployment before upgrading. CI and the MCP end to end compose file run PostgreSQL 18.
