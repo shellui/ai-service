@@ -10,7 +10,7 @@ Global mode serves `POST /mcp` with no company in the path. Run it as a second c
 
 Docker Hub publishes the production stage for `linux/amd64` and `linux/arm64`. The image contains:
 
-- **Base image**: `python:3.14-slim`
+- **Base image**: `python:3.15-slim`
 - **Listen port**: `8000`
 - **Entrypoint**: `/app/tools/docker-entrypoint.sh`
 - **Default mode**: `web` (migrate, deploy check, then gunicorn)
