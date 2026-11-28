@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from django.http import HttpRequest, JsonResponse
+from shellui_django.mcp.approval_summary import ApprovalSummaryRefused
 from shellui_django.mcp.server import McpServer
 from shellui_django.mcp.write_gate import WriteGateDecision, decide_write
 
@@ -317,10 +318,8 @@ def build_elicitation_meta(
     agent_claims: dict[str, Any],
     approval_id: str,
     tool_count: int = 1,
-    arguments: dict[str, Any] | None = None,
+    arguments_summary: str = '',
 ) -> dict[str, Any]:
-    from apps.connector.mcp_discovery import arguments_preview
-
     agent_name = _agent_display_name(agent_claims)
     company_name = resolve_company_label(agent_claims)
     title = copy.approval_title(tool_name=tool_name, destructive=destructive)
@@ -334,9 +333,8 @@ def build_elicitation_meta(
         if tool_count > 1
         else copy.approval_body(agent_name=agent_name, tool_name=tool_name, company_name=company_name)
     )
-    preview = arguments_preview(arguments)
-    if preview:
-        body = f'{body} {preview}'
+    if arguments_summary:
+        body = f'{body} {arguments_summary}'
     buttons: dict[str, str] = {'allow': 'Allow', 'deny': 'Deny'}
     if not destructive:
         buttons['session_allow'] = 'Allow for this session'
@@ -793,6 +791,31 @@ def enforce_tool_call_approval(
             ),
         )
 
+    try:
+        arguments_summary = approvals.approval_arguments_summary(
+            arguments,
+            (tool or {}).get('inputSchema'),
+            destinations_declared=((tool or {}).get('_meta') or {}).get('destinations_declared') is True,
+        )
+    except ApprovalSummaryRefused:
+        # The person approving must see every destination. Refuse the call rather than shorten or skip one.
+        return GateOutcome(
+            proceed=False,
+            response=_approval_result(
+                req_id,
+                text=copy.destinations_too_long_text(),
+                meta={'status': 'denied'},
+            ),
+            log=_log_entry(
+                agent_claims=agent_claims,
+                service=service_id,
+                export_name=export_name,
+                tool=tool,
+                method=method,
+                path=path,
+                log_result='denied',
+            ),
+        )
     args_hash = _arguments_hash(arguments)
     approval_payload: dict[str, Any] = {
         'agent_id': agent_id,
@@ -801,7 +824,7 @@ def enforce_tool_call_approval(
         'action': export_name,
         'arguments_hash': args_hash,
         '_agent_claims': agent_claims,
-        '_arguments_summary': approvals.approval_arguments_summary(arguments),
+        '_arguments_summary': arguments_summary,
     }
 
     client_decision, client_approval_id = parse_client_decision(params)

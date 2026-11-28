@@ -190,9 +190,14 @@ def _fetch_schema() -> dict:
 
 
 def public_tool(tool: dict) -> dict:
-    """Drop private _meta before tools/list."""
-    clean = {key: value for key, value in tool.items() if key != '_meta'}
-    return clean
+    """What an agent sees: no private ``_meta`` and no ``x-mcp-destination``.
+
+    The saas OpenAPI schemas are copied verbatim, marker included. The company gateway removes it with
+    ``client_tool``, and this uses the same function so the two endpoints cannot drift apart.
+    """
+    from apps.connector.mcp_discovery import client_tool
+
+    return client_tool(tool)
 
 
 def find_tool(tools: list[dict], name: str) -> dict | None:

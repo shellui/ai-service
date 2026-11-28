@@ -13,6 +13,8 @@ from typing import Any
 
 from shellui_django.mcp.write_gate import decide_write
 
+from apps.connector.mcp_tool_schema import strip_destination_markers
+
 SEARCH_DEFAULT_LIMIT = 8
 SEARCH_MAX_LIMIT = 20
 
@@ -234,15 +236,6 @@ def redact_arguments(value: Any) -> Any:
     return value
 
 
-def arguments_preview(arguments: dict[str, Any] | None) -> str:
-    if not isinstance(arguments, dict) or not arguments:
-        return ''
-    text = json.dumps(redact_arguments(arguments), sort_keys=True, default=str, ensure_ascii=True)
-    if len(text) > 400:
-        text = text[:400] + '...'
-    return f'Arguments: {text}'
-
-
 def discovery_tool_definitions(*, include_approval: bool = True) -> list[dict[str, Any]]:
     """Search, describe, and call. ``ai_list_services`` stays the OpenAPI tool.
 
@@ -391,9 +384,12 @@ def tools_list_mode(request: Any, params: dict[str, Any] | None) -> str:
     return 'discovery'
 
 
-def _client_tool(tool: dict[str, Any]) -> dict[str, Any]:
-    """MCP ``tools/list`` row: no private registry keys."""
-    return {k: v for k, v in tool.items() if not str(k).startswith('_')}
+def client_tool(tool: dict[str, Any]) -> dict[str, Any]:
+    """MCP ``tools/list`` row: no private registry keys and no ``x-mcp-destination`` (the gate keeps its own copy)."""
+    row = {k: v for k, v in tool.items() if not str(k).startswith('_')}
+    if isinstance(row.get('inputSchema'), dict):
+        row['inputSchema'] = strip_destination_markers(row['inputSchema'])
+    return row
 
 
 def listed_tools(full_catalog: list[dict[str, Any]], *, mode: str, company_label: str) -> list[dict[str, Any]]:
@@ -407,7 +403,7 @@ def listed_tools(full_catalog: list[dict[str, Any]], *, mode: str, company_label
     if mode == 'all':
         present = {str(tool.get('name') or '') for tool in full_catalog}
         rows = list(full_catalog) + [tool for tool in extras if tool['name'] not in present]
-        return [_client_tool(tool) for tool in rows]
+        return [client_tool(tool) for tool in rows]
     by_name = {str(tool.get('name') or ''): tool for tool in full_catalog}
     listed: list[dict[str, Any]] = []
     services = by_name.get('ai_list_services')
@@ -418,7 +414,7 @@ def listed_tools(full_catalog: list[dict[str, Any]], *, mode: str, company_label
         tool = by_name.get(name)
         if tool is not None:
             listed.append(tool)
-    return [_client_tool(tool) for tool in listed]
+    return [client_tool(tool) for tool in listed]
 
 
 def enrich_service_rows(
@@ -651,7 +647,7 @@ def describe_match(tool: dict[str, Any], *, access_mode: str) -> dict[str, Any]:
         'read_only': read_only,
         'destructive': destructive,
         'needs_approval': _needs_approval(tool, access_mode),
-        'inputSchema': public_input_schema(schema),
+        'inputSchema': strip_destination_markers(public_input_schema(schema)),
     }
 
 

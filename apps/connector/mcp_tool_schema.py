@@ -9,6 +9,9 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
+# Same marker as shellui_django.mcp.openapi_tools.DESTINATION_MARKER. Not imported: the MCP conformance
+# schema audit imports this module with the standard library only.
+DESTINATION_MARKER = 'x-mcp-destination'
 _VALID_TYPES = frozenset({'string', 'integer', 'number', 'boolean', 'array', 'object', 'null'})
 
 
@@ -75,13 +78,49 @@ def _overlay_description(node: dict[str, Any], description: str | None) -> dict[
     return {**node, 'description': f'{text} {current}'.strip()}
 
 
+def _marked_destination(schema: dict[str, Any]) -> bool:
+    """``x-mcp-destination`` on the node or on one of its anyOf/oneOf/allOf branches (blank-allowed fields)."""
+    if schema.get(DESTINATION_MARKER) is True:
+        return True
+    return any(
+        isinstance(branch, dict) and branch.get(DESTINATION_MARKER) is True
+        for key in ('anyOf', 'oneOf', 'allOf')
+        for branch in (schema.get(key) if isinstance(schema.get(key), list) else [])
+    )
+
+
+def strip_destination_markers(node: Any) -> Any:
+    """A copy of ``node`` without ``x-mcp-destination``. The gateway keeps the marker to build approval
+    summaries and removes it from what agents are shown, since strict clients reject unknown keywords."""
+    if isinstance(node, dict):
+        return {key: strip_destination_markers(value) for key, value in node.items() if key != DESTINATION_MARKER}
+    if isinstance(node, list):
+        return [strip_destination_markers(item) for item in node]
+    return node
+
+
 def openapi_schema_to_json_schema(
     schema: dict[str, Any] | None,
     root: dict[str, Any],
     *,
     _seen: set[str] | None = None,
 ) -> dict[str, Any]:
-    """Convert an OpenAPI 3.0/3.1 schema fragment to a JSON Schema node for MCP clients."""
+    """Convert an OpenAPI 3.0/3.1 schema fragment to a JSON Schema node for MCP clients.
+
+    ``x-mcp-destination`` is kept: the approval prompt reads it to show where a call sends data.
+    """
+    out = _convert_openapi_schema(schema, root, _seen=_seen)
+    if isinstance(schema, dict) and _marked_destination(schema):
+        out = {**out, DESTINATION_MARKER: True}
+    return out
+
+
+def _convert_openapi_schema(
+    schema: dict[str, Any] | None,
+    root: dict[str, Any],
+    *,
+    _seen: set[str] | None = None,
+) -> dict[str, Any]:
     if not isinstance(schema, dict):
         return {'type': 'string', 'description': 'OpenAPI schema missing; treated as string.'}
     seen = _seen if _seen is not None else set()

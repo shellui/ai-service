@@ -326,6 +326,35 @@ class GlobalToolTests(TestCase):
         self.assertIn('does not delete', destroyed.json()['result']['content'][0]['text'])
         self.assertTrue(destroyed.json()['result']['isError'])
 
+    def test_destination_marker_is_not_shown_to_agents_on_the_global_endpoint(self):
+        import copy
+
+        schema = copy.deepcopy(SCHEMA)
+        body = schema['paths']['/api/v1/companies']['post']['requestBody']['content']['application/json']['schema']
+        body['properties']['allowed_email_domains'] = {
+            'type': 'array',
+            'items': {'type': 'string', 'x-mcp-destination': True},
+        }
+        body['properties']['owner_email'] = {'type': 'string', 'x-mcp-destination': True}
+        store_schema(schema)
+        from apps.global_mcp.openapi_tools import load_saas_tools
+
+        # The tool the server holds keeps the marker. What an agent receives does not.
+        held = next(tool for tool in load_saas_tools() if tool['name'] == 'saas_create_companies')
+        self.assertIn('x-mcp-destination', json.dumps(held))
+        listed = self.client.post(
+            '/mcp',
+            data=json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list', 'params': {'mode': 'all'}}),
+            content_type='application/json',
+            HTTP_AUTHORIZATION=f'Bearer {self.token}',
+        )
+        tools = {tool['name']: tool for tool in listed.json()['result']['tools']}
+        self.assertIn('allowed_email_domains', json.dumps(tools['saas_create_companies']['inputSchema']))
+        self.assertNotIn('x-mcp-destination', listed.content.decode())
+        described = self._call('ai_describe_tool', {'name': 'saas_create_companies'})
+        self.assertIn('allowed_email_domains', described.content.decode())
+        self.assertNotIn('x-mcp-destination', described.content.decode())
+
     def test_tools_list_omits_ai_get_approval_and_the_call_fails(self):
         listed = self.client.post(
             '/mcp',

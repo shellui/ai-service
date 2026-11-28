@@ -326,7 +326,7 @@ def prefixed_tool_catalog(
 def _public_tool(tool: dict) -> dict:
     """Agent-facing catalog row: flat arguments, registry ``_meta`` kept for search/gate.
 
-    ``tools/list`` strips ``_meta`` at the wire boundary via ``_client_tool``.
+    ``tools/list`` strips ``_meta`` at the wire boundary via ``client_tool``.
     """
     from apps.connector.mcp_agent_arguments import public_input_schema
 
