@@ -65,6 +65,33 @@ class DownstreamDelegationSigningTests(SimpleTestCase):
         self.assertEqual(claims['company_id'], 42)
         self.assertEqual(claims['resource'], 'https://storage.test/mcp')
         self.assertLessEqual(int(claims['exp']) - int(claims['iat']), DOWNSTREAM_TOKEN_REQUEST_MAX_LIFETIME_SECONDS)
+        self.assertIsNone(post.call_args.kwargs.get('json'))
+
+    def test_approved_tool_mint_sends_object_grant_on_the_bearer_request(self):
+        agent = AgentRecord(agent_id='agent-1', company_id=42, services_allowed=['ai', 'storage'])
+        with patch('apps.connector.downstream_tokens.requests.post') as post:
+            post.return_value.status_code = 200
+            post.return_value.json.return_value = {'access_token': 'downstream-jwt'}
+            token = mint_downstream_access_token(
+                agent,
+                resource='https://storage.test/mcp',
+                delegated_action='storage_list_buckets',
+            )
+        self.assertEqual(token, 'downstream-jwt')
+        auth = post.call_args.kwargs['headers']['Authorization']
+        self.assertTrue(auth.startswith('Bearer '))
+        signing = _DELEGATION_TEST_SETTINGS['AI_SERVICE_SIGNING_KEY']
+        claims = verify_downstream_token_request(
+            auth.split(' ', 1)[1],
+            signing.public_pem,
+            'https://ai.test',
+        )
+        grant = claims['mcp_gateway_delegated']
+        self.assertEqual(grant['action'], 'storage_list_buckets')
+        self.assertIsInstance(grant['exp'], int)
+        self.assertLessEqual(grant['exp'] - int(claims['iat']), 60)
+        self.assertGreater(grant['exp'], int(claims['iat']))
+        self.assertIsNone(post.call_args.kwargs.get('json'))
 
     @patch('apps.connector.downstream_tokens.requests.post')
     def test_mint_logs_never_include_private_key_or_bearer(self, post):

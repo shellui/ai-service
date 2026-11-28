@@ -8,7 +8,7 @@ Global mode serves `POST /mcp` with no company in the path. Run it as a second c
 
 ## What the image contains
 
-Docker Hub publishes the production stage for `linux/amd64` and `linux/arm64`. The image contains:
+Docker Hub publishes the Dockerfile `production` stage for `linux/amd64` and `linux/arm64`. That stage sets `DEBUG=false`. The `dev` stage (`DEBUG=true`, command `dev`) is for local Compose only and is not published. The image contains:
 
 - **Base image**: `python:3.14-slim`
 - **Listen port**: `8000`
@@ -85,7 +85,7 @@ volumes:
 
 ## Region mode (default)
 
-`docker-compose.yml` in the repository root runs one ai-service container as a region gateway. It serves `/c/<company_id>/mcp`.
+The root `docker-compose.yml` builds the `dev` stage and tags it `ai-service:local`. That tag is not pushed. It serves `/c/<company_id>/mcp`.
 
 | Variable | Compose default |
 | -------- | --------------- |
@@ -107,7 +107,9 @@ Do not set `GLOBAL_IDENTITY_URL`, `GLOBAL_OIDC_CLIENT_ID`, `GLOBAL_OIDC_CLIENT_S
 
 Run a second container from the same image. Do not point it at regional identity, storage, hosting, or email.
 
-With `DEBUG=false`, global mode requires `GLOBAL_IDENTITY_URL`, `GLOBAL_IDENTITY_ISSUER`, `GLOBAL_IDENTITY_JWKS` or `GLOBAL_IDENTITY_JWKS_URL`, `GLOBAL_OIDC_CLIENT_ID`, `GLOBAL_OIDC_CLIENT_SECRET`, `GLOBAL_OIDC_REDIRECT_URI`, `SAAS_SERVICE_URL`, and `SAAS_API_AUDIENCE`, plus the shared signing key and `AI_SERVICE_ISSUER`. Leave `IDENTITY_JWKS`, `IDENTITY_JWKS_FILE`, `IDENTITY_JWKS_URL`, `IDENTITY_SERVICE_URL`, `IDENTITY_ISSUER`, `IDENTITY_AUDIENCE`, `STORAGE_SERVICE_URL`, `HOSTING_SERVICE_URL`, and `EMAIL_SERVICE_API_KEY` unset.
+With `DEBUG=false`, global mode requires `GLOBAL_IDENTITY_URL`, `GLOBAL_IDENTITY_ISSUER`, `GLOBAL_IDENTITY_JWKS` or `GLOBAL_IDENTITY_JWKS_URL`, `GLOBAL_OIDC_CLIENT_ID`, `GLOBAL_OIDC_CLIENT_SECRET`, `GLOBAL_OIDC_REDIRECT_URI`, `SAAS_SERVICE_URL`, `SAAS_API_AUDIENCE`, and `REGIONAL_EXCHANGE_ALLOWED_HOSTS`, plus the shared signing key and `AI_SERVICE_ISSUER`. Leave `IDENTITY_JWKS`, `IDENTITY_JWKS_FILE`, `IDENTITY_JWKS_URL`, `IDENTITY_SERVICE_URL`, `IDENTITY_ISSUER`, `IDENTITY_AUDIENCE`, `STORAGE_SERVICE_URL`, `HOSTING_SERVICE_URL`, and `EMAIL_SERVICE_API_KEY` unset.
+
+`REGIONAL_EXCHANGE_ALLOWED_HOSTS` lists the regional identity and AI hosts that may receive a subject token. List exact hosts such as `id.ch.shellui.com`. With `DEBUG=false` a suffix entry such as `.shellui.com` stops startup. With `DEBUG=false` those URLs must be `https`. An empty list allows no hosts.
 
 The Shellui dev stack (`shellui/shellui` `dev/docker-compose.yml`, service `ai-global` on port 8008) passes these process env names. Host file names on the left are mapped by Compose. This service reads the process names on the right.
 
@@ -145,7 +147,7 @@ Set these for a production region container. `config/env_registry.py` marks each
 | Variable | What to set |
 | --- | --- |
 | `SECRET_KEY` | Signs sessions, at least 50 characters |
-| `DEBUG` | `false` in production (the image default) |
+| `DEBUG` | `false` in production (the published image default). The first-superuser form still requires `SETUP_TOKEN` when this is `true`. |
 | `ALLOWED_HOSTS` | Comma-separated host names, no scheme |
 | `CSRF_TRUSTED_ORIGINS` | Full HTTPS origin of this service |
 | `IDENTITY_SERVICE_URL` | identity-service origin |

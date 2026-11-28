@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import secrets
 from typing import Any
 
@@ -35,6 +36,8 @@ from apps.connector.mcp_tool_presentation import shellui_gateway_instructions
 from shellui_django.mcp.rate_limit import check_agent_rate_limit
 from shellui_django.mcp.server import McpServer
 
+logger = logging.getLogger(__name__)
+
 # Supported MCP revisions, newest first. ``negotiate_protocol_version`` echoes a requested
 # member and otherwise answers with the newest revision this gateway implements.
 SUPPORTED_PROTOCOL_VERSIONS: tuple[str, ...] = (
@@ -45,7 +48,7 @@ SUPPORTED_PROTOCOL_VERSIONS: tuple[str, ...] = (
 )
 
 MCP_SERVER_NAME = 'shellui-ai-mcp-gateway'
-MCP_SERVER_VERSION = '0.4.2'
+MCP_SERVER_VERSION = '0.5.0'
 MCP_SESSION_CACHE_PREFIX = 'mcp_gateway:session:'
 MCP_SESSION_TTL_SECONDS = 86400
 MCP_TOOLS_PAGE_SIZE = 200
@@ -345,7 +348,15 @@ def _gateway_precheck(
     company_id_int = strict_numeric_company_id(agent_claims.get('company_id'))
     if company_id_int is None:
         return JsonResponse({'error': 'unauthorized'}, status=401)
-    if server.identity_revocation_check and server.identity_revocation_check(agent_id, company_id_int):
+    checker = getattr(server, 'identity_revocation_check', None)
+    if checker is None:
+        return JsonResponse({'error': 'revocation_unavailable'}, status=403)
+    try:
+        revoked = bool(checker(agent_id, company_id_int))
+    except Exception:
+        logger.warning('MCP revocation check failed agent_id=%s', agent_id)
+        return JsonResponse({'error': 'revocation_unavailable'}, status=403)
+    if revoked:
         return JsonResponse({'error': 'agent_revoked'}, status=403)
     if not McpServer._service_allowed(agent_claims, server.service_name):
         return JsonResponse({'error': 'forbidden'}, status=403)

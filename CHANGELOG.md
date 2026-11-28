@@ -19,6 +19,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 See for sample https://raw.githubusercontent.com/favoloso/conventional-changelog-emoji/master/CHANGELOG.md
 -->
 
+## [0.5.0] - 2026-11-28
+
+### 🚨 Changed
+
+- The argument summary shown to a person who approves a tool call is built from the cleaned arguments that are forwarded, and it is driven by the tool's schema. A tool marks the properties that name where something goes (a URL, an email, a host) with `x-mcp-destination` in its MCP `inputSchema`, at any depth and on list items. The summary shows those values first and in full, labelled from the schema path (`hosts[1]`, `audience.emails[0]`), never from an argument key. Non-ASCII and control characters are shown as escapes, and `user:pass@` is shown as `***@` in every string value. If the declared destinations do not fit the 500 character line, the call is refused with a clear error instead of being cut. Other values are cut one by one (60 characters each) after the destinations. The key-name guessing is gone; tools without the marker show no destination section until their service declares it. Needs `shellui-django` 0.9.0.
+- Approval summary follow-up: a declared destination is never masked by its key name (for example `credentials.host` or `token_url` show in full while the secret siblings stay masked), secret-looking query parameters inside a destination URL (`token`, `key`, `secret`, `sig`) are masked, and a tool that has not set `_meta.destinations_declared` gets a visible warning at the start of the line. `x-mcp-destination` is removed from what agents receive in `tools/list` and `ai_describe_tool`; the gateway keeps it for the approval prompt.
+- `x-mcp-destination` is also removed from the global endpoint's `tools/list` and `ai_describe_tool` (the saas OpenAPI schemas were copied verbatim), using the same function as the company gateway. A destination sent as an object where a list of destinations is expected is refused, and the approval summary now warns by default unless the tool declares its destinations.
+- A group name no longer makes someone a company admin. Company admin comes only from the explicit `is_company_admin` claim, and owners keep access through `is_company_owner`. Before this, being in a group named `admin`, `admins`, `company admin` or `company admins` let a member list the company's MCP tool-call logs at `GET /ai/v1/mcp/call-logs`. Groups are labels that any company can create, so they are not a role. Members who relied on such a group lose that list, and still read their own agents' calls. Identity does not issue `is_company_admin` today, so until it does, only owners and staff read the company list.
+- The gateway resolves a tool's route once per call. The approval gate and the forward use that same route. A call is forwarded only after the gate has run on it and allowed it. If the route is missing at that point the call is refused with `Unknown tool` and nothing reaches the downstream service. The delegated grant is set only for a call the gate allowed.
+- Saas operations that saas marks `global_refused` (project deletion, ownership transfer) are not listed for agents.
+- Global mode sends a regional subject token only to hosts in `REGIONAL_EXCHANGE_ALLOWED_HOSTS`. The default is empty, so no host is called until the list is set. With `DEBUG=false` the URL must be `https`. With `DEBUG=false` the list must name exact region hosts such as `id.ch.shellui.com`, and a suffix entry (`.shellui.com`, `*.shellui.com`) stops startup. Suffix entries still work with `DEBUG=true`. Token exchange and saas calls do not follow redirects.
+- SaaS tool path parameters are percent-encoded. A tool call whose URL leaves `SAAS_SERVICE_URL` or the OpenAPI path template is refused.
+- The form at `/` requires `SETUP_TOKEN` when `DEBUG=true`, the same as when `DEBUG=false`. The token is no longer read from the URL query: enter it in the form, or send it in the `X-Setup-Token` header or the POST body. It must be at least 32 characters, and a shorter value stops startup. Leave `SETUP_TOKEN` empty and use `manage.py createsuperuser` for local setup.
+- Published images build the Dockerfile `production` stage (`DEBUG=false`). The `dev` stage is local only and is not published. Root Compose tags that stage `ai-service:local`.
+- The company gateway refuses a call when the revocation check is missing or fails. Downstream calls for a tool the gateway already allowed send `mcp_gateway_delegated` as `{"action": "<tool name>", "exp": <unix seconds>}` on the bearer token, with `exp` 60 seconds ahead.
+- `shellui-django` 0.8.0 with Django 6.1.3, Django REST framework 3.18.3 and drf-spectacular 0.30.0. The shellui-django pins are exact, so these move together.
+- gunicorn 27.0.1. A request whose `Transfer-Encoding` does not end with `chunked` (for example `identity` alone) now gets HTTP 400. No gunicorn setting changed.
+- Django 6.1 requires PostgreSQL 15 or newer, and drops 14. Check the database of any deployment before upgrading. CI and the MCP end to end compose file run PostgreSQL 18.
+- drf-spectacular 0.30 describes blank URL and slug fields as `oneOf` (the field's format or an empty string) in the OpenAPI schema. Generated clients and the published schema see that change. The API itself does not change.
+
+### 🔒 Security
+
+- Django 6.1.3 includes the Django security releases of October and November 2026, among them a fix for memory use when parsing large multipart uploads.
+
+### 🏗 Chore
+
+- Node.js 26, the current LTS, for the image build stage and CI.
+- GitHub Actions: actions/checkout v7, actions/setup-node v7, astral-sh/setup-uv v10.4.0, docker/build-push-action v7, docker/login-action v4, docker/metadata-action v6, docker/setup-buildx-action v4, docker/setup-qemu-action v4, peter-evans/dockerhub-description v5.0.0.
+- Python dependencies: python-dotenv 1.2.4, psycopg 3.3.9, sentry-sdk 2.77.0, cryptography 50.0.2, requests 2.34.2, markdown 3.11.4, redis 8.2.0, sqlparse 0.6.1.
+- npm dependencies: @tailwindcss/cli 4.3.5, tailwindcss 4.3.5.
+- CI runs `manage.py makemigrations --check --dry-run`, so a model change without a migration fails the build.
+- CI pins Python 3.14.10 and uv 0.13.10, and the Dockerfile copies the same uv, so CI and the image run the same interpreter and the same tool.
+
 ## [0.4.2] - 2026-11-27
 
 ### 🐛 Bug Fixes

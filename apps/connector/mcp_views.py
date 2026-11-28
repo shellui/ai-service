@@ -89,6 +89,10 @@ def route_cache_key(company_id: int, export_name: str) -> str:
     return f'mcp_gateway:route:{int(company_id)}:{export_name}'
 
 _server: AggregatingMcpServer | None = None
+_downstream_delegated_action: contextvars.ContextVar[str] = contextvars.ContextVar(
+    'downstream_delegated_action',
+    default='',
+)
 _mcp_http_request: contextvars.ContextVar[HttpRequest | None] = contextvars.ContextVar(
     'mcp_http_request', default=None
 )
@@ -322,7 +326,7 @@ def prefixed_tool_catalog(
 def _public_tool(tool: dict) -> dict:
     """Agent-facing catalog row: flat arguments, registry ``_meta`` kept for search/gate.
 
-    ``tools/list`` strips ``_meta`` at the wire boundary via ``_client_tool``.
+    ``tools/list`` strips ``_meta`` at the wire boundary via ``client_tool``.
     """
     from apps.connector.mcp_agent_arguments import public_input_schema
 
@@ -656,14 +660,14 @@ class PrefixingMcpServer(AggregatingMcpServer):
     def handle(self, request: HttpRequest, *, agent_claims: dict | None):
         return handle_mcp_gateway_request(self, request, agent_claims=agent_claims)
 
-    def _using_connector_tool_catalog(self, handler, request, req_id, params, agent_claims):
+    def _using_connector_tool_catalog(self, handler, request, req_id, params, agent_claims, **kwargs):
         import shellui_django.mcp.gateway as gw
         import shellui_django.mcp.server as srv
 
         orig_gw, orig_srv = gw.tools_from_schema, srv.tools_from_schema
         gw.tools_from_schema = srv.tools_from_schema = tools_from_schema
         try:
-            return handler(request, req_id, params, agent_claims)
+            return handler(request, req_id, params, agent_claims, **kwargs)
         finally:
             gw.tools_from_schema, srv.tools_from_schema = orig_gw, orig_srv
 
@@ -860,9 +864,13 @@ class PrefixingMcpServer(AggregatingMcpServer):
         export_name: str,
         service_id: str,
         arguments: dict,
+        route: dict[str, str] | None,
         on_approved=None,
     ) -> JsonResponse | None:
-        route = self._lookup_route(export_name)
+        """Run the approval gate on an already resolved ``route``. Never re-resolves it.
+
+        Returns None only when the gate allowed the call.
+        """
         tool_row, err_detail = self._trusted_tool_operation(
             export_name,
             service_id=service_id,
@@ -927,12 +935,20 @@ class PrefixingMcpServer(AggregatingMcpServer):
         req_id,
         params,
         agent_claims,
+        *,
+        route: dict[str, str] | None = None,
+        gate_allowed: bool = False,
     ) -> JsonResponse | None:
-        """Upstream ``AggregatingMcpServer._maybe_forward_tool_call`` with stable JSON-RPC error surfaces."""
+        """Upstream ``AggregatingMcpServer._maybe_forward_tool_call`` with stable JSON-RPC error surfaces.
+
+        ``route`` is the route the caller resolved once. It is never looked up again here.
+        A call to another service is refused unless ``gate_allowed`` is true, meaning the
+        approval gate ran on this same route and allowed it. The delegated grant is set
+        only in that case.
+        """
         tool_name = str(params.get('name') or '')
         if not tool_name:
             return None
-        route = self._lookup_route(tool_name)
         local_id = self._gateway.local_service_id
         if route is None:
             schema = self.schema_provider()
@@ -943,6 +959,9 @@ class PrefixingMcpServer(AggregatingMcpServer):
         service_id = route['service_id']
         if service_id == local_id:
             return None
+        if not gate_allowed:
+            logger.warning('MCP gateway refused a forward the approval gate did not allow tool=%s', tool_name)
+            return JsonResponse(McpServer._error(req_id, -32603, 'Forbidden'))
         scope = scope_service_ids(agent_claims)
         if not service_allowed(list(scope), service_id):
             return JsonResponse(McpServer._error(req_id, -32603, 'Forbidden'))
@@ -952,7 +971,12 @@ class PrefixingMcpServer(AggregatingMcpServer):
         mcp_url = self._gateway.get_service_urls().get(service_id)
         if not mcp_url:
             return JsonResponse(McpServer._error(req_id, -32603, 'Service unavailable'))
-        token = self._gateway.mint_downstream_token(agent, mcp_url)
+        # Only a gate decision that allowed this route may carry a delegated grant.
+        action_token = _downstream_delegated_action.set(str(route.get('downstream_name') or ''))
+        try:
+            token = self._gateway.mint_downstream_token(agent, mcp_url)
+        finally:
+            _downstream_delegated_action.reset(action_token)
         downstream_params = dict(params)
         downstream_params['name'] = route['downstream_name']
         call_arguments = downstream_params.get('arguments')
@@ -1099,17 +1123,31 @@ class PrefixingMcpServer(AggregatingMcpServer):
             )
 
         self._ensure_routes_for_export(export_name, agent_claims)
+        # Resolve once. The gate and the forward both use this route, never the shared cache again.
         route = self._lookup_route(export_name)
-        if route is not None:
+        if route is None:
+            # Nothing was gated and nothing may be forwarded. This path never reaches a downstream service.
+            response = self._using_connector_tool_catalog(
+                lambda *args, **kw: self._shellui_base_maybe_forward_tool_call(*args, **kw),
+                request,
+                req_id,
+                call_params,
+                agent_claims,
+                route=None,
+                gate_allowed=False,
+            )
+        else:
             arguments = call_params.get('arguments') if isinstance(call_params.get('arguments'), dict) else {}
 
             def _forward_approved():
                 return self._using_connector_tool_catalog(
-                    lambda *args: self._shellui_base_maybe_forward_tool_call(*args),
+                    lambda *args, **kw: self._shellui_base_maybe_forward_tool_call(*args, **kw),
                     request,
                     req_id,
                     call_params,
                     agent_claims,
+                    route=route,
+                    gate_allowed=True,
                 )
 
             blocked = self._gate_tool_call(
@@ -1120,22 +1158,15 @@ class PrefixingMcpServer(AggregatingMcpServer):
                 export_name=export_name,
                 service_id=str(route['service_id']),
                 arguments=arguments,
+                route=route,
                 on_approved=_forward_approved,
             )
             if blocked is not None:
                 return blocked
-
-        response = self._using_connector_tool_catalog(
-            lambda *args: self._shellui_base_maybe_forward_tool_call(*args),
-            request,
-            req_id,
-            call_params,
-            agent_claims,
-        )
+            response = _forward_approved()
         if response is None or not self.on_call:
             return response
         tool_name = str(params.get('name') or '')
-        route = self._lookup_route(tool_name)
         extra = getattr(response, 'mcp_call_log', None)
         transport = extra if isinstance(extra, dict) else {}
         status_code = int(transport.get('status') or response.status_code or 0)
@@ -1265,6 +1296,7 @@ class PrefixingMcpServer(AggregatingMcpServer):
             export_name=export_name or f'{self._gateway.local_service_id}_{local_name}',
             service_id=self._gateway.local_service_id,
             arguments=arguments,
+            route=None,
             on_approved=_run_local_approved,
         )
         if blocked is not None:
@@ -1633,7 +1665,11 @@ def _mint_token(agent: AgentRecord, mcp_url: str) -> str:
     resource = downstream_resource_for(mcp_url)
     if not resource:
         raise DownstreamTokenError('MCP service is not configured.')
-    return mint_downstream_access_token(agent, resource=resource)
+    return mint_downstream_access_token(
+        agent,
+        resource=resource,
+        delegated_action=_downstream_delegated_action.get() or None,
+    )
 
 
 def _get_server() -> AggregatingMcpServer:

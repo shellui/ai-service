@@ -182,7 +182,7 @@ Logic lives in `apps/connector/mcp_setup_context.py`:
 - **Reject** on any **partial** triple or malformed UUID string. A personal token that carries only **`grant_version`** (no **`global_company_id`**, no **`company_binding_version`**, and **`mcp_authority`** not **`delegated`** or **`global_delegated`**) is not a partial triple. Its approval assertion still includes that **`grant_version`**. Invalid setup claims stay blocked.
 - **`personal_token_id`** may appear on delegated tokens; **do not** infer delegation from it alone.
 
-**commons pin:** `shellui-django[mcp,otel]==0.7.0` is pinned in `pyproject.toml` / `uv.lock`.
+**commons pin:** `shellui-django[mcp,otel]==0.8.0` is pinned in `pyproject.toml` / `uv.lock`.
 
 ## Call logs
 
@@ -194,7 +194,7 @@ The gateway does not POST tool-call logs to Identity `POST /api/v1/mcp/internal/
 
 `GET /ai/v1/mcp/call-logs`
 
-Authentication is a bearer JWT verified the same way as other ai-service APIs. The caller must be staff, a company owner, or a company admin for the `company_id` on that JWT. A company admin is `user_metadata.is_company_admin`, or a group named `admin`, `admins`, or `company admins`, and does not have to be an owner. A plain member cannot read the list. A token cannot read another company. Agent access tokens are refused.
+Authentication is a bearer JWT verified the same way as other ai-service APIs. The caller must be staff, a company owner, or a company admin for the `company_id` on that JWT. A company admin is `user_metadata.is_company_admin` and does not have to be an owner. A group name never makes someone a company admin, whatever it is called: groups are labels that any company can create. A plain member cannot read the list. A token cannot read another company. Agent access tokens are refused.
 
 | Parameter | Meaning |
 | --- | --- |
@@ -340,6 +340,8 @@ Identity `GET /api/v1/mcp/personal/agents/{id}/activity` returns `{ "agent_id", 
 ### Safe metadata
 
 Approval creates still must not send `arguments` or `arguments_redacted`. A redacted `arguments_summary` string (max 500 characters) is the only argument text Identity accepts, and only on that create.
+
+The summary is built from the cleaned arguments that are forwarded to the service. A tool declares its destination properties (URL, email, host, redirect target) with `x-mcp-destination: true` in its `inputSchema`, on plain, nested and list item properties. The line shows those values first and in full as `Destinations: {"hosts[1]": "..."}`, with labels taken from the schema path and values from the arguments, so an argument key can never pose as a label. Non-ASCII and control characters appear as `\uXXXX` escapes, and `user:pass@` is shown as `***@` in every string value. If the destinations do not fit in 500 characters the call is refused, never shortened. The other values follow as `Arguments:`, cut at 60 characters each, with secrets masked by key name. Destinations are taken out first, so a key name never masks one (`credentials.host` shows while `credentials.password` is masked), and `?token=`, `?key=`, `?secret=` and `?sig=` style query parameters inside a destination URL are masked. A tool that does not set `_meta.destinations_declared` gets a warning at the start of the line. Agents never see the marker: it is removed from `tools/list` and `ai_describe_tool` output. The marker is built by `shellui_django.mcp` (see the commons MCP docs).
 
 A downstream HTTP 2xx alone does not imply `allowed` if the gateway classified the operation as an error (`is_error`, audit `log_result`). See `outcome_from_audit`.
 

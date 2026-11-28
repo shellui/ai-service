@@ -38,6 +38,10 @@ def after_session_allow_text(*, seconds: int | None = None) -> str:
     return f'Allowed for {sec} seconds on this connection.'
 
 
+def destinations_too_long_text() -> str:
+    return 'This call names destinations that an approval cannot show in full, so it was not sent. Nothing was changed. Use fewer or shorter addresses, each as plain text, and try again.'
+
+
 def expired_text() -> str:
     return 'This approval expired. Ask the agent to try again.'
 

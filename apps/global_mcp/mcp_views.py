@@ -293,7 +293,7 @@ def _execute_saas(agent, tool, arguments, req_id, correlation, started, *, appro
     from apps.global_mcp.tokens import issue_saas_api_token
 
     name = str(tool.get('name') or '')
-    token, _claims = issue_saas_api_token(agent)
+    token, _claims = issue_saas_api_token(agent, delegated_action=name)
     try:
         status, payload = call_saas_tool(tool, arguments, token=token)
     except Exception as exc:

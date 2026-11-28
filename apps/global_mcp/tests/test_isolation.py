@@ -40,12 +40,12 @@ def _company(name: str, *, region: str = 'ch') -> dict:
         'limits_version': 1,
         'regional_company_id': '42' if name.startswith('Alpha') else '99',
         'admin_url': 'http://admin.region',
-        'identity_url': 'http://id.region',
+        'identity_url': 'https://id.region',
         'email_url': 'http://email.region',
         'storage_url': 'http://storage.region',
         'hosting_url': 'http://hosting.region',
         'files_url': 'http://files.region',
-        'ai_url': 'http://ai.region',
+        'ai_url': 'https://ai.region',
         'failure_reason': '',
         'role': 'owner',
         'icon_url': '',
@@ -193,7 +193,7 @@ class CrossUserIsolationTests(TestCase):
             listed_b = self._listed(self.token_b)
         self.assertEqual([row['name'] for row in listed_a], ['Alpha'])
         self.assertEqual([row['region'] for row in listed_a], ['ch'])
-        self.assertEqual(listed_a[0]['ai_url'], 'http://ai.region')
+        self.assertEqual(listed_a[0]['ai_url'], 'https://ai.region')
         self.assertIsNotNone(listed_a[0]['delegation'])
         self.assertEqual([row['name'] for row in listed_b], ['Bravo'])
         self.assertEqual([row['region'] for row in listed_b], ['eu'])
@@ -397,7 +397,7 @@ class AutoCompanyAccessTests(TestCase):
                     return 200, row
         return 404, {'detail': 'Company not found.'}
 
-    def _post(self, url, json=None, headers=None, timeout=None):
+    def _post(self, url, json=None, headers=None, timeout=None, **_kwargs):
         test = self
 
         class Response:
@@ -507,13 +507,13 @@ class AutoCompanyAccessTests(TestCase):
         self.regional_body = {
             'result': {
                 'content': [{'type': 'text', 'text': 'Approval required.'}],
-                'approval_url': 'http://id.region/oauth/mcp/approval/x',
+                'approval_url': 'https://id.region/oauth/mcp/approval/x',
                 'isError': False,
             }
         }
         result = self._call('ai_call_company_tool', {'company_id': self.alpha['id'], 'tool': 'identity_delete_users'})
         body = json.loads(result['content'][0]['text'])
-        self.assertEqual(body['result']['approval_url'], 'http://id.region/oauth/mcp/approval/x')
+        self.assertEqual(body['result']['approval_url'], 'https://id.region/oauth/mcp/approval/x')
         self.assertIs(self._subject()['mcp_destructive'], False)
 
     def test_regional_token_for_one_company_is_not_used_for_another(self):
@@ -527,7 +527,7 @@ class AutoCompanyAccessTests(TestCase):
         self.assertEqual(self._subject(1)['global_company_id'], second['id'])
         self.assertEqual(
             self.regional_calls,
-            [('http://ai.region/c/42/mcp', 'Bearer regional-42'), ('http://ai.region/c/43/mcp', 'Bearer regional-43')],
+            [('https://ai.region/c/42/mcp', 'Bearer regional-42'), ('https://ai.region/c/43/mcp', 'Bearer regional-43')],
         )
 
     def test_explicit_read_only_grant_is_kept_and_members_can_narrow(self):
@@ -546,9 +546,9 @@ class AutoCompanyAccessTests(TestCase):
         self.assertIn('ai_company_search_tools', payload['project_tools'])
 
     def test_internal_region_urls_keep_the_public_resource(self):
-        internal = {'http://id.region': 'http://identity-eu:8000', 'http://ai.region': 'http://ai-eu:8000'}
+        internal = {'https://id.region': 'http://identity-eu:8000', 'https://ai.region': 'http://ai-eu:8000'}
         with self.settings(GLOBAL_REGION_INTERNAL_URLS=internal):
             self._call('ai_call_company_tool', {'company_id': self.alpha['id'], 'tool': 'identity_list_users'})
         self.assertEqual(self.exchanges[-1]['_url'], 'http://identity-eu:8000/oauth/mcp/token')
-        self.assertEqual(self.exchanges[-1]['resource'], 'http://ai.region/c/42/mcp')
+        self.assertEqual(self.exchanges[-1]['resource'], 'https://ai.region/c/42/mcp')
         self.assertEqual(self.regional_calls, [('http://ai-eu:8000/c/42/mcp', 'Bearer regional-42')])

@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import re
 from typing import Any
+from urllib.parse import quote
 
 from django.core.cache import cache
 
@@ -119,6 +120,9 @@ def tools_from_openapi(document: dict) -> list[dict[str, Any]]:
             ext = _extension(operation)
             if not ext:
                 continue
+            if ext.get('global_refused') is True:
+                # Refused for every agent (project deletion, ownership transfer): never listed or callable.
+                continue
             operation_id = str(operation.get('operationId') or '')
             name = tool_name_for(operation_id, str(ext.get('name') or ''))
             description = str(operation.get('description') or operation.get('summary') or name)
@@ -186,9 +190,14 @@ def _fetch_schema() -> dict:
 
 
 def public_tool(tool: dict) -> dict:
-    """Drop private _meta before tools/list."""
-    clean = {key: value for key, value in tool.items() if key != '_meta'}
-    return clean
+    """What an agent sees: no private ``_meta`` and no ``x-mcp-destination``.
+
+    The saas OpenAPI schemas are copied verbatim, marker included. The company gateway removes it with
+    ``client_tool``, and this uses the same function so the two endpoints cannot drift apart.
+    """
+    from apps.connector.mcp_discovery import client_tool
+
+    return client_tool(tool)
 
 
 def find_tool(tools: list[dict], name: str) -> dict | None:
@@ -198,17 +207,46 @@ def find_tool(tools: list[dict], name: str) -> dict | None:
     return None
 
 
+def quote_path_param(value: object) -> str:
+    text = str(value)
+    if text == '' or any(ord(char) < 32 for char in text):
+        raise SaasError(400, None, 'Tool path is not allowed.')
+    return quote(text, safe='').replace('.', '%2E')
+
+
+def fill_tool_path(template: str, args: dict) -> str:
+    """Percent-encode path parameters and keep the path on the template."""
+    if (
+        not template.startswith('/')
+        or '://' in template
+        or template.startswith('//')
+        or any(char in template for char in ('\\', '?', '\r', '\n', '\t', ' ', '#'))
+    ):
+        raise SaasError(400, None, 'Tool path is not allowed.')
+    filled_parts: list[str] = []
+    for part in template.split('/'):
+        if part.startswith('{') and part.endswith('}') and part.count('{') == 1 and part.count('}') == 1:
+            name = part[1:-1]
+            if not name or name not in args:
+                raise SaasError(400, None, f'Missing {name or "path parameter"}.')
+            filled_parts.append(quote_path_param(args.pop(name)))
+            continue
+        if '{' in part or '}' in part or part in {'.', '..'}:
+            raise SaasError(400, None, 'Tool path is not allowed.')
+        filled_parts.append(part)
+    filled = '/'.join(filled_parts)
+    if not filled.startswith('/') or any(part in {'.', '..'} for part in filled.split('/')):
+        raise SaasError(400, None, 'Tool path is not allowed.')
+    return filled
+
+
 def call_saas_tool(tool: dict, arguments: dict, *, token: str) -> tuple[int, Any]:
     meta = tool.get('_meta') or {}
-    path = str(meta.get('path') or '')
     method = str(meta.get('method') or 'GET')
     args = dict(arguments or {})
+    path = fill_tool_path(str(meta.get('path') or ''), args)
     query: dict[str, Any] = {}
     headers: dict[str, str] = {}
-    for match in re.findall(r'\{([^}]+)\}', path):
-        if match not in args:
-            raise SaasError(400, None, f'Missing {match}.')
-        path = path.replace('{' + match + '}', str(args.pop(match)))
     if 'idempotency_key' in args:
         headers['Idempotency-Key'] = str(args.pop('idempotency_key'))
     body = None

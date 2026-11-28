@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM node:22-bookworm-slim AS frontend
+FROM node:26-bookworm-slim AS frontend
 
 WORKDIR /app
 
@@ -11,7 +11,10 @@ COPY templates ./templates
 RUN npm run build:css
 
 # Local dev stack (shellui/dev): deps only; bind-mount source at /app.
-FROM python:3.14-slim AS dev
+# This stage is not published. Releases build the production stage below.
+FROM python:3.14.10-slim AS dev
+
+LABEL com.shellui.image-stage=dev
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -28,7 +31,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     util-linux \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=ghcr.io/astral-sh/uv:0.12.1 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.13.10 /uv /uvx /bin/
 
 COPY pyproject.toml uv.lock /app/
 RUN uv sync --frozen --no-dev --no-install-project
@@ -43,7 +46,10 @@ RUN chmod +x /docker-entrypoint.sh
 ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["dev"]
 
-FROM python:3.14-slim AS production
+# Published image. Keep this stage last so a build without --target still selects it.
+FROM python:3.14.10-slim AS production
+
+LABEL com.shellui.image-stage=production
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -60,7 +66,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     util-linux \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=ghcr.io/astral-sh/uv:0.12.1 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.13.10 /uv /uvx /bin/
 
 COPY pyproject.toml uv.lock /app/
 RUN uv sync --frozen --no-dev --no-install-project
@@ -72,6 +78,10 @@ RUN DEBUG=true \
     SECRET_KEY=build-only-not-for-runtime \
     IDENTITY_JWKS_URL=http://localhost:8000/.well-known/jwks.json \
     uv run python manage.py collectstatic --noinput --skip-checks
+
+# collectstatic above sets DEBUG for that command only. The image env stays false.
+RUN test "$(printf '%s' "$DEBUG" | tr '[:upper:]' '[:lower:]')" = "false" \
+    || { echo "production image must keep DEBUG=false" >&2; exit 1; }
 
 RUN useradd --create-home --shell /bin/bash appuser \
     && chown -R appuser:appuser /app \

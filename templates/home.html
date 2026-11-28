@@ -102,9 +102,10 @@
 
           <form method="post" novalidate class="mt-5">
             {% csrf_token %}
-            {% if setup_token %}
-            <input type="hidden" name="setup_token" value="{{ setup_token }}" />
-            {% endif %}
+            <div class="row">
+              <label for="id_setup_token">Setup token</label>
+              <input type="password" name="setup_token" id="id_setup_token" autocomplete="off" required />
+            </div>
             <div class="row">
               <label for="{{ form.username.id_for_label }}">Username</label>
               {{ form.username }}
@@ -159,8 +160,8 @@
             <code>uv run python manage.py createsuperuser</code>
           </p>
           <p class="mt-3 text-xs text-muted-foreground">
-            Alternatively, set <code class="font-mono text-primary-ink dark:text-primary">SETUP_TOKEN</code> and open
-            <code class="font-mono">/?setup_token=&lt;token&gt;</code> for a one-time web setup.
+            Alternatively, set <code class="font-mono text-primary-ink dark:text-primary">SETUP_TOKEN</code>
+            (at least 32 characters) and enter it in the form at this page for a one-time web setup.
           </p>
         </div>
       </div>

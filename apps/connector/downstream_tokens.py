@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import logging
+import time
 
+import jwt
 import requests
 from django.conf import settings
 from shellui_django.mcp.delegation import (
     DOWNSTREAM_TOKEN_REQUEST_MAX_LIFETIME_SECONDS,
     sign_downstream_token_request,
+    verify_downstream_token_request,
 )
 
 from apps.connector.agent_record import AgentRecord
@@ -17,6 +20,16 @@ logger = logging.getLogger(__name__)
 
 DOWNSTREAM_TOKEN_PATH = '/api/v1/mcp/internal/mcp-downstream-access-token'
 _DEFAULT_REQUEST_TTL_SECONDS = 60
+DELEGATED_GRANT_TTL_SECONDS = 60
+
+
+def gateway_delegated_grant(action: str, *, now: int | None = None) -> dict[str, str | int]:
+    """One-tool grant. Downstream skips a second approval only while ``exp`` is in the future."""
+    name = str(action or '').strip()
+    if not name:
+        raise ValueError('delegated action is required')
+    issued = int(time.time() if now is None else now)
+    return {'action': name, 'exp': issued + DELEGATED_GRANT_TTL_SECONDS}
 
 
 class DownstreamTokenError(Exception):
@@ -27,8 +40,18 @@ def _identity_origin() -> str:
     return (getattr(settings, 'IDENTITY_SERVICE_URL', '') or settings.IDENTITY_ISSUER or '').rstrip('/')
 
 
-def mint_downstream_access_token(agent: AgentRecord, *, resource: str) -> str:
-    """Ask identity to sign an agent access token for ``resource`` (downstream ``/mcp`` URL)."""
+def mint_downstream_access_token(
+    agent: AgentRecord,
+    *,
+    resource: str,
+    delegated_action: str | None = None,
+) -> str:
+    """Ask identity to sign an agent access token for ``resource`` (downstream ``/mcp`` URL).
+
+    ``delegated_action`` is the downstream tool name the gateway already allowed.
+    The signed mint request carries ``mcp_gateway_delegated`` as ``{"action", "exp"}``.
+    Identity copies that tool onto the access token it returns.
+    """
     signing = getattr(settings, 'AI_SERVICE_SIGNING_KEY', None)
     issuer = (getattr(settings, 'AI_SERVICE_ISSUER', '') or '').strip().rstrip('/')
     if signing is None or not issuer:
@@ -37,6 +60,10 @@ def mint_downstream_access_token(agent: AgentRecord, *, resource: str) -> str:
     if not origin:
         raise DownstreamTokenError('IDENTITY_SERVICE_URL is not configured.')
     ttl = min(_DEFAULT_REQUEST_TTL_SECONDS, DOWNSTREAM_TOKEN_REQUEST_MAX_LIFETIME_SECONDS)
+    grant = None
+    action = str(delegated_action or '').strip()
+    if action:
+        grant = gateway_delegated_grant(action)
     try:
         assertion = sign_downstream_token_request(
             signing.private_pem,
@@ -47,6 +74,12 @@ def mint_downstream_access_token(agent: AgentRecord, *, resource: str) -> str:
             resource,
             ttl,
         )
+        if grant is not None:
+            claims = verify_downstream_token_request(assertion, signing.public_pem, issuer)
+            claims['mcp_gateway_delegated'] = grant
+            headers = {'kid': signing.kid} if signing.kid else None
+            encoded = jwt.encode(claims, signing.private_pem, algorithm='RS256', headers=headers)
+            assertion = encoded.decode('utf-8') if isinstance(encoded, bytes) else encoded
     except Exception as exc:
         logger.warning('Downstream token request signing failed err=%s', type(exc).__name__)
         raise DownstreamTokenError('Could not sign downstream token request.') from exc
